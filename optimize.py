@@ -1,64 +1,21 @@
 #!/usr/bin/env python
 
-#import pcse
-from pcse.db.cgms11 import WeatherObsGridDataProvider, TimerDataProvider
-from pcse.db.cgms11 import SoilDataIterator, CropDataProvider, STU_Suitability
-from pcse.db.cgms11 import SiteDataProvider
+import sys, os
+import numpy as np
+from csv import reader as csv_reader
+from pickle import load as pickle_load
+from random import sample as random_sample
+from string import replace as string_replace
 from pcse.models import Wofost71_WLP_FD
 from pcse.util import is_a_dekad
 from pcse.base_classes import WeatherDataProvider
-from random import shuffle, sample
-#import matplotlib.pyplot as plt
-#import sqlalchemy as sa  #only required to connect to the oracle database
-from sqlalchemy import MetaData, select, Table
-#import pandas as pd
-import os
-from csv import reader as csv_reader
-from datetime import date
-import numpy as np
-from string import replace as string_replace
-from pickle import load as pickle_load
-#import math
-#import sys, os, getopt
-#from matplotlib import pyplot
-#from scipy import ma
+
 
 #===============================================================================
-# Start of the script
+# This script execute the optimized WOFOST runs for one NUTS region
 def main():
 #===============================================================================
 
-#    try:                                
-#        opts, args = getopt.getopt(sys.argv[1:], "-h")
-#    except getopt.GetoptError:           
-#        print "Error"
-#        sys.exit(2)      
-#    
-#    for options in opts:
-#        options=options[0].lower()
-#        if options == '-h':
-#            helptext = """
-#    This script execute the WOFOST runs for one location
-#
-#                """
-#            print helptext
-#            sys.exit(2)     
- 
-#-------------------------------------------------------------------------------
-# Define working directories
-
-    currentdir   = os.getcwd()
-	
-	# directories on my local MacBook:
-    EUROSTATdir  = '/Users/mariecombe/Documents/Work/Research project 3/'\
-				   +'EUROSTAT_data'
-    folderpickle = 'pickled_CGMS_input_data/'
-	
-    # directories on capegrim:
-    #folderpickle = '/Storage/CO2/mariecombe/pickled_CGMS_input_data/'
-    #EUROSTATdir  = "/Users/mariecombe/Cbalance/EUROSTAT_data"
-
-#------------------------------------------------------------------------------
 # Define the settings of the run
 
     # option (A)
@@ -90,8 +47,8 @@ def main():
     # Crop information:
     crop_no    = 3
     crop_name  = 'Barley'
-    DM_content = 0.9  # this is the DM fraction in the reported observed yields
-    # Period of time:
+    DM_content = 0.9  # this is the observed DM fraction
+    # Period of time for the WOFOST runs:
     start_year = 1975
     end_year   = 2014
     # Yield gap factor optimization options:
@@ -105,66 +62,86 @@ def main():
     campaign_years = np.linspace(int(start_year),int(end_year),nb_years)
 
 #------------------------------------------------------------------------------
+# Define working directories
+
+    currentdir   = os.getcwd()
+	
+	# directories on my local MacBook:
+    EUROSTATdir  = '/Users/mariecombe/Documents/Work/Research project 3/'\
+				   +'EUROSTAT_data'
+    folderpickle = 'pickled_CGMS_input_data/'
+	
+    # directories on capegrim:
+    #folderpickle = '/Storage/CO2/mariecombe/pickled_CGMS_input_data/'
+    #EUROSTATdir  = "/Users/mariecombe/Cbalance/EUROSTAT_data"
+
+#------------------------------------------------------------------------------
 # Retrieve observed yield datasets
     
-    NUTS_data     = open_csv(EUROSTATdir,['agri_yields_NUTS1-2-3_1975-2014.csv'],
-                             convert_to_float=True)
-    NUTS_ids      = open_csv(EUROSTATdir,['NUTS_codes_2013.csv'],
-                             convert_to_float=False)
-    
-    # we simplify the dictionaries keys:
-    NUTS_data['yields'] = NUTS_data['agri_yields_NUTS1-2-3_1975-2014.csv']
-    NUTS_ids['codes']   = NUTS_ids['NUTS_codes_2013.csv']
-    del NUTS_data['agri_yields_NUTS1-2-3_1975-2014.csv']
-    del NUTS_ids['NUTS_codes_2013.csv']
+#    NUTS_data     = open_csv(EUROSTATdir,['agri_yields_NUTS1-2-3_1975-2014.csv'],
+#                             convert_to_float=True)
+#    NUTS_ids      = open_csv(EUROSTATdir,['NUTS_codes_2013.csv'],
+#                             convert_to_float=False)
+#    
+#    # we simplify the dictionaries keys:
+#    NUTS_data['yields'] = NUTS_data['agri_yields_NUTS1-2-3_1975-2014.csv']
+#    NUTS_ids['codes']   = NUTS_ids['NUTS_codes_2013.csv']
+#    del NUTS_data['agri_yields_NUTS1-2-3_1975-2014.csv']
+#    del NUTS_ids['NUTS_codes_2013.csv']
     
 #------------------------------------------------------------------------------
 # Detrend the yield observations
 
-    detrend   = detrend_obs_yields(start_year, end_year, NUTS_name, crop_name,
-								   NUTS_data['yields'], DM_content, 2000)
-
+#    detrend   = detrend_obs_yields(start_year, end_year, NUTS_name, crop_name,
+#								   NUTS_data['yields'], DM_content, 2000)
     
 #------------------------------------------------------------------------------
-# Retrieve or select the grid cells to loop over
+# Select the grid cells to loop over
 
-    # we get the list of all grid cells contained in that region
-    # the list of grid cells has been pickled, and is already ranked by size of
-    # arable land area in the pickle file
+    # we first read the list of all 'whole' grid cells contained in that region
+	# NB: grid_list_tuples[0] is a list of (grid_cell_id, arable_land_area)
+	# tuples, which are already sorted by decreasing amount of arable land
     filename = folderpickle+'gridlistobject_all_r%s.pickle'%NUTS_no
     grid_list_tuples = pickle_load(open(filename,'rb'))
-    # NB: grid_list_tuples[0] contains the (grid,arable_land_area) tuples
-    #     grid_list_tuples[1] contains the criteria of selection of grids 
-    #     (e.g. 'all' if all grid cells are listed in the pickle file)
     print 'Reading data from pickle file %s'%filename
 
-    n = int(10.)
-    # We select a subset of those grid cells
-    # first option: we select the top n grid cells in terms of arable land area
-    if (select_crit_grid=='topn'):
-        grid_list = [g for g,a in grid_list_tuples[0][0:n]]
-    # second option: we select a random set of n grid cells
-    elif (select_crit_grid == 'randomn'):
-        mix_list = random.shuffle(grid_list_tuples[0])
-        grid_list = [g for g,a in mix_list]
-        #grid_list = sample(grid_list_tuples[0], n)
-    # last option: we select all available grid cells of the region
-    else:
-        grid_list = [g for g,a in grid_list_tuples[0]]
-    print 'list of selected grids:', grid_list
-
-    sys.exit(2)      
+    # we select a subset of grid cells to loop over
+    selected_grid_cells = select_grid_cells(grid_list_tuples[0],method='topn',n=10)
+    #selected_grid_cells=select_grid_cells(grid_list_tuples[0],method='randomn',n=10)
+    #selected_grid_cells=select_grid_cells(grid_list_tuples[0],method='all')
 
 #------------------------------------------------------------------------------
-# Retrieve or select the soil types to loop over  
+# Select the soil types to loop over  
 
+    # we first read the list of suitable soil types for our chosen crop 
+    filename = folderpickle+'suitablesoilsobject_c%d.pickle'%crop_no
+    suitable_soil_types = pickle_load(open(filename,'rb')) 
+    print 'Reading data from pickle file %s'%filename
+
+    selected_soil_types = {}
+
+    for grid, area_arable in selected_grid_cells:
+
+        # we read the entire list of soil types contained within the grid cell
+        filename = folderpickle+'soilobject_g%d.pickle'%grid
+        print 'Reading data from pickle file %s'%filename
+        soil_iterator = pickle_load(open(filename,'rb'))
+
+        # We select a subset of soil types to loop over
+#        selected_soil_types[grid] = select_soil_types(grid, soil_iterator)
 
 #------------------------------------------------------------------------------
 # Perform optimization of YLDGAPF and yield
 
+    sys.exit(2)      
+    
     if yield_sim_no_optimize == True: 
 	    perform_yield_sims_no_optimize(NUTS_no, crop_no, campaign_years,
 									   grid_list_tuples, soil_list_tuples)
+
+
+
+
 
 #------------------------------------------------------------------------------
 # Do forward simulations for the grid cells x soil type combinations
@@ -173,6 +150,55 @@ def main():
 #------------------------------------------------------------------------------
 # 
 
+#===============================================================================
+# Function to select a subset of soil types within a grid cell
+def select_soil_types(grid_cell_id, soil_iterator_, method='topn', n=3):
+#===============================================================================
+
+    list_soils = []
+    
+    # loop over the soil types
+    for smu_no, area_smu, stu_no, percentage, soildata in soil_iterator_:
+
+        # NB: we remove all unsuitable soils from the iteration
+        if (stu_no not in suitable_stu): 
+            continue
+        else:
+            # calculate the cultivated area of the crop in this grid
+            area_soil      = area_smu*percentage/100.
+            perc_area_soil = area_soil/625000000
+                
+            if (perc_area_soil <= 0.05):
+                continue 
+            else:
+                list_soils = list_soils + [(smu_no,stu_no)]
+            
+    selected_soils = list_soils
+
+    print 'list of selected soil types:', [st for sm,st in selected_soils]
+
+    return selected_soils
+
+#===============================================================================
+# Function to select a subset of grid cells within a NUTS region
+def select_grid_cells(list_of_tuples, method='topn', n=3):
+#===============================================================================
+
+	# NB: list_of_tuples is a list of (grid_cell_id, arable_land_area) tuples,
+	# which are already sorted by decreasing amount of arable land
+    
+    # first option: we select the top n grid cells in terms of arable land area
+    if   (method == 'topn'):
+        subset_list   = list_of_tuples[0:n]
+    # second option: we select a random set of n grid cells
+    elif (method == 'randomn'):
+        subset_list   = random_sample(list_of_tuples,n)
+    # last option: we select all available grid cells of the region
+    else:
+        subset_list   = list_of_tuples
+    print 'list of selected grids:', [g for g,a in subset_list]
+
+    return subset_list
 
 #===============================================================================
 # Function to detrend the observed yields
@@ -203,7 +229,7 @@ def detrend_obs_yields( _start_year, _end_year, _NUTS_name, _crop_name,
                                                       'Yields (100 kg/ha)'):
                             TARGET[j] = float(uncorrected_yields_dict['Value'][i])\
                                                *10.*_DM_content
-    print 'observed dry matter yields:', TARGET
+    #print 'observed dry matter yields:', TARGET
 
     # fit a linear trend line in the record of observed yields
     mask = ~np.isnan(TARGET)
@@ -235,7 +261,7 @@ def detrend_obs_yields( _start_year, _end_year, _NUTS_name, _crop_name,
         print 'the trend line is y=%.6fx+(%.6f)'%(z[0],z[1])
         pyplot.show()
     
-    print 'detrended dry matter yields:', OBS['DETRENDED']
+    #print 'detrended dry matter yields:', OBS['DETRENDED']
     
     return OBS['DETRENDED'], campaign_years[mask]
 
