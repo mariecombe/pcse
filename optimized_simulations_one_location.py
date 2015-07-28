@@ -75,32 +75,54 @@ def open_eurostat_csv(inpath,filelist):
     return Dict
 
 #----------------------------------------------------------------------
-def open_csv_as_strings(inpath,namefilelist):
+def open_csv_as_strings(inpath,filelist,convert_to_float=False):
 
     import csv
 
     Dict = {}
 
-    for i,namefile in enumerate(namefilelist):
+    for i,namefile in enumerate(filelist):
         
         print "Opening %s"%(namefile)
         
+        # open file, read all lines
         inputpath=os.path.join(inpath,namefile)
         f=open(inputpath,'rU')
         reader=csv.reader(f, delimiter=',', skipinitialspace=True)
-        all=[]
+        lines=[]
         for row in reader:
-            all.append(row)
-        headerow=all[0]
-        del all[0]
+            lines.append(row)
+        f.close()
+        
+        # storing headers in list headerow
+        headerow=lines[0]
         print headerow
+        
+        # deleting rows that are not data (first and last rows of the file)
+        del lines[0]
     
-        datafloat=[]
-        for row in all:
-            a = row[0:2]
-            datafloat.append(a)
-        data=np.array(datafloat)
+        # two possibilities: either convert data from string to float or
+        # keep it as is in string type
+        if (convert_to_float == True):
+            # transforming data from string to float type
+            converted_data=[]
+            for line in lines:
+                if (line[4] != ':'): 
+                    a = (line[0:4] + [float(string_replace(line[4], ' ', ''))] 
+                                   + [line[5]])
+                else:
+                    a = line[0:4] + [float('NaN')] + [line[5]]
+                converted_data.append(a)
+            data = np.array(converted_data)
+        else:
+            # we keep the string format, we just separate the string items
+            datafloat=[]
+            for row in lines:
+                a = row[0:2]
+                datafloat.append(a)
+            data=np.array(datafloat)
     
+        # creating one dictionnary and storing the data in it
         dictnamelist = {}
         for j,varname in enumerate(headerow):
             dictnamelist[varname]=data[:,j]
