@@ -44,7 +44,7 @@ def main():
     optimization  = True    # if False: we assign a YLDGAPF = 1.
                              # if True: we optimize YLDGAPF with one of the 
                              # following methods
-    opti_method   = 'aggregated_yield' # can be 'individual' or 'average_combi'
+    opti_method   = 'individual' # can be 'individual' or 'average_combi'
                              # or 'aggregated_yield' or 'aggregated_harvest'
     opti_nyears   = 3        # minimum 3 years, maximum 30.
 
@@ -204,6 +204,9 @@ def optimize_yldgapf_ag(crop_no_, selected_grid_cells_, selected_soil_types_,
 	# Until the precision of the yield gap factor is good enough (i.e. < 0.05)
 	# we loop over it. We do 12 iterations in total with this method.
     while (f_step >= 0.1):
+
+        # sub-method: looping over the yield gap factors
+
 		# we build a range of 3 yield gap factors to explore one low bound, one
 		# high bound, one in the middle
         f_step = (highestf - lowestf)/2.
@@ -422,6 +425,7 @@ def optimize_yldgapf_dyn(crop_no_, selected_grid_cells_, selected_soil_types_,
     print 'Finished dynamic optimization at timestamp:', datetime.utcnow()
 
     # 4- return the optimized YLDGAPF
+    print FINAL_YLDGAPF
     return FINAL_YLDGAPF
 
 #===============================================================================
@@ -462,19 +466,20 @@ def optimize_yldgapf_matrix(crop_no_, selected_grid_cells_, selected_soil_types_
             # We calculate the (obs - sim) difference for each yldgapf
             DIFF = np.zeros((nb_f_values,len(opti_years_)))
 
-            for f,factor in enumerate(f_range):
-    
-                for y, year in enumerate(opti_years_): 
-                    # Retrieve yearly data 
-                    filename = folderpickle+'timerobject_g%d_c%d_y%d.pickle'\
-                                                           %(grid,crop_no_,year)
-                    timerdata = pickle_load(open(filename,'rb'))
-                    filename = folderpickle+'cropobject_g%d_c%d_y%d.pickle'\
-                                                           %(grid,crop_no_,year)
-                    cropdata = pickle_load(open(filename,'rb'))
-                    filename = folderpickle+'siteobject_g%d_c%d_y%d_s%d.pickle'\
-                                                    %(grid,crop_no_,year,stu_no)
-                    sitedata = pickle_load(open(filename,'rb'))
+            for y, year in enumerate(opti_years_): 
+
+                # Retrieve yearly data 
+                filename = folderpickle+'timerobject_g%d_c%d_y%d.pickle'\
+                                                       %(grid,crop_no_,year)
+                timerdata = pickle_load(open(filename,'rb'))
+                filename = folderpickle+'cropobject_g%d_c%d_y%d.pickle'\
+                                                       %(grid,crop_no_,year)
+                cropdata = pickle_load(open(filename,'rb'))
+                filename = folderpickle+'siteobject_g%d_c%d_y%d_s%d.pickle'\
+                                                %(grid,crop_no_,year,stu_no)
+                sitedata = pickle_load(open(filename,'rb'))
+
+                for f,factor in enumerate(f_range):
 
                     cropdata['YLDGAPF']=factor
                    
@@ -509,6 +514,7 @@ def optimize_yldgapf_matrix(crop_no_, selected_grid_cells_, selected_soil_types_
     print 'Finished matrix optimization at timestamp:', datetime.utcnow()
 
     # 4- return the optimized YLDGAPF
+    print FINAL_YLDGAPF
     return FINAL_YLDGAPF
 
 #===============================================================================
@@ -750,5 +756,5 @@ def open_csv(inpath,filelist,convert_to_float=False):
 
 #===============================================================================
 if __name__=='__main__':
-  main()
+    main()
 #===============================================================================
