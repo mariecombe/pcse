@@ -64,7 +64,8 @@ def main():
 	# directories on my local MacBook:
     EUROSTATdir   = '/Users/mariecombe/Documents/Work/Research_project_3/'\
 				   +'EUROSTAT_data'
-    folderpickle  = 'pickled_CGMS_input_data/'
+    folderpickle  = '/Users/mariecombe/Documents/Work/Research_project_3/'\
+                   +'pcse/pickled_CGMS_input_data/'
 
     # directories on capegrim:
     #folderpickle  = '/Storage/CO2/mariecombe/pickled_CGMS_input_data/'
