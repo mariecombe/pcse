@@ -31,22 +31,24 @@ def main():
     crop_name     = 'Barley' # EUROSTAT crop name (check EUROSTAT nomenclature)
     DM_content    = 0.9      # EUROSTAT dry matter fraction
                              # should be read from file rather than hardcoded
-    # Period of time:
-    start_year    = 2000
-    end_year      = 2014
 
     # options for the selection of grid cell x soil types combinations
-    selec_method  = 'all'   # can be 'topn' or 'randomn' or 'all'
-    ncells        = 2       # number of selected grid cells within a region
+    selec_method  = 'topn'   # can be 'topn' or 'randomn' or 'all'
+    ncells        = 3        # number of selected grid cells within a region
     nsoils        = 2        # number of selected soil types within a grid cell
 
     # options for the yield gap factor optimization
-    optimization  = True    # if False: we assign a YLDGAPF = 1.
+    optimization  = True     # if False: we assign a YLDGAPF = 1.
                              # if True: we optimize YLDGAPF with one of the 
                              # following methods
     opti_method   = 'aggregated_yield' # can be 'individual' or 'average_combi'
                              # or 'aggregated_yield' or 'aggregated_harvest'
     opti_nyears   = 3        # minimum 3 years, maximum 30.
+
+    # options for the forward crop growth simulations
+    forward_sims  = False
+    start_year    = 2000     # start_year and end_year define the period of time
+    end_year      = 2014     # for which we do forward simulations
 
 #-------------------------------------------------------------------------------
 # Calculate key variables from the user input
@@ -70,27 +72,30 @@ def main():
 
 #-------------------------------------------------------------------------------
 # Retrieve the observed yield and remove the technological trend 
-    
-    NUTS_data     = open_csv(EUROSTATdir,['agri_yields_NUTS1-2-3_1975-2014.csv'],
-                             convert_to_float=True)
-    NUTS_ids      = open_csv(EUROSTATdir,['NUTS_codes_2013.csv'],
-                             convert_to_float=False)
-    
-    # we simplify the dictionaries keys:
-    NUTS_data['yields'] = NUTS_data['agri_yields_NUTS1-2-3_1975-2014.csv']
-    NUTS_ids['codes']   = NUTS_ids['NUTS_codes_2013.csv']
-    del NUTS_data['agri_yields_NUTS1-2-3_1975-2014.csv']
-    del NUTS_ids['NUTS_codes_2013.csv']
-    
-    # Detrend the yield observations
-    detrend   = detrend_obs_yields(start_year, end_year, NUTS_name, crop_name,
-								   NUTS_data['yields'], DM_content, 2000)
+   
+    if (optimization == True): 
 
-	# Retrieve the most recent N years of continuous yield data that we can use
-	# for the optimization of the yield gap factor.
-    # NB: I need to write a function to automize that! 
-    # opti_years = find_continuous_years(NUTS_data['yields'], opti_nyears)
-    opti_years = [2004,2005,2006]    
+        NUTS_data = open_csv(EUROSTATdir,['agri_yields_NUTS1-2-3_1975-2014.csv'],
+                                 convert_to_float=True)
+        NUTS_ids  = open_csv(EUROSTATdir,['NUTS_codes_2013.csv'],
+                                 convert_to_float=False)
+    
+        # we simplify the dictionaries keys:
+        NUTS_data['yields'] = NUTS_data['agri_yields_NUTS1-2-3_1975-2014.csv']
+        NUTS_ids['codes']   = NUTS_ids['NUTS_codes_2013.csv']
+        del NUTS_data['agri_yields_NUTS1-2-3_1975-2014.csv']
+        del NUTS_ids['NUTS_codes_2013.csv']
+    
+        # Detrend the yield observations
+        detrend   = detrend_obs_yields(start_year, end_year, NUTS_name, crop_name,
+		    						   NUTS_data['yields'], DM_content, 2000)
+
+		# Retrieve the most recent N years of continuous yield data that we can
+		# use for the optimization of the yield gap factor.  NB: I need to
+		# write a function to automize that!  opti_years =
+		# find_continuous_years(NUTS_data['yields'], opti_nyears)
+
+        opti_years = [2004,2005,2006]    
 
 #-------------------------------------------------------------------------------
 # Select the grid cells to loop over
@@ -132,8 +137,8 @@ def main():
 # Perform optimization of the yield gap factor
 
     if (optimization == True):
-        results_filename  = 'Opti_yldgapf_%s_%igx%is_crop%i_region%s.dat'%(
-                               selec_method, ncells, nsoils, crop_no, NUTS_no)
+        results_filename  = 'Opti_yldgapf_%s_%igx%is_%ioptiyears_crop%i_region%s.dat'%(
+                           selec_method, ncells, nsoils, opti_nyears, crop_no, NUTS_no)
         if (opti_method == 'average_combi'):
             pass
             # 1- do forward simulations for all grid cells x soil combinations
@@ -160,11 +165,25 @@ def main():
 #-------------------------------------------------------------------------------
 # Do forward simulations for all available grid cells x soil type combinations
 
-#    simulated_yields = perform_yield_sims(selected_grid_cells,
-#                                          selected_soil_types, 
-#                                          crop_no, campaign_years, 
-#                                          yldgapf=optimum_yldgapf) 
-#    pickle.dump(sim_yields, open( "list_of_sim_yld_%i-%i.pickle"
+    if (forward_sims == True):
+
+        # we define the name of the file where we will store the results of the
+        # forward simulations
+        if (optimization == True):
+            results_filename  = 'ForwardSim_Optimized_crop%i_region%s_%i-%i.dat'%(
+                                 crop_no, NUTS_no, start_year, end_year)
+        else:
+            results_filename  = 'ForwardSim_Non-Optimized_crop%i_region%s_%i-%i.dat'%(
+                                 crop_no, NUTS_no, start_year, end_year)
+
+        # We perform the forward simulations:
+        simulated_yields = perform_yield_sims(selected_grid_cells,
+                                              selected_soil_types, 
+                                              crop_no, campaign_years, 
+                                              results_filename,
+                                              yldgapf=optimum_yldgapf) 
+
+#        pickle.dump(sim_yields, open( "list_of_sim_yld_%i-%i.pickle"
 #                             %(campaign_years_[0],campaign_years_[-1]), "wb") )
 
 
@@ -185,20 +204,22 @@ def optimize_yldgapf_ag(crop_no_, selected_grid_cells_, selected_soil_types_,
         print 'Deleted old file %s in folder output_data/'%Res_filename
     Results = open(os.path.join(currentdir, 'output_data', Res_filename), 'w')
 
-    # we write the selection of grid cells and soil types
-    Results.write('Optimization of the YLDGAPF based on the difference between '\
-                 +'the weighted averaged regional yield and the observed NUTS '\
-                 +'yield\n')
+    # we first write the selected grid cells and soil types
+    Results.write('Optimization of the YLDGAPF based on the difference'\
+                 +' between the weighted averaged regional yield and the'\
+                 +' observed NUTS yield\n')
     Results.write('Selected %i grid cells:\n'%(len(selected_grid_cells_)))
     Results.write(' '.join(str(f) for f in [g for g,a in selected_grid_cells_]))
     Results.write('\nSelected soil types:\n')
     Results.write(' '.join(str(f) for f in selected_soil_types_.values())) 
-                                           # Note to self: would be nice to store
-                                           # the list of soil no for each grid 
-                                           # cell somewhere...
+                                         # Note to self: would be nice to store
+                                         # the list of soil no for each grid 
+                                         # cell somewhere...
 
     # 1- we add a timestamp to time the function
-    print 'Started dynamic optimization at timestamp:', datetime.utcnow()
+    print '\nStarted dynamic optimization at timestamp:', datetime.utcnow()
+    Results.write('\n\nStarted dynamic optimization at timestamp: %s\n'
+                                                            %datetime.utcnow())
 
     # aggregated yield method:
     
@@ -215,13 +236,13 @@ def optimize_yldgapf_ag(crop_no_, selected_grid_cells_, selected_soil_types_,
     # soils combinations
 
     # NB: we explore the range of yldgapf between 0.1 and 1.
-    lowestf  = 0.1
+    lowestf  = 0.000001
     highestf = 1.
     f_step   = highestf - lowestf
     # Until the precision of the yield gap factor is good enough (i.e. < 0.05)
     # we loop over it. We do 12 iterations in total with this method.
     iter_no = 0
-    while (f_step >= 0.1):
+    while (f_step >= 0.02):
         iter_no = iter_no + 1
         # sub-method: looping over the yield gap factors
 
@@ -347,11 +368,14 @@ def optimize_yldgapf_ag(crop_no_, selected_grid_cells_, selected_soil_types_,
     optimum_yldgapf = f_range[index_optimum] 
 
     print 'optimum found:', optimum_yldgapf, '+/-', f_step
-    Results.write('\n\nOPTIMUM YLDGAPF: %10.4f +/- %10.4f'%(optimum_yldgapf, f_step))
-    Results.close()
+    Results.write('\n\nOPTIMUM YLDGAPF: %10.3f +/- %10.3f'%(optimum_yldgapf,
+                                                                       f_step))
 
     # 9- we add a timestamp to time the function
-    print 'Finished dynamic optimization at timestamp:', datetime.utcnow()
+    print '\nFinished dynamic optimization at timestamp:', datetime.utcnow()
+    Results.write('\n\nFinished dynamic optimization at timestamp: %s\n'
+                                                             %datetime.utcnow())
+    Results.close()
 
     # 10- we return the optimized YLDGAPF
     return optimum_yldgapf
@@ -360,7 +384,7 @@ def optimize_yldgapf_ag(crop_no_, selected_grid_cells_, selected_soil_types_,
 # Function to optimize the yield gap factor within a NUTS region
 # this function iterates dynamically to find the optimum YLDGAPF
 def optimize_yldgapf_dyn(crop_no_, selected_grid_cells_, selected_soil_types_,
-                         opti_years_, method='aggregated_yield'):
+                         opti_years_):
 #===============================================================================
 
     # 1- add a timestamp to time the function
@@ -471,7 +495,7 @@ def optimize_yldgapf_dyn(crop_no_, selected_grid_cells_, selected_soil_types_,
 # Function to optimize the yield gap factor within a NUTS region
 # this function explores a whole matrix of factors to find the optimum YLDGAPF
 def optimize_yldgapf_matrix(crop_no_, selected_grid_cells_, selected_soil_types_,
-                         opti_years_, method='aggregated_yield'):
+                         opti_years_):
 #===============================================================================
 
     # 1- add a timestamp to time the function
@@ -560,9 +584,22 @@ def optimize_yldgapf_matrix(crop_no_, selected_grid_cells_, selected_soil_types_
 # Function to do forward simulations of crop yield for a given YLDGAPF and for a
 # selection of grid cells x soil types within a NUTS region
 def perform_yield_sims(selected_grid_cells_, selected_soil_types_,
-                       crop_no_, campaign_years_, yldgapf=1.):
+                       crop_no_, campaign_years_, Res_filename, yldgapf=1.):
 #===============================================================================
 
+    # 0- we open a file to write summary output in it
+    if (os.path.isfile(os.path.join(currentdir, 'output_data', Res_filename))):
+        os.remove(os.path.join(currentdir, 'output_data', Res_filename))
+        print 'Deleted old file %s in folder output_data/'%Res_filename
+    Results = open(os.path.join(currentdir, 'output_data', Res_filename), 'w')
+    # we write two header lines:
+    Results.write('YLDGAPF = %10.3f\n'%yldgapf)
+    Results.write(' grid_no,  year,  stu_no, TSO(kgDM.ha-1), TLV(kgDM.ha-1), '
+                +'TST(kgDM.ha-1), TRT(kgDM.ha-1), maxLAI(m2.m-2), '
+                +'rootdepth(cm), TAGP(kgDM.ha-1)\n')
+
+    print '\nStarted forward runs at timestamp:', datetime.utcnow()
+    
     FINAL_YLD = []
     for grid in [g for g,a in selected_grid_cells_]:
 
@@ -594,21 +631,39 @@ def perform_yield_sims(selected_grid_cells_, selected_soil_types_,
                 
                 # Retrieve the site data of one soil, one year, one grid cell
                 filename = folderpickle+'siteobject_g%d_c%d_y%d_s%d.pickle'%(
-                                                      grid,crop_no_,year,stu_no)
+                                                   grid,crop_no_,year,soil_type)
                 sitedata = pickle_load(open(filename,'rb'))
 
                 # run WOFOST
                 wofost_object = Wofost71_WLP_FD(sitedata, timerdata, soildata, 
                                                 cropdata, weatherdata)
-                wofost_object.run_till_terminate()
+                wofost_object.run_till_terminate() #will stop the run when DVS=2
     
-                # get the yield (in gDM.m-2) and the yield gap
-                TSO = wofost_object.get_variable('TWSO')
-            
-                FINAL_YLD = FINAL_YLD + [(grid, year, stu_no, TSO)]
+                # get major summary output variables for each run
+                # total dry weight of - dead and alive - storage organs (kg/ha)
+                TSO       = wofost_object.get_variable('TWSO')
+                # total dry weight of - dead and alive - leaves (kg/ha) 
+                TLV       = wofost_object.get_variable('TWLV')
+                # total dry weight of - dead and alive - stems (kg/ha) 
+                TST       = wofost_object.get_variable('TWST')
+                # total dry weight of - dead and alive - roots (kg/ha) 
+                TRT       = wofost_object.get_variable('TWRT')
+                # maximum LAI
+                MLAI      = wofost_object.get_variable('LAIMAX')
+                # rooting depth (cm)
+                RD        = wofost_object.get_variable('RD')
+                # Total above ground dry matter (kg/ha)
+                TAGP      = wofost_object.get_variable('TAGP')
+                FINAL_YLD = FINAL_YLD + [(grid, year, soil_type, TSO, TLV, TST, 
+                                                           TRT, MLAI, RD, TAGP)]
+                Results.write('%8i, %5i, %7i, %14.2f, %14.2f, %14.2f, '\
+                              '%14.2f, %14.2f, %13.2f, %15.2f\n'
+                              %(grid, year, soil_type, TSO, TLV, TST,
+                               TRT, MLAI, RD, TAGP))
 
-	
-    print "All forward simulations completed!"
+    Results.close()	
+
+    print '\nFinished forward runs at timestamp:', datetime.utcnow()
 
     return FINAL_YLD
 
@@ -639,8 +694,8 @@ def select_soils(grid_cell_id, soil_iterator_, suitable_soils, method='topn', n=
     # last option: we select all available soils in the grid cell
     else:
         subset_list   = sorted_soils
-        print 'We have selected all available soil types'%n\
-              +' in grid cell %i\n'%grid_cell_id
+        print 'We have selected all available soil types'\
+             +' in grid cell %i\n'%grid_cell_id
     #print 'list of selected soils:', [st for sm,st,w in subset_list]
     
     return subset_list
@@ -666,7 +721,7 @@ def select_grid_cells(list_of_tuples, method='topn', n=3):
     else:
         subset_list   = list_of_tuples
         print 'We have selected all the available grid cells that contain'\
-              +' arable land\n'%n
+             +' arable land\n'
 
     return subset_list
 
@@ -688,7 +743,7 @@ def detrend_obs_yields( _start_year, _end_year, _NUTS_name, _crop_name,
             indref = i
     
     # select yields for the required region, crop and period of time
-    # and convert them from kg_humid_matter/ha to g_dry_matter/m2 
+    # and convert them from kg_humid_matter/ha to kg_dry_matter/ha 
     TARGET = np.array([0.]*nb_years)
     for j,year in enumerate(campaign_years):
         for i,region in enumerate(uncorrected_yields_dict['GEO']):
@@ -698,7 +753,7 @@ def detrend_obs_yields( _start_year, _end_year, _NUTS_name, _crop_name,
                         if (uncorrected_yields_dict['STRUCPRO'][i]==
                                                       'Yields (100 kg/ha)'):
                             TARGET[j] = float(uncorrected_yields_dict['Value'][i])\
-                                               *10.*_DM_content
+                                              *100.*_DM_content
     #print 'observed dry matter yields:', TARGET
 
     # fit a linear trend line in the record of observed yields
