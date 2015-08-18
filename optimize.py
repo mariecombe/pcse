@@ -4,7 +4,8 @@ import sys, os
 import math
 import numpy as np
 from csv import reader as csv_reader
-from pickle import load as pickle_load
+from cPickle import load as pickle_load
+from cPickle import dump as pickle_dump
 from random import sample as random_sample
 from string import replace as string_replace
 from operator import itemgetter as operator_itemgetter
@@ -140,8 +141,9 @@ def main():
 #-------------------------------------------------------------------------------
 # Perform optimization of the yield gap factor
 
-        plot_filename = 'crop%i_region%s_%s_%igx%is_%i-%i'%(crop_no, NUTS_no,
-                             selec_method, ncells, nsoils, start_year, end_year)
+        output_tagname = 'crop%i_region%s_%s_%igx%is_%i-%i'%(crop_no, NUTS_no,
+                                                 selec_method, ncells, nsoils, 
+                                                 opti_years[0], opti_years[-1])
         if (opti_method == 'average_combi'):
             pass
             # 1- do forward simulations for all grid cells x soil combinations
@@ -157,13 +159,15 @@ def main():
                                                    selected_grid_cells,
                                                    selected_soil_types,
                                                    opti_years,
-                                                   plot_filename,
-                                                   plot_rmse=True)
+                                                   output_tagname,
+                                                   plot_rmse=False)
         elif (opti_method == 'aggregated_harvest'):
             optimum_yldgapf = optimize_yldgapf_dyn_agharvest(crop_no,
                                                    selected_grid_cells,
                                                    selected_soil_types,
-                                                   opti_years)
+                                                   opti_years,
+                                                   output_tagname,
+                                                   plot_rmse=False)
         else:
             print "Optimization method does not exist! Check settings in the"\
                  +" script"
@@ -245,8 +249,7 @@ def main():
 # gap to optimize). This function iterates dynamically to find the optimum
 # YLDGAPF.
 def optimize_yldgapf_dyn_agyield(crop_no_, selected_grid_cells_,
-                                 selected_soil_types_, opti_years_, plot_name,
-                                 plot_rmse=True):
+            selected_soil_types_, opti_years_, output_tagname_, plot_rmse=True):
 #===============================================================================
 
     # 1- we add a timestamp to time the function
@@ -392,18 +395,20 @@ def optimize_yldgapf_dyn_agyield(crop_no_, selected_grid_cells_,
 
 	# when we are finished iterating on the yield gap factor range, we sort the
 	# (RMSE, YLDGAPF) tuples by values of YLDGAPF
-    RMSE_stored = sorted(RMSE_stored, key=operator_itemgetter(0))
-    x,y = zip(*RMSE_stored)
+    RMSE_stored  = sorted(RMSE_stored, key=operator_itemgetter(0))
+    pickle_dump(RMSE_stored, open(os.path.join(currentdir,'output_data','RMSE_' 
+                                           + output_tagname_ + '.pickle'),'wb'))       
 
 	# when we are finished iterating on the yield gap factor range, we plot the
     # RMSE as a function of the yield gap factor
     if (plot_rmse == True):
+        x,y = zip(*RMSE_stored)
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5,5))
         fig.subplots_adjust(0.15,0.16,0.95,0.96,0.4,0.)
         ax.plot(x, y, c='k', marker='o')
         ax.set_xlabel('yldgapf (-)')
         ax.set_ylabel('RMSE')
-        fig.savefig('RMSE_'+plot_name+'_dyniter.png')
+        fig.savefig('RMSE_'+output_tagname_+'_dyniter.png')
 
     # 8- when we are finished iterating on the yield gap factor range, we return
     # the optimum value. We look for the yldgapf with the lowest RMSE
