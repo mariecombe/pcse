@@ -24,8 +24,8 @@ def main():
 # Define the settings of the run
  
     # NUTS region:
-    NUTS_no       = 'ES41'
-    NUTS_name     = 'Castilla y Leon'
+    NUTS_no       = 'ES43'
+    NUTS_name     = 'Extremadura'
 
     # Crop:
     crop_no       = 3        # CGMS crop number
@@ -153,7 +153,7 @@ def main():
                                                    selected_soil_types,
                                                    opti_years)
         elif (opti_method == 'aggregated_yield'):
-            optimum_yldgapf = optimize_yldgapf_matrix_agyield(crop_no,
+            optimum_yldgapf = optimize_yldgapf_dyn_agyield(crop_no,
                                                    selected_grid_cells,
                                                    selected_soil_types,
                                                    opti_years,
@@ -260,17 +260,18 @@ def optimize_yldgapf_dyn_agyield(crop_no_, selected_grid_cells_,
     for y,year in enumerate(opti_years_):
         index_year = np.argmin(np.absolute(detrend[1]-year))
         row = row + [detrend[0][y]]
-    OBS = np.tile(row, (3,1)) # repeats the list as a row 3 times, to get a 
+    OBS = np.tile(row, (5,1)) # repeats the list as a row 3 times, to get a 
                               # 2D array
 
     # 3- we calculate all the individual yields from the selected grid cells x
     # soils combinations
 
     # NB: we explore the range of yldgapf between 0.1 and 1.
-    lowestf  = 0. #0.000001
-    highestf = 1.
-    f_step   = highestf - lowestf
-    # Until the precision of the yield gap factor is good enough (i.e. < 0.05)
+    f0  = 0.
+    f2  = 0.5
+    f4  = 1.
+    f_step  = 0.25 
+    # Until the precision of the yield gap factor is good enough (i.e. < 0.02)
     # we loop over it. We do 12 iterations in total with this method.
     iter_no = 0
     RMSE_stored = list()
@@ -280,9 +281,10 @@ def optimize_yldgapf_dyn_agyield(crop_no_, selected_grid_cells_,
 
         # we build a range of 3 yield gap factors to explore one low bound, one
         # high bound, one in the middle
-        f_step = (highestf - lowestf)/2.
-        middlef = lowestf + f_step
-        f_range = [lowestf, middlef, highestf]
+        f_step = (f4 - f0)/4.
+        f1 = f0 + f_step
+        f3 = f2 + f_step
+        f_range = [f0, f1, f2, f3, f4]
 
         RES = [] # list in which we will store the yields of the combinations
 
@@ -302,7 +304,7 @@ def optimize_yldgapf_dyn_agyield(crop_no_, selected_grid_cells_,
 
                 # TSO will store all the yields of one grid cell x soil 
                 # combination, for all years and all 3 yldgapf values
-                TSO = np.zeros((3,len(opti_years_)))
+                TSO = np.zeros((len(f_range), len(opti_years_)))
         
                 for y, year in enumerate(opti_years_): 
 
@@ -333,8 +335,8 @@ def optimize_yldgapf_dyn_agyield(crop_no_, selected_grid_cells_,
 
         # 4- we aggregate the yield into the regional one with array operations
 
-        sum_weighted_yields = np.zeros((3,len(opti_years_))) # empty 2D array
-                                                 # with same dimension as TSO
+        sum_weighted_yields = np.zeros((len(f_range), len(opti_years_)))
+                                    # empty 2D array with same dimension as TSO
         sum_weights         = 0.
         for grid, stu_no, weight, TSO in RES:
             # adding weighted 2D-arrays in the empty array sum_weighted_yields
@@ -362,7 +364,7 @@ def optimize_yldgapf_dyn_agyield(crop_no_, selected_grid_cells_,
         # The RMSE of each yldgapf is based on N obs-sim differences for the N
         # years looped over
 
-        RMSE = np.zeros(3)
+        RMSE = np.zeros(len(f_range))
         for f,factor in enumerate(f_range):
             list_of_DIFF = []
             for y, year in enumerate(opti_years_):
@@ -372,23 +374,21 @@ def optimize_yldgapf_dyn_agyield(crop_no_, selected_grid_cells_,
         print 'Root Mean Square Error:'
         print ' '.join(str(f) for f in RMSE)
 
-        RMSE_stored = RMSE_stored + [(f_range[1], RMSE[1])]
+        RMSE_stored = RMSE_stored + [(f_range[1], RMSE[1]), (f_range[3], RMSE[3])]
         if (iter_no == 1):
-            RMSE_stored = RMSE_stored + [(f_range[0], RMSE[0]), (f_range[2],RMSE[2])]
+            RMSE_stored = RMSE_stored + [(f_range[0], RMSE[0]), 
+                                         (f_range[2], RMSE[2]),
+                                         (f_range[4], RMSE[4])]
 
         # 7- We update the yldgapf range to explore for the next iteration. 
         # For this we do a linear interpolation of RMSE between the 3 yldgapf
         # explored here, and the next range to explore is the one having the
         # smallest interpolated RMSE
 
-        RMSE_midleft  = (RMSE[0] + RMSE[1]) / 2.
-        RMSE_midright = (RMSE[1] + RMSE[2]) / 2.
-        if (RMSE_midleft <= RMSE_midright):
-            lowestf = lowestf
-            highestf = middlef
-        elif (RMSE_midleft > RMSE_midright):
-            lowestf = middlef
-            highestf = highestf
+        index_new_center = RMSE.argmin()
+        f0 = f_range[index_new_center-1]
+        f2 = f_range[index_new_center]
+        f4 = f_range[index_new_center+1]
 
 	# when we are finished iterating on the yield gap factor range, we sort the
 	# (RMSE, YLDGAPF) tuples by values of YLDGAPF
