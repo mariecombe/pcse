@@ -25,13 +25,13 @@ def main():
 # Define the settings of the run
  
     # NUTS region:
-    NUTS_no       = 'ES43'
-    NUTS_name     = 'Extremadura'
+    NUTS_no       = 'NL1'
+    NUTS_name     = 'Noord-Holland'
 
     # Crop:
-    crop_no       = 3        # CGMS crop number
-    crop_name     = 'Barley' # EUROSTAT crop name (check EUROSTAT nomenclature)
-    DM_content    = 0.9      # EUROSTAT dry matter fraction
+    crop_no       = 7        # CGMS crop number
+    crop_name     = 'Potatoes (including early potatoes and seed potatoes)' # EUROSTAT crop name (check EUROSTAT nomenclature)
+    DM_content    = 0.2      # EUROSTAT dry matter fraction
                              # should be read from file rather than hardcoded
 
     # yield gap factor optimization:
@@ -155,12 +155,12 @@ def main():
                                                    selected_soil_types,
                                                    opti_years)
         elif (opti_method == 'aggregated_yield'):
-            optimum_yldgapf = optimize_yldgapf_dyn_agyield(crop_no,
+            optimum_yldgapf = optimize_yldgapf_matrix_agyield(crop_no,
                                                    selected_grid_cells,
                                                    selected_soil_types,
                                                    opti_years,
                                                    output_tagname,
-                                                   plot_rmse=False)
+                                                   plot_rmse=True)
         elif (opti_method == 'aggregated_harvest'):
             optimum_yldgapf = optimize_yldgapf_dyn_agharvest(crop_no,
                                                    selected_grid_cells,
@@ -415,7 +415,7 @@ def optimize_yldgapf_dyn_agyield(crop_no_, selected_grid_cells_,
     index_optimum   = RMSE.argmin()
     optimum_yldgapf = f_range[index_optimum] 
 
-    print '\noptimum found:', optimum_yldgapf, '+/-', f_step
+    print '\noptimum found: %.2f +/- %.2f'%(optimum_yldgapf, f_step)
 
     # 9- we add a timestamp to time the function
     print 'Finished dynamic optimization at timestamp:', datetime.utcnow()

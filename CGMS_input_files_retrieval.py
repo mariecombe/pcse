@@ -466,8 +466,8 @@ if __name__ == "__main__":
 
     # define the case:
         
-    NUTS_no = 'ES42'
-    crop_no = 3
+    NUTS_no = 'NL1'
+    crop_no = 7
     campaign_years = np.linspace(1975,2014,40)
 
     crit_selec = 'all' # 'all', 'top_n' or 'threshold'  : the selection criteria of the grid cells to retrieve input data for
