@@ -13,6 +13,7 @@ from matplotlib import pyplot as plt
 #===============================================================================
 # This script reads the observed EUROSTAT dry matter content of crops
 def main():
+    global currentdir, EUROSTATdir
 #===============================================================================
 
 #-------------------------------------------------------------------------------
@@ -21,14 +22,11 @@ def main():
     currentdir    = os.getcwd()
 	
 	# directories on my local MacBook:
-    EUROSTATdir   = '/Users/mariecombe/Documents/Work/Research_project_3/'\
-				   +'EUROSTAT_data'
-    folderpickle  = '/Users/mariecombe/Documents/Work/Research_project_3/'\
-                   +'pcse/pickled_CGMS_input_data/'
+    #EUROSTATdir   = '/Users/mariecombe/Documents/Work/Research_project_3/'\
+	#			   +'EUROSTAT_data'
 
     # directories on capegrim:
-    #folderpickle  = '/Storage/CO2/mariecombe/pickled_CGMS_input_data/'
-    #EUROSTATdir   = "/Users/mariecombe/Cbalance/EUROSTAT_data"
+    EUROSTATdir   = "/Users/mariecombe/Cbalance/EUROSTAT_data"
 
 
 #-------------------------------------------------------------------------------
@@ -36,11 +34,11 @@ def main():
 
     filename = 'EUROSTAT_obs_crop_humidity.pickle'
 
-    if (os.path.exists(os.path.join(currentdir,'output_data',filename))):
-        DM = pickle_load(open(os.path.join(currentdir,'output_data',filename), 
-                         'rb'))
+    if (os.path.exists(os.path.join(EUROSTATdir, filename))):
+        # if the pickle file already exists, we just load its content
+        DM = pickle_load(open(os.path.join(EUROSTATdir, filename), 'rb'))
     else:
-        # open the EUROSTAT file containing the dry matter info
+        # otherwise we open the EUROSTAT file containing the dry matter info
         NUTS_data = open_csv(EUROSTATdir,['agri_prodhumid_NUTS1_1955-2015.csv'],
                              convert_to_float=True)
 
@@ -48,26 +46,56 @@ def main():
         NUTS_data['humidity'] = NUTS_data['agri_prodhumid_NUTS1_1955-2015.csv']
         del NUTS_data['agri_prodhumid_NUTS1_1955-2015.csv']
         
+        # we pickle the observed dry matter content data:
         DM = pickle_DM(NUTS_data['humidity'])
+
+#-------------------------------------------------------------------------------
+# We retrieve standard EUROSTAT dry matter information in case there are gaps in
+# the observations
+
+    filename = 'EUROSTAT_standard_crop_humidity.pickle'
+
+    if (os.path.exists(os.path.join(EUROSTATdir, filename))):
+        # if the pickle file already exists, we just load its content
+        DM_standard = pickle_load(open(os.path.join(EUROSTATdir,filename),'rb'))
+    else:
+        # otherwise we directly pickle the standard dry matter content data:
+        DM_standard = pickle_DM_standard()
 
 #-------------------------------------------------------------------------------
 # We can plot a time series of one crop x country DM combination if needed
 
-    time_series = plot_DM_time_series(DM, list_of_years, 'Spain', 'Barley')
+#    list_of_years = np.linspace(1955,2015,61)
+#    time_series = plot_DM_time_series(DM, list_of_years, 3, 'ES')
 
-#-------------------------------------------------------------------------------
-# We finalize the crop DM content per country, either as the observed value, or
-# if no observations are available, as the standard EUROSTAT DM content
 
-    # we build a dictionnary of standard EU humidity content
-#    for i,cropid in enumerate(list_of_crop_ids_CGMS):
-#        standard_EU_DM = dict()
-#        if (cropid == ):
-#            standard_EU_DM[cropid] = 0.
-    
-	# we check the observed DM dictionnary. If there are observations, we
-	# calculate the mean. If there are no observations, we take the standard DM
-	# content.
+#===============================================================================
+# Function to store EUROSTAT standard moisture contents in pickle file
+def pickle_DM_standard():
+#===============================================================================
+
+    DM_standard = dict()
+    DM_standard[1] = 1. - 0.14 # Winter wheat
+    DM_standard[2] = 1. - 0.14 # Grain maize
+    DM_standard[3] = 1. - 0.14 # Spring barley
+    DM_standard[4] = 1. - 0.14 # Rye
+    DM_standard[5] = 1. - 0.14 # ? spring wheat (0.14) or spring rape (0.09)...
+    DM_standard[6] = 1. - 0.15 # Sugar beet: no idea, taking the only reported 
+                               # DM ever (by France)
+    DM_standard[7] = 1. - 0.15 # Potato: no idea, taking the only reported
+                               # DM ever (by France)
+    DM_standard[8] = 1. - 0.14 # Field beans
+    DM_standard[9] = 1. - 0.09 # ? spring wheat (0.14) or spring rape (0.09)...
+    DM_standard[10] = 1. - 0.09 # Winter rapeseed
+    DM_standard[11] = 1. - 0.09 # Sunflower
+    DM_standard[12] = 1. - 0.65 # Fodder maize: 50 to 80%, very variable
+    DM_standard[13] = 1. - 0.14 # Winter barley
+
+    # we pickle the generated dictionnary containing the dry matter content
+    filename = 'EUROSTAT_standard_crop_humidity.pickle'
+    pickle_dump(DM_standard, open(os.path.join(EUROSTATdir, filename), 'wb'))
+
+    return DM_standard
 
 #===============================================================================
 # Function to retrieve EUROSTAT humidity content and to store it in pickle file
@@ -80,15 +108,12 @@ def pickle_DM(obs_data):
     list_of_years         = sorted(set(obs_data['TIME']))
     # we overwrite the list of EUROSTAT crops for a shorter one (not all 
     # crops are needed)
-    list_of_crops_EUR     = ['Barley','Beans','Common spring wheat',
-					    	 'Common winter wheat',
-                             'Grain maize and corn-cob-mix',
-                             'Green maize',
-                             'Potatoes (including early potatoes and seed potatoes)',
-                             'Rye','Spring rape',
-                             'Sugar beet (excluding seed)','Sunflower seed',
-                             'Winter barley',
-                             'Winter rape']
+    list_of_crops_EUR = ['Barley','Beans','Common spring wheat',
+                        'Common winter wheat','Grain maize and corn-cob-mix',
+                        'Green maize',
+                        'Potatoes (including early potatoes and seed potatoes)',
+                        'Rye','Spring rape','Sugar beet (excluding seed)',
+                        'Sunflower seed','Winter barley','Winter rape']
     # we translate the EUROSTAT list of countries into official country codes
     # European & ISO 3166 nomenclature + temporary country code for Kosovo XK
     list_of_countries_CGMS = ['AL','AT','BE','BA','BG','HR','CY','CZ','DK',
@@ -97,14 +122,14 @@ def pickle_DM(obs_data):
                               'NL','NO','PL','PT','RO','RS','SK','SI','ES',
                               'SE','CH','TR','UK']
     # we translate the EUROSTAT shortlist of crop names into the CGMS ones
-    list_of_crops_CGMS     = ['Spring barley','Field beans','Spring wheat',
-                              'Winter wheat','Grain maize','Fodder maize',
-                              'Potato','Rye','Spring rapeseed','Sugar beets',
-                              'Sunflower','Winter barley','Winter rapeseed']
+    list_of_crops_CGMS = ['Spring barley','Field beans','Spring wheat',
+                          'Winter wheat','Grain maize','Fodder maize',
+                          'Potato','Rye','Spring rapeseed','Sugar beets',
+                          'Sunflower','Winter barley','Winter rapeseed']
 	# we translate the CGMS crop names into CGMS crop numbers. NB: two crop
 	# numbers are unknown: the one of spring wheat and the one of spring
 	# rapeseed
-    list_of_crop_ids_CGMS  = [3,8,'sw',1,2,12,7,4,'sr',6,11,13,10]
+    list_of_crop_ids_CGMS = [3,8,'sw',1,2,12,7,4,'sr',6,11,13,10]
 
     # we print out some info for the user
     print '\nWe will loop over:\n'
@@ -128,7 +153,7 @@ def pickle_DM(obs_data):
                     if ((time == year)
                     and (obs_data['GEO'][i] == list_of_countries_EUR[k])
                     and (obs_data['CROP_PRO'][i] == list_of_crops_EUR[n])):
-                        DM[crop][idc][y] = obs_data['Value'][i] 
+                        DM[crop][idc][y] = 1.-float(obs_data['Value'][i])/100. 
 
     # we pickle the generated dictionnary containing the dry matter content
     filename = 'EUROSTAT_obs_crop_humidity.pickle'
@@ -140,16 +165,17 @@ def pickle_DM(obs_data):
     return DM
 
 #===============================================================================
-# Function to plot a time series of crop humidity
+# Function to plot a time series of crop DM content
 def plot_DM_time_series(DM_dict, list_of_years_, crop, country):
 #===============================================================================
     
     plt.close('all')
     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(6,3))
-    fig.subplots_adjust(0.15,0.16,0.85,0.96,0.4,0.)
-    ax.plot(list_of_years_, DM_dict[crop][country], c='k')
-    ax.set_ylabel('Humidity (-)', fontsize=14)
+    fig.subplots_adjust(0.15,0.2,0.95,0.9,0.4,0.)
+    ax.scatter(list_of_years_, DM_dict[crop][country], c='k')
+    ax.set_ylabel('Dry matter fraction (-)', fontsize=14)
     ax.set_xlabel('time (year)', fontsize=14)
+    ax.set_xlim([1955.,2015.])
     fig.savefig('DM_time_series_%s_%s.png'%(country,crop))
     #plt.show()
 
