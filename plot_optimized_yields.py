@@ -4,6 +4,7 @@ import os
 import numpy as np
 from matplotlib import pyplot as plt
 from csv import reader as csv_reader
+from cPickle import load as pickle_load
 from string import replace as string_replace
 
 #===============================================================================
@@ -32,8 +33,41 @@ def main():
     # For region ES43 = Extremadura
     res2_yldgapf['ES43']  = [0.75, 0.766, 0.797, 0.75]
     nb_rand_combi['ES43'] = [1, 2, 3, 53]
-   
- 
+
+    # retrieve all the RMSE results from the sensitivity analysis
+    RMSE      = dict()
+    O_YLDGAPF = dict()
+    list_of_regions = ['ES41', 'ES43']
+    list_of_cases   = ['all', 'topn_10gx10s', 'topn_5gx5s', 'topn_3gx3s',
+                       'randomn1', 'randomn2', 'randomn3']
+    list_of_labels  = ['all', 'top 10', 'top 5', 'top 3', 'rand1', 'rand2', 
+                       'rand3'] 
+    for region in list_of_regions:
+        RMSE[region]      = dict()
+        O_YLDGAPF[region] = dict() 
+        for case in list_of_cases:
+            filepath = [f for f in os.listdir( os.path.join(currentdir,
+               'output_data') ) if ( os.path.isfile(f) and f.startswith('RMSE_')
+                and (region in f) and (case in f) ) ]
+            RMSE[region][case] = pickle_load(open(filepath, 'rb'))
+            # we sort the list of tuples by value of RMSE, and retrieve the 
+            # yldgapf corresponding to the min RMSE:
+            O_YLDGAPF[region][case] = sorted(RMSE[region][case], 
+                                             key = operator_itemgetter(1))[0][0]
+
+    # Plot the RMSE = f(YLDGAPF) graph for each region x crop combination
+    for region in list_of_regions:
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5,5))
+        fig.subplots_adjust(0.15,0.16,0.95,0.96,0.4,0.)
+        for i,case in enumerate(list_of_cases):
+            x,y = zip(*RMSE[region][case])
+            ax.plot(x, y, label=list_of_labels[i])
+            ax.set_xlabel('yldgapf (-)')
+            ax.set_ylabel('RMSE')
+        legend(loc='best')
+        fig.savefig('RMSE_'+region+'.png')
+    
+
 #-------------------------------------------------------------------------------
 # Plot the results of the sensitivity analysis
 
@@ -362,7 +396,7 @@ def plot_sensitivity_yldgapf_to_top_combi(optimum_yldgapf, nb_combi):
     for i, var, ax in zip([0.,0.,1.,1.], ['ES41', 'ES43','ES41', 'ES43'], axes.flatten()):
     # Both top and bottom:
         ax.set_yticks([3.,5.,10.,nb_combi[var][3]])
-        ax.errorbar(optimum_yldgapf[var][0], nb_combi[var][0], xerr=0.016, 
+apf[var][0], nb_combi[var][0], xerr=0.016, 
                     c='k', capsize=5)
         ax.scatter(optimum_yldgapf[var][0], nb_combi[var][0], c='b', s=70,
                    marker='v')
