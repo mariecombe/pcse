@@ -12,8 +12,8 @@ from cPickle import load as pickle_load # pickle_load is used in almost all my
 # This script executes WOFOST runs for one NUTS region and optimizes its YLDGAPF
 def main():
 #===============================================================================
-    from toolbox import open_csv_EUROSTAT, detrend_obs_yields, \
-                        detrend_obs
+    from maries_toolbox import open_csv_EUROSTAT, detrend_obs, get_crop_name,\
+                               find_consecutive_years
 #-------------------------------------------------------------------------------
     global currentdir, EUROSTATdir, folderpickle, detrend
 #-------------------------------------------------------------------------------
@@ -25,7 +25,6 @@ def main():
 
     # Crop:
     crop_no       = 3        # CGMS crop number
-    crop_name     = 'Barley' # EUROSTAT crop name
 
     # yield gap factor optimization:
     optimization  = True     # if False: we assign a YLDGAPF = 1.
@@ -65,7 +64,10 @@ def main():
     #del NUTS_ids['NUTS_codes_2013.csv']
 
     # we fetch the EUROSTAT crop name corresponding to the CGMS crop_no
-    # crop_name = fetch_EUROSTAT_crop_name(crop_no)
+    # 1-we retrieve both the CGMS and EUROSTAT names of a list of crops
+    crop_name  = get_crop_name([crop_no])
+    # 2-we select the EUROSTAT name of our specific crop 
+    crop_name  = crop_name[crop_no][1]
 
 #-------------------------------------------------------------------------------
 # Define working directories
@@ -1181,28 +1183,6 @@ def select_grid_cells(list_of_tuples, method='topn', n=3):
         subset_list   = list_of_tuples
 
     return subset_list
-
-#===============================================================================
-# Return a list of consecutive years longer than n items
-def find_consecutive_years(years, nyears):
-#===============================================================================
-
-    # Split the list of years where there are gaps
-    years = map(int, years) # convert years to integers
-    split_years = np.split(years, np.where(np.diff(years) > 1)[0]+1)
-
-    # Return the most recent group of years that contains at least nyears items
-    consecutive_years = np.array([])
-    for subset in split_years[::-1]: # [::-1] reverses the array without 
-                                     # modifying it permanently
-        if (len(subset) >= nyears):
-            consecutive_years = np.append(consecutive_years, subset)
-            break
-        else:
-            pass
-
-    # return the last nyears years of the most recent group of years
-    return consecutive_years[-nyears:len(consecutive_years)]
 
 #===============================================================================
 if __name__=='__main__':

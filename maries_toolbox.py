@@ -6,6 +6,64 @@ import numpy as np
 # This script gathers a few useful general functions used by several scripts
 
 #===============================================================================
+# Return a list of consecutive years longer than n items
+def find_consecutive_years(years, nyears):
+#===============================================================================
+
+    # Split the list of years where there are gaps
+    years = map(int, years) # convert years to integers
+    split_years = np.split(years, np.where(np.diff(years) > 1)[0]+1)
+
+    # Return the most recent group of years that contains at least nyears items
+    consecutive_years = np.array([])
+    for subset in split_years[::-1]: # [::-1] reverses the array without 
+                                     # modifying it permanently
+        if (len(subset) >= nyears):
+            consecutive_years = np.append(consecutive_years, subset)
+            break
+        else:
+            pass
+
+    # return the last nyears years of the most recent group of years
+    return consecutive_years[-nyears:len(consecutive_years)]
+
+#===============================================================================
+# Function that will fetch the crop name from the crop number. Returns a list
+# with two items: first is the CGMS crop name, second is the EUROSTAT crop name
+def get_crop_name(list_of_CGMS_crop_no):
+#===============================================================================
+
+    list_of_crops_EUR = ['Barley','Beans','Common spring wheat',
+                        'Common winter wheat','Grain maize and corn-cob-mix',
+                        'Green maize',
+                        'Potatoes (including early potatoes and seed potatoes)',
+                        'Rye','Spring rape','Sugar beet (excluding seed)',
+                        'Sunflower seed','Winter barley','Winter rape']
+    list_of_crops_CGMS = ['Spring barley','Field beans','Spring wheat',
+                          'Winter wheat','Grain maize','Fodder maize',
+                          'Potato','Rye','Spring rapeseed','Sugar beets',
+                          'Sunflower','Winter barley','Winter rapeseed']
+    list_of_crop_ids_CGMS = [3,8,'sw',1,2,12,7,4,'sr',6,11,13,10]
+
+    dict_names = dict()
+    for item in list_of_CGMS_crop_no:
+        crop_name = list(['',''])
+        for i,crop_id in enumerate(list_of_crop_ids_CGMS):
+            if (crop_id == item):
+                crop_name[0] = list_of_crops_CGMS[i]
+                crop_name[1] = list_of_crops_EUR[i]
+        dict_names[item]=crop_name
+
+    return dict_names
+
+#===============================================================================
+#def fetch_EUROSTAT_NUTS_name(NUTS_no):
+#===============================================================================
+    
+#    print 'Not yet coded!'
+#    return None
+
+#===============================================================================
 # Function to detrend the observed EUROSTAT yields or harvests
 def detrend_obs( _start_year, _end_year, _NUTS_name, _crop_name, 
                 uncorrected_yields_dict, _DM_content, base_year,
