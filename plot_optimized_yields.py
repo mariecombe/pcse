@@ -1,417 +1,318 @@
 #!/usr/bin/env python
 
-import os
+import os, sys
 import numpy as np
+
+from maries_toolbox import get_crop_name, open_csv, open_csv_EUROSTAT,\
+                           detrend_obs, find_consecutive_years
 from matplotlib import pyplot as plt
-from csv import reader as csv_reader
-from cPickle import load as pickle_load
-from string import replace as string_replace
 
 #===============================================================================
-# This script plots optimum yields gap factors obatined with the sensitivity
+# This script plots optimum yields gap factors obtained with the sensitivity
 # analysis
 def main():
 #===============================================================================
-    
-# Gather the results of the sensitivity analysis:
+    global currentdir, EUROSTATdir, RMSEdir, ForwardSimdir
+#-------------------------------------------------------------------------------
+# the user selects the figures to plot:
 
-    res_yldgapf           = dict() ; nb_top_combi         = dict()
-    # For region ES41 = Castilla y Leon
-    res_yldgapf['ES41']   = [0.578, 0.609, 0.594, 0.625] # +/- 0.016
-    nb_top_combi['ES41']  = [3, 5, 10, 165]
-    # For region ES43 = Extremadura
-    res_yldgapf['ES43']   = [0.828, 0.781, 0.813, 0.75]
-    nb_top_combi['ES43']  = [3, 5, 10, 53]
+    # figures for the sensitivity analysis on the n combi:
+    figure_1 = True # figure showing RMSE = f(YLDGAPF) for various top n combi 
+    figure_2 = True # figure showing yldgapf = f(various n cell x soil combi)
 
+    # figures for the sensitivity analysis to the value of the yldgapf
+    figure_3 = True # figure showing the relative deviation of the simulated 
+                    # yield from the observed yield
 
-    # Random selections
-    res2_yldgapf          = dict() ; nb_rand_combi        = dict()
-    # For region ES41 = Castilla y Leon
-    res2_yldgapf['ES41']  = [0.609, 0.703, 0.641, 0.625] # +/- 0.016
-    nb_rand_combi['ES41'] = [1, 2, 3, 165] # 1,2,3 is just to separate 
-                                                   # the points
-    # For region ES43 = Extremadura
-    res2_yldgapf['ES43']  = [0.75, 0.766, 0.797, 0.75]
-    nb_rand_combi['ES43'] = [1, 2, 3, 53]
-
-    
+    # figures for the forward simulations:
+    figure_4 = True # figure showing a time series of opt vs. obs yields
+    figure_5 = True # figure showing a map of yield over a region
 
 #-------------------------------------------------------------------------------
-# Plot the results of the sensitivity analysis
-
-    plt.close('all')
-    fig1 = plot_sensitivity_yldgapf_to_top_combi(res_yldgapf, nb_top_combi)
-    fig2 = plot_sensitivity_yldgapf_to_rand_combi(res2_yldgapf, nb_rand_combi)
-
-#-------------------------------------------------------------------------------
-# Analyze the forward simulations output data to calculate the regional yields
-
-    yldgapf = dict()
-    yldgapf['ES41']=0.609
-    yldgapf['ES43']=0.781
-    NUTS_name = dict()
-    NUTS_name['ES41'] = 'Castilla y Leon'
-    NUTS_name['ES43'] = 'Extremadura'
-    crop_name = 'Barley'
-    DM_content    = 0.9      # EUROSTAT dry matter fraction
-                             # should be read from file rather than hardcoded
-    start_year    = 2000     # start_year and end_year define the period of time
-    end_year      = 2014     # for which we do forward simulations
-    nb_years      = int(end_year - start_year + 1.)
-    campaign_years = np.linspace(int(start_year),int(end_year),nb_years)
-
-    # We define directories
+# Define general working directories
+    currentdir = os.getcwd()
+	# directories on my local MacBook:
     EUROSTATdir   = '/Users/mariecombe/Documents/Work/Research_project_3/'\
 				   +'EUROSTAT_data'
-    out_data_dir  = '/Users/mariecombe/Documents/Work/Research_project_3/pcse/'\
-                   +'output_data'
+    # directories on capegrim:
+    #EUROSTATdir   = "/Users/mariecombe/Cbalance/EUROSTAT_data"
+#-------------------------------------------------------------------------------
+# Close all figures
+    plt.close('all')
+#-------------------------------------------------------------------------------
+# Plot the figures for the sensitivity analysis on the number of grid cell 
+# and soil types combinations
+
+    # user defined:
+    crops     = [3]
+    regions   = ['ES41', 'ES43'] # the regions for which we have performed
+                               # the sensitivity analysis
+    cases     = ['all', 'topn_10gx10s', 'topn_5gx5s', 'topn_3gx3s',
+                 'randomn1', 'randomn2', 'randomn3'] # these are search terms to
+                            # find the results files of the sensitivity analysis
+    labels    = ['all', 'top 10', 'top 5', 'top 3', 'rand1', 'rand2', 'rand3'] 
+    colors    = ['k','r','b','g','cyan','orange','yellow']
+    RMSEdir   = os.path.join(currentdir, 'output_data') # directory where the
+                            # sensitivity analysis results files are located
+
+    # open the results from the sensitivity analysis
+    RMSE      = retrieve_RMSE_and_YLDGAPF(regions, cases)
+
+    # calculate some other variables from the user input:
+    crop_name = get_crop_name(crops)
+    NUTS_name = dict() # this should not be hardcoded
+    NUTS_name['ES41'] = 'Castilla y Leon'
+    NUTS_name['ES43'] = 'Extremadura'
+
+    for crop in crops:
+    
+        # Plot the RMSE = f(YLDGAPF) graph for each region x crop combination
+        if (figure_1 == True):
+            figs1 = plot_RMSE_asf_YLDGAPF(crop_name[crop][0], regions, cases, 
+                                          labels, colors, RMSE[0])
+
+        # Plot the optimum YLDGAPF = f(case) for each region x crop combination
+        if (figure_2 == True):
+            figs2 = plot_optiYLDGAPF_asf_cases(crop_name[crop][0], regions, 
+                                               cases, labels, colors, RMSE[1])
+
+#-------------------------------------------------------------------------------
+# Plot the figure showing the relative deviation of the simulated yield from the
+# observed yield
+
+#    if (figure_3 == True):
+
+#-------------------------------------------------------------------------------
+# Plot the figure showing a time series of opt vs. obs yields
+
+    # list the regions and crops for which we do that figure
+    crops = [3]              # crop ID numbers
+    regions   = ['ES41', 'ES43'] # regions ID numbers for which we have performed
+                             # the sensitivity analysis
+    start_year    = 2000     # start_year and end_year define the period of time
+    end_year      = 2014     # for which we did our forward simulations
+    opti_nyears   = 3.       # nb of years for which we optimized the YLDGAPF
+    ForwardSimdir = os.path.join (currentdir, 'output_data') # directory where
+                             # the results files of the forward simulations are
+                             # located
+
+    # retrieve the observed and simulated yields and aggregate into regional 
+    # values
+    Regional_yield = compute_regional_yield(crops, regions, start_year,
+                                               end_year, 'yield', ForwardSimdir)
+
+    # Plot the time series of opt vs. non-optimized yields, and observed yields
+    # for each crop x region
+    if (figure_4 == True):
+        fig4 = plot_yield_time_series(crops, regions, start_year, 
+                                 end_year, opti_nyears, Regional_yield, 'yield')
+
+#-------------------------------------------------------------------------------
+# Plot the figure showing a map of yield over a region
+
+#    if (figure_5 == True):
+        
+#===============================================================================
+def plot_yield_time_series(list_of_crops, list_of_regions, start_year_, 
+                              end_year_, opti_nyears_, yield_dict, obs_type_):
+#===============================================================================
+
+    crop_name = get_crop_name(list_of_crops)
+    # THIS SHOULD NOT BE HARDCODED:
+    NUTS_name = dict() # this should not be hardcoded
+    NUTS_name['ES41'] = 'Castilla y Leon'
+    NUTS_name['ES43'] = 'Extremadura'
+    #####
+    nb_years = int(end_year_ - start_year_ + 1.)
+    campaign_years = np.linspace(int(start_year_),int(end_year_),nb_years)
+
+    for c,crop in enumerate(list_of_crops):
+        for region in list_of_regions:
+			# Retrieve the most recent N years of continuous yield data that 
+			# have been used for the optimization of the yield gap factor.
+            opti_years = find_consecutive_years(yield_dict[0][crop][region][1], 
+                                                                   opti_nyears_)
+            # produce the plot:
+            fig, ax = plt.subplots(nrows = 1, ncols = 1, figsize=(7,3))
+            fig.subplots_adjust(0.15,0.3,0.95,0.88,0.4,0.6)
+            ax.scatter(campaign_years, yield_dict[1][crop][region]['nonopt'], 
+                       c='b', marker='v', s=50, label='non-optimized sims')
+            ax.scatter(campaign_years, yield_dict[1][crop][region]['opt'], 
+                       c='k', marker='o', s=50, label='optimized sims')
+            ax.scatter(yield_dict[0][crop][region][1], 
+                       yield_dict[0][crop][region][0], c='r', marker='+', 
+                       linewidth=2, s=70, label='detrended obs')
+            ylims = frame_at_order_of_magnitude(0., 
+                              max(yield_dict[1][crop][region]['nonopt']), 1000.)
+            ystep = ylims[1] / 5.
+            yticks = np.arange(0.,ylims[1]+0.5,ystep)
+            ax.set_ylim(ylims)
+            ax.set_xlim([start_year_-0.5, end_year_+0.5])
+            ax.set_yticks(yticks)
+            if (obs_type_=='yield'):
+                ax.set_ylabel(r'yield (kg$_{DM}$ ha$^{-1}$)')
+            elif (obs_type_=='harvest'):
+                ax.set_ylabel(r'harvest (1000 tDM)')
+            ax.set_xlabel('time (year)')
+            ax.set_title('%s (%s) - %s'%(region, NUTS_name[region], 
+                                                            crop_name[crop][0]))
+            # need to retrieve the opti_years:
+            ax.axvspan(opti_years[0]-0.5,opti_years[-1]+0.5,color='grey',alpha=0.3)
+            #ax.annotate('yldgapf=%.3f'%yldgapf[region], xy=(0.89,0.1), 
+            #            xycoords='axes fraction',horizontalalignment='center',
+            #            verticalalignment='center')
+            plt.legend(loc='best', ncol=3, fontsize=12,
+                       bbox_to_anchor = (1.03,-0.25))
+            fig.savefig('time_series_%s_crop%s_region%s.png'%(obs_type_, crop,\
+                                                                        region))
+
+    return None
+
+#===============================================================================
+def plot_optiYLDGAPF_asf_cases(crop_name_, list_of_regions, list_of_cases, 
+                                        list_of_labels, list_of_colors, opti_f):
+#===============================================================================
+
+    for r,region in enumerate(list_of_regions):
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5,5))
+        fig.subplots_adjust(0.15,0.16,0.95,0.92,0.4,0.05)
+        ind = np.arange(len(list_of_cases)) # the x location for the groups
+        width = 1. # width of the bars
+        ax.bar(ind, opti_f[region][::-1], width, color=list_of_colors[::-1])
+        ax.set_ylabel('optimum YLDGAPF (-)')
+        ylims = frame_at_order_of_magnitude(min(opti_f[region]), 
+                                            max(opti_f[region]), 0.1)
+        ax.set_ylim(ylims)
+        ax.set_xlim([-0.5,len(list_of_cases)+0.5])
+        ax.set_xticks(ind + width/2.)
+        xtickNames = ax.set_xticklabels(list_of_labels[::-1])
+        plt.setp(xtickNames, rotation=45)
+        plt.title('%s - %s'%(region,crop_name_))
+        fig.savefig('OYLDGAPF_asf_case_'+region+'.png')
+
+#===============================================================================
+def plot_RMSE_asf_YLDGAPF(crop_name_, list_of_regions, list_of_cases,
+                           list_of_labels, list_of_colors, RMSE_dict_of_tuples):
+#===============================================================================
+
+    for region in list_of_regions:
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5,5))
+        fig.subplots_adjust(0.15,0.16,0.95,0.92,0.4,0.)
+        for i,case in enumerate(list_of_cases):
+            x,y = zip(*RMSE_dict_of_tuples[region][case])
+            ax.plot(x, y, label=list_of_labels[i], color=list_of_colors[i])
+            ax.set_xlabel('yldgapf (-)')
+            ax.set_ylabel('RMSE')
+        plt.title('%s - %s'%(region,crop_name_))
+        plt.legend(loc='best')
+        fig.savefig('RMSE_asf_YLDGAPF_'+region+'.png')
+
+# add a range of optimum yield gap factor on the graph
+
+#===============================================================================
+# function that returns a range that rounds down the min value at first decimal
+# and rounds up the maximum value at the first decimal
+def frame_at_order_of_magnitude(minvalue, maxvalue, roundvalue):
+#===============================================================================
+    
+    a = np.arange(0.,10000.00000001,roundvalue)
+    floor_ind = np.argmax([n for n in (a-minvalue) if n<=0.]) 
+    ceil_ind  = np.argmax([n for n in (a-maxvalue) if n<0.]) 
+    frame =list([a[floor_ind], a[ceil_ind+1]])
+
+    return frame
+
+#===============================================================================
+# Function to retrieve yields from forward runs (optimized and non-optimized) 
+# and to aggregate those into regional yields
+def compute_regional_yield(list_of_crops, list_of_regions, start_year_, 
+                                             end_year_, obs_type_, folder_sims):
+#===============================================================================
+
+    # calculating some other variables from user input:
+    crop_name = get_crop_name(list_of_crops)
+    # THIS SHOULD NOT BE HARDCODED:
+    NUTS_name = dict() # this should not be hardcoded
+    NUTS_name['ES41'] = 'Castilla y Leon'
+    NUTS_name['ES43'] = 'Extremadura'
+    #####
+    nb_years = int(end_year_ - start_year_ + 1.)
+    campaign_years = np.linspace(int(start_year_),int(end_year_),nb_years)
 
     # Retrieve the observational dataset:
-    NUTS_data   = open_csv_EUROSTAT(EUROSTATdir,['agri_yields_NUTS1-2-3_1975-2014.csv'],
-                             convert_to_float=True)
-    NUTS_ids    = open_csv_EUROSTAT(EUROSTATdir,['NUTS_codes_2013.csv'],
-                             convert_to_float=False)
+    NUTS_data   =  open_csv_EUROSTAT(EUROSTATdir,
+                                     ['agri_yields_NUTS1-2-3_1975-2014.csv'],
+                                     convert_to_float=True)
+
     # we simplify the dictionaries keys:
     NUTS_data['yields'] = NUTS_data['agri_yields_NUTS1-2-3_1975-2014.csv']
-    NUTS_ids['codes']   = NUTS_ids['NUTS_codes_2013.csv']
     del NUTS_data['agri_yields_NUTS1-2-3_1975-2014.csv']
-    del NUTS_ids['NUTS_codes_2013.csv']
-    
-    # detrend the yield observations
-    detrend = dict()
-    detrend['ES41']   = detrend_obs_yields(start_year, end_year, NUTS_name['ES41'], crop_name,
-	    						   NUTS_data['yields'], DM_content, 2000)
-    detrend['ES43']   = detrend_obs_yields(start_year, end_year, NUTS_name['ES43'], crop_name,
-	    						   NUTS_data['yields'], DM_content, 2000)
-    
-    # Retrieve the simulation datasets:
-    Sim_data_O         = open_csv(out_data_dir, 
-                         ['ForwardSim_Optimized_crop3_regionES43_2000-2014.dat',
-                          'ForwardSim_Optimized_crop3_regionES41_2000-2014.dat'])
-    Sim_data_NO        = open_csv(out_data_dir, 
-                         ['ForwardSim_Non-Optimized_crop3_regionES43_2000-2014.dat',
-                          'ForwardSim_Non-Optimized_crop3_regionES41_2000-2014.dat'])
-    # we simplify the dictionaries keys:
-    Sim_data_O['ES41'] = Sim_data_O['ForwardSim_Optimized_crop3_regionES41_2000-2014.dat']
-    Sim_data_O['ES43'] = Sim_data_O['ForwardSim_Optimized_crop3_regionES43_2000-2014.dat']
-    Sim_data_NO['ES41'] = Sim_data_NO['ForwardSim_Non-Optimized_crop3_regionES41_2000-2014.dat']
-    Sim_data_NO['ES43'] = Sim_data_NO['ForwardSim_Non-Optimized_crop3_regionES43_2000-2014.dat']
+        
+    Regional_yield = dict()
+    detrend        = dict()
 
-    # aggregate into regional yields
-    sim_o = dict() ; sim_no = dict()
-    sim_o['ES41'] = calc_regional_yields(Sim_data_O['ES41'], campaign_years)
-    sim_o['ES43'] = calc_regional_yields(Sim_data_O['ES43'], campaign_years)
-    sim_no['ES41'] = calc_regional_yields(Sim_data_NO['ES41'], campaign_years)
-    sim_no['ES43'] = calc_regional_yields(Sim_data_NO['ES43'], campaign_years)
+    for crop in list_of_crops:
 
-    # retrieve the opt sim yields & aggregate into regional opt yields
-    # plot the sim regional yields: non-opt and opt.
-    # add time-frame to show years used for optimization.
+        DM_content    = 0.9      # EUROSTAT dry matter fraction
+        Regional_yield[crop] = dict()
+        detrend[crop] = dict()
 
-    fig, axes = plt.subplots(nrows = 2, ncols = 1, figsize=(7,6))
-    fig.subplots_adjust(0.13,0.2,0.95,0.92,0.4,0.6)
-    for i, region, ax in zip([0.,1.], ['ES41','ES43'], axes.flatten()):
-        ax.scatter(campaign_years, sim_no[region], c='b', marker='v', s=50,
-                   label='non-optimized sims')
-        ax.scatter(campaign_years, sim_o[region], c='k', marker='o', s=50, 
-                   label='optimized sims')
-        ax.scatter(detrend[region][1],detrend[region][0], c='r', marker='+', 
-                   linewidth=2, s=70, label='detrended obs')
-        ax.set_ylim(0.,max(sim_no[region])+500.)
-        ax.set_ylabel(r'yield (kg$_{DM}$ ha$^{-1}$)')
-        ax.set_xlabel('time (year)')
-        ax.set_title('NUTS region '+region+' ('+NUTS_name[region]+')')
-        ax.axvspan(2003.5,2006.5,color='grey',alpha=0.3)
-        ax.annotate('yldgapf=%.3f'%yldgapf[region], xy=(0.89,0.1), 
-                    xycoords='axes fraction',horizontalalignment='center',
-                    verticalalignment='center')
-        if (i==1.): ax.legend(loc='best', ncol=3, fontsize=12, bbox_to_anchor = (1.05,-0.4))
-    fig.savefig('time_series_yields.png')
+        for region in list_of_regions: # for each region of our list:
 
+            # detrend the yield observations
+            detrend[crop][region] = detrend_obs(1975, 2014, NUTS_name[region], 
+                                    crop_name[crop][1], NUTS_data['yields'], 
+                                    DM_content, 2000, obs_type=obs_type_, 
+                                    prod_fig=False)
+        
+            # Retrieve the forward simulation datasets (one for the optimized
+            # and one for the non-optimized simulations)
+            list_of_files = [f for f in os.listdir(ForwardSimdir) if ((region 
+                             in f) and ('ForwardSim' in f))]
+            Forward_Sim   = open_csv(ForwardSimdir, list_of_files)
 
-    plt.show()
+            # we identify the dictionaries keys:
+            key_opt    = [f for f in list_of_files if ('_Optimized_' in f)][0]
+            key_nonopt = [f for f in list_of_files if ('_Non-Optimized_' in f)][0]
+
+            # aggregate the individual yields into a regional yield
+            Regional_yield[crop][region] = dict()
+            Regional_yield[crop][region]['opt'] = \
+                      calc_regional_yields(Forward_Sim[key_opt], campaign_years)
+            Regional_yield[crop][region]['nonopt'] = \
+                   calc_regional_yields(Forward_Sim[key_nonopt], campaign_years)
+
+    return detrend, Regional_yield
 
 #===============================================================================
-# Function to open normal csv files
-def open_csv(inpath,filelist,convert_to_float=False):
+# Function to load the RMSE pickle file generated during the sensitivity 
+# analysis
+def retrieve_RMSE_and_YLDGAPF(list_of_regions, list_of_cases):
 #===============================================================================
 
-    Dict = {}
+    from cPickle import load as pickle_load
+    from operator import itemgetter as operator_itemgetter
 
-    for i,namefile in enumerate(filelist):
-         
-        print "\nOpening %s......"%(namefile)
+    RMSE      = dict()
+    O_YLDGAPF = dict()
+    for region in list_of_regions:
+        RMSE[region]      = dict()
+        optimum_yldgapf   = []
+        for case in list_of_cases:
+            # find the filename that matches the region and case
+            filename = [f for f in os.listdir(RMSEdir) if (f.startswith('RMSE_')
+                        and (region in f) and (case in f))][0]
+            # make the file path
+            filepath = os.path.join(RMSEdir, filename)
+            # load the file
+            RMSE[region][case] = pickle_load(open(filepath, 'rb'))
+            # we sort the list of tuples by value of RMSE, and retrieve the 
+            # yldgapf corresponding to the min RMSE:
+            optimum_yldgapf = optimum_yldgapf + [sorted(RMSE[region][case], 
+                                            key = operator_itemgetter(1))[0][0]]
+        O_YLDGAPF[region] = list(optimum_yldgapf) 
 
-        # open file, read all lines
-        inputpath = os.path.join(inpath,namefile)
-        f=open(inputpath,'rU') 
-        reader=csv_reader(f, delimiter=',', skipinitialspace=True)
-        lines=[]
-        for row in reader:
-            lines.append(row)
-        f.close()
-
-        # storing headers in list headerow
-        headerow=lines[0]
-
-        # deleting rows that are not data (first and last rows of the file)
-        del lines[0]
-
-        # transforming data from string to float type
-        converted_data=[]
-        for line in lines:
-            converted_data.append(map(float,line))
-        data = np.array(converted_data)
-
-        # creating one dictionnary and storing the float data in it
-        dictnamelist= {}
-        for j,varname in enumerate(headerow):
-            dictnamelist[varname]=data[:,j]
-        Dict[namefile] = dictnamelist
-    
-        print "Dictionary created!"
-
-    return Dict
-
-
-#===============================================================================
-# Function to open EUROSTAT csv files
-def open_csv_EUROSTAT(inpath,filelist,convert_to_float=False):
-#===============================================================================
-
-    Dict = {}
-
-    for i,namefile in enumerate(filelist):
-         
-        print "\nOpening %s......"%(namefile)
-
-        # open file, read all lines
-        inputpath = os.path.join(inpath,namefile)
-        f=open(inputpath,'rU') 
-        reader=csv_reader(f, delimiter=',', skipinitialspace=True)
-        lines=[]
-        for row in reader:
-            lines.append(row)
-        f.close()
-
-        # storing headers in list headerow
-        headerow=lines[0]
-
-        # deleting rows that are not data (first and last rows of the file)
-        del lines[0]
-
-        # two possibilities: either convert data from string to float or
-        # keep it as is in string type
-        if (convert_to_float == True):
-            # transforming data from string to float type
-            converted_data=[]
-            for line in lines:
-                if (line[4] != ':'): 
-                    a = (line[0:4] + [float(string_replace(line[4], ' ', ''))] 
-                                   + [line[5]])
-                else:
-                    a = line[0:4] + [float('NaN')] + [line[5]]
-                converted_data.append(a)
-            data = np.array(converted_data)
-        else:
-            # we keep the string format, we just separate the string items
-            datafloat=[]
-            for row in lines:
-                a = row[0:2]
-                datafloat.append(a)
-            data=np.array(datafloat)
-
-        # creating one dictionnary and storing the float data in it
-        dictnamelist= {}
-        for j,varname in enumerate(headerow):
-            dictnamelist[varname]=data[:,j]
-        Dict[namefile] = dictnamelist
-    
-        print "Dictionary created!"
-
-    return Dict
-
-#===============================================================================
-# Function to detrend the observed yields
-def detrend_obs_yields( _start_year, _end_year, _NUTS_name, _crop_name, 
-                       uncorrected_yields_dict, _DM_content, base_year, 
-                       prod_fig=False):
-#===============================================================================
-
-    nb_years = int(_end_year - _start_year + 1.)
-    campaign_years = np.linspace(int(_start_year), int(_end_year), nb_years)
-    OBS = {}
-    TREND = {}
-    
-    # search for the index of base_year item in the campaign_years array
-    for i,val in enumerate(campaign_years): 
-        if val == base_year:
-            indref = i
-    
-    # select yields for the required region, crop and period of time
-    # and convert them from kg_humid_matter/ha to kg_dry_matter/ha 
-    TARGET = np.array([0.]*nb_years)
-    for j,year in enumerate(campaign_years):
-        for i,region in enumerate(uncorrected_yields_dict['GEO']):
-            if region.startswith(_NUTS_name[0:12]):
-                if uncorrected_yields_dict['CROP_PRO'][i]==_crop_name:
-                    if (uncorrected_yields_dict['TIME'][i]==str(int(year))):
-                        if (uncorrected_yields_dict['STRUCPRO'][i]==
-                                                      'Yields (100 kg/ha)'):
-                            TARGET[j] = float(uncorrected_yields_dict['Value'][i])\
-                                              *100.*_DM_content
-    #print 'observed dry matter yields:', TARGET
-
-    # fit a linear trend line in the record of observed yields
-    mask = ~np.isnan(TARGET)
-    z = np.polyfit(campaign_years[mask], TARGET[mask], 1)
-    p = np.poly1d(z)
-    OBS['ORIGINAL'] = TARGET[mask]
-    TREND['ORIGINAL'] = p(campaign_years)
-    
-    # calculate the anomalies to the trend line
-    ANOM = TARGET - (z[0]*campaign_years + z[1])
-    
-    # Detrend the observed yield data
-    OBS['DETRENDED'] = ANOM[mask] + p(base_year)
-    z2 = np.polyfit(campaign_years[mask], OBS['DETRENDED'], 1)
-    p2 = np.poly1d(z2)
-    TREND['DETRENDED'] = p2(campaign_years)
-    
-    # if needed plot a figure showing the yields before and after de-trending
-    if prod_fig==True:
-        pyplot.close('all')
-        fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(10,8))
-        fig.subplots_adjust(0.15,0.16,0.85,0.96,0.4,0.)
-        for var, ax in zip(["ORIGINAL", "DETRENDED"], axes.flatten()):
-            ax.scatter(campaign_years[mask], OBS[var], c='b')
-       	    ax.plot(campaign_years,TREND[var],'r-')
-       	    ax.set_ylabel('%s yield (gDM m-2)'%var, fontsize=14)
-            ax.set_xlabel('time (year)', fontsize=14)
-        fig.savefig('observed_yields.png')
-        print 'the trend line is y=%.6fx+(%.6f)'%(z[0],z[1])
-        pyplot.show()
-    
-    #print 'detrended dry matter yields:', OBS['DETRENDED']
-    
-    return OBS['DETRENDED'], campaign_years[mask]
-
-#===============================================================================
-def plot_sensitivity_yldgapf_to_rand_combi(optimum_yldgapf, nb_combi):
-#===============================================================================
-
-    fig, axes = plt.subplots(nrows = 2, ncols = 2, figsize=(7,3))
-    fig.subplots_adjust(0.13,0.17,0.95,0.9,0.4,0.05)
-    d = 0.03  # size of the diagonal line in axes coordinates
-    for i, var, ax in zip([0.,0.,1.,1.], ['ES41', 'ES43','ES41', 'ES43'], 
-                          axes.flatten()):
-    # Both top and bottom:
-        ax.set_yticks([1.,2.,3.,nb_combi[var][3]])
-        ax.errorbar(optimum_yldgapf[var][0], nb_combi[var][0], xerr=0.016, 
-                    c='k', capsize=5)
-        ax.scatter(optimum_yldgapf[var][0], nb_combi[var][0], c='b', s=70,
-                   marker='v')
-        ax.errorbar(optimum_yldgapf[var][1], nb_combi[var][1], xerr=0.016, 
-                    c='k', capsize=5)
-        ax.scatter(optimum_yldgapf[var][1], nb_combi[var][1], c='r', s=70,
-                   marker='^')
-        ax.errorbar(optimum_yldgapf[var][2], nb_combi[var][2], xerr=0.016, 
-                    c='k', capsize=5)
-        ax.scatter(optimum_yldgapf[var][2], nb_combi[var][2], c='g', s=70, 
-                   marker='p')
-        ax.errorbar(optimum_yldgapf[var][3], nb_combi[var][3], xerr=0.016,
-                    c='k', capsize=5)
-        ax.scatter(optimum_yldgapf[var][3], nb_combi[var][3], c='k', s=50, 
-                   marker='s')
-        labels = [item.get_text() for item in ax.get_yticklabels()] 
-        labels[0] = 'rand10 no1'
-        labels[1] = 'rand10 no2'
-        labels[2] = 'rand10 no3'
-        labels[3] = 'all'
-        ax.set_yticklabels(labels)
-    # Bottom of the graph:
-        if i==1.: 
-            ax.set_ylim(0.,4.)
-            ax.spines['top'].set_visible(False)
-            ax.xaxis.tick_bottom()
-            ax.set_xlabel('Yield gap factor (-)', fontsize=14)
-            kwargs = dict(transform=ax.transAxes, color='k', clip_on=False) #arguments
-            ax.plot((-d,+d),(1-d,1+d), **kwargs) # bottom-left diagonal
-            ax.plot((1-d,1+d),(1-d,1+d), **kwargs) # bottom-right diagonal
-    # Top of the graph:
-        if i==0.: 
-            ax.set_ylim(nb_combi[var][3]-5.,nb_combi[var][3]+5.)
-            ax.set_title('NUTS region %s'%var, fontsize=14)
-            ax.spines['bottom'].set_visible(False)
-            ax.xaxis.tick_top()
-            ax.tick_params(labeltop='off')
-            #ax.set_ylabel('Sampling method', fontsize=14)
-            kwargs = dict(transform=ax.transAxes, color='k', clip_on=False) #arguments
-            ax.plot((-d,+d),(-d,+d), **kwargs) # top-left diagonal
-            ax.plot((1-d,1+d),(-d,+d), **kwargs) # top-right diagonal
-    
-    fig.savefig('sensitivity_yldgapf_to_sampled_rand_combi.png')
-
-    return None
-
-#===============================================================================
-def plot_sensitivity_yldgapf_to_top_combi(optimum_yldgapf, nb_combi):
-#===============================================================================
-
-    fig, axes = plt.subplots(nrows = 2, ncols = 2, figsize=(7,3))
-    fig.subplots_adjust(0.13,0.17,0.95,0.9,0.4,0.05)
-    d = 0.03  # size of the diagonal line in axes coordinates
-    for i, var, ax in zip([0.,0.,1.,1.], ['ES41', 'ES43','ES41', 'ES43'], axes.flatten()):
-    # Both top and bottom:
-        ax.set_yticks([3.,5.,10.,nb_combi[var][3]])
-apf[var][0], nb_combi[var][0], xerr=0.016, 
-                    c='k', capsize=5)
-        ax.scatter(optimum_yldgapf[var][0], nb_combi[var][0], c='b', s=70,
-                   marker='v')
-        ax.errorbar(optimum_yldgapf[var][1], nb_combi[var][1], xerr=0.016, 
-                    c='k', capsize=5)
-        ax.scatter(optimum_yldgapf[var][1], nb_combi[var][1], c='r', s=70,
-                   marker='^')
-        ax.errorbar(optimum_yldgapf[var][2], nb_combi[var][2], xerr=0.016, 
-                    c='k', capsize=5)
-        ax.scatter(optimum_yldgapf[var][2], nb_combi[var][2], c='g', s=70, 
-                   marker='p')
-        ax.errorbar(optimum_yldgapf[var][3], nb_combi[var][3], xerr=0.016,
-                    c='k', capsize=5)
-        ax.scatter(optimum_yldgapf[var][3], nb_combi[var][3], c='k', s=50, 
-                   marker='s')
-        labels = [item.get_text() for item in ax.get_yticklabels()] 
-        labels[0] = 'top 3'
-        labels[1] = 'top 5'
-        labels[2] = 'top 10'
-        labels[3] = 'all'
-        ax.set_yticklabels(labels)
-        #ax.set_xticklabels(ax.xaxis.get_majorticklabels(), rotation=45) #rotate x labels
-    # Bottom of the graph:
-        if i==1.: 
-            ax.set_ylim(0.,12.)
-            ax.spines['top'].set_visible(False)
-            ax.xaxis.tick_bottom()
-            ax.set_xlabel('Yield gap factor (-)', fontsize=14)
-            kwargs = dict(transform=ax.transAxes, color='k', clip_on=False) #arguments
-            ax.plot((-d,+d),(1-d,1+d), **kwargs) # bottom-left diagonal
-            ax.plot((1-d,1+d),(1-d,1+d), **kwargs) # bottom-right diagonal
-    # Top of the graph:
-        if i==0.: 
-            ax.set_ylim(nb_combi[var][3]-5.,nb_combi[var][3]+5.)
-            ax.set_title('NUTS region %s'%var, fontsize=14)
-            ax.spines['bottom'].set_visible(False)
-            ax.xaxis.tick_top()
-            ax.tick_params(labeltop='off')
-            #ax.set_ylabel('Sampling method', fontsize=14)
-            kwargs = dict(transform=ax.transAxes, color='k', clip_on=False) #arguments
-            ax.plot((-d,+d),(-d,+d), **kwargs) # top-left diagonal
-            ax.plot((1-d,1+d),(-d,+d), **kwargs) # top-right diagonal
-    
-    fig.savefig('sensitivity_yldgapf_to_sampled_top_combi.png')
-
-    return None
-
+    return RMSE, O_YLDGAPF
 
 #===============================================================================
 # Function to aggregate the individual yields into the yearly regional yields
