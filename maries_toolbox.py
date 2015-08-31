@@ -141,6 +141,39 @@ def detrend_obs( _start_year, _end_year, _NUTS_name, _crop_name,
     return OBS['DETRENDED'], campaign_years[mask]
 
 #===============================================================================
+# Function to retrieve the dry matter content of a given crop in a given
+# country (this is based on EUROSTAT crop humidity data)
+def retrieve_crop_DM_content(crop_no_, NUTS_no_):
+#===============================================================================
+
+    from cPickle import load as pickle_load
+
+	# directories on my local MacBook:
+    EUROSTATdir   = '/Users/mariecombe/Documents/Work/Research_project_3/'\
+				   +'EUROSTAT_data'
+    # directories on capegrim:
+    #EUROSTATdir   = "/Users/mariecombe/Cbalance/EUROSTAT_data"
+
+    # we retrieve the dry matter of a specific crop and country, over the 
+    # years 1955-2015
+    DM_obs = pickle_load(open(os.path.join(EUROSTATdir, 
+                         'EUROSTAT_obs_crop_humidity.pickle'), 'rb'))
+    DM_content = DM_obs[crop_no_][NUTS_no_[0:2]]
+    # if the retrieved array is not empty, then we use the average 
+    # reported DM:
+    if (np.isnan(DM_content).all() == False):
+        DM_content = np.ma.mean(np.ma.masked_invalid(DM_content))
+        print '\nWe use the observed DM content', DM_content
+    # otherwise we use the standard EUROSTAT DM content for that crop:
+    else:
+        DM_standard = pickle_load(open(os.path.join(EUROSTATdir, 
+                                'EUROSTAT_standard_crop_humidity.pickle'),'rb'))
+        DM_content = DM_standard[crop_no_]
+        print '\nWe use the standard DM content', DM_content
+
+    return DM_content
+
+#===============================================================================
 # Function to open normal csv files
 def open_csv(inpath,filelist,convert_to_float=False):
 #===============================================================================

@@ -13,17 +13,15 @@ from cPickle import load as pickle_load # pickle_load is used in almost all my
 def main():
 #===============================================================================
     from maries_toolbox import open_csv_EUROSTAT, detrend_obs, get_crop_name,\
-                               find_consecutive_years
+                               find_consecutive_years, retrieve_crop_DM_content
 #-------------------------------------------------------------------------------
     global currentdir, EUROSTATdir, folderpickle, detrend
 #-------------------------------------------------------------------------------
 # Define the settings of the run:
  
-    # NUTS region:
+    # NUTS region and crop:
     NUTS_no       = 'ES41'
     NUTS_name     = 'Castilla y Leon' #'Noord-Holland'
-
-    # Crop:
     crop_no       = 3        # CGMS crop number
 
     # yield gap factor optimization:
@@ -93,23 +91,7 @@ def main():
 #-------------------------------------------------------------------------------
 # Retrieve the crop dry matter content
 
-        # we retrieve the dry matter of a specific crop and country, over the 
-        # years 1955-2015
-        DM_obs = pickle_load(open(os.path.join(EUROSTATdir, 
-                             'EUROSTAT_obs_crop_humidity.pickle'), 'rb'))
-        DM_content = DM_obs[crop_no][NUTS_no[0:2]]
-        # if the retrieved array is not empty, then we use the average 
-        # reported DM:
-        if (np.isnan(DM_content).all() == False):
-            DM_content = np.ma.mean(np.ma.masked_invalid(DM_content))
-            print '\nWe use the observed DM content', DM_content
-        # otherwise we use the standard EUROSTAT DM content for that crop:
-        else:
-            DM_standard = pickle_load(open(os.path.join(EUROSTATdir, 
-                                      'EUROSTAT_standard_crop_humidity.pickle'),
-                                      'rb'))
-            DM_content = DM_standard[crop_no]
-            print '\nWe use the standard DM content', DM_content
+        DM_content = retrieve_crop_DM_content(crop_no, NUTS_no)
 
 #-------------------------------------------------------------------------------
 # Retrieve the observed EUROSTAT yield or harvest and remove its technological

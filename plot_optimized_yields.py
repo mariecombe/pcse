@@ -4,7 +4,8 @@ import os, sys
 import numpy as np
 
 from maries_toolbox import get_crop_name, open_csv, open_csv_EUROSTAT,\
-                           detrend_obs, find_consecutive_years
+                           detrend_obs, find_consecutive_years,\
+                           retrieve_crop_DM_content
 from matplotlib import pyplot as plt
 
 #===============================================================================
@@ -156,11 +157,11 @@ def plot_yield_time_series(list_of_crops, list_of_regions, start_year_,
             ax.set_xlabel('time (year)')
             ax.set_title('%s (%s) - %s'%(region, NUTS_name[region], 
                                                             crop_name[crop][0]))
-            # need to retrieve the opti_years:
-            ax.axvspan(opti_years[0]-0.5,opti_years[-1]+0.5,color='grey',alpha=0.3)
-            #ax.annotate('yldgapf=%.3f'%yldgapf[region], xy=(0.89,0.1), 
-            #            xycoords='axes fraction',horizontalalignment='center',
-            #            verticalalignment='center')
+            ax.axvspan(opti_years[0]-0.5, opti_years[-1]+0.5, color='grey',
+                                                                      alpha=0.3)
+            ax.annotate('yldgapf=%.2f'%yield_dict[2][crop][region], xy=(0.89,0.1), 
+                        xycoords='axes fraction',horizontalalignment='center',
+                        verticalalignment='center')
             plt.legend(loc='best', ncol=3, fontsize=12,
                        bbox_to_anchor = (1.03,-0.25))
             fig.savefig('time_series_%s_crop%s_region%s.png'%(obs_type_, crop,\
@@ -172,6 +173,8 @@ def plot_yield_time_series(list_of_crops, list_of_regions, start_year_,
 def plot_optiYLDGAPF_asf_cases(crop_name_, list_of_regions, list_of_cases, 
                                         list_of_labels, list_of_colors, opti_f):
 #===============================================================================
+
+# need to loop over the crops within the function, not outside
 
     for r,region in enumerate(list_of_regions):
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5,5))
@@ -194,6 +197,8 @@ def plot_optiYLDGAPF_asf_cases(crop_name_, list_of_regions, list_of_cases,
 def plot_RMSE_asf_YLDGAPF(crop_name_, list_of_regions, list_of_cases,
                            list_of_labels, list_of_colors, RMSE_dict_of_tuples):
 #===============================================================================
+
+# need to loop over the crops within the function, not outside
 
     for region in list_of_regions:
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5,5))
@@ -248,17 +253,19 @@ def compute_regional_yield(list_of_crops, list_of_regions, start_year_,
     NUTS_data['yields'] = NUTS_data['agri_yields_NUTS1-2-3_1975-2014.csv']
     del NUTS_data['agri_yields_NUTS1-2-3_1975-2014.csv']
         
+    opti_yldgapf   = dict()
     Regional_yield = dict()
     detrend        = dict()
 
     for crop in list_of_crops:
 
-        DM_content    = 0.9      # EUROSTAT dry matter fraction
+        opti_yldgapf[crop]   = dict()
         Regional_yield[crop] = dict()
-        detrend[crop] = dict()
+        detrend[crop]        = dict()
 
         for region in list_of_regions: # for each region of our list:
 
+            DM_content = retrieve_crop_DM_content(crop, region)
             # detrend the yield observations
             detrend[crop][region] = detrend_obs(1975, 2014, NUTS_name[region], 
                                     crop_name[crop][1], NUTS_data['yields'], 
@@ -281,8 +288,9 @@ def compute_regional_yield(list_of_crops, list_of_regions, start_year_,
                       calc_regional_yields(Forward_Sim[key_opt], campaign_years)
             Regional_yield[crop][region]['nonopt'] = \
                    calc_regional_yields(Forward_Sim[key_nonopt], campaign_years)
+            opti_yldgapf[crop][region] = Forward_Sim[key_opt]['YLDGAPF(-)'][0]
 
-    return detrend, Regional_yield
+    return detrend, Regional_yield, opti_yldgapf
 
 #===============================================================================
 # Function to load the RMSE pickle file generated during the sensitivity 
