@@ -81,6 +81,10 @@ def main():
 # Plot the figure showing the relative deviation of the simulated yield from the
 # observed yield
 
+    # user defined:
+    crops     = [3]
+    regions   = ['ES41'] # the regions for which we have performed
+                               # the sensitivity analysis
 #    if (figure_3 == True):
 
 #-------------------------------------------------------------------------------

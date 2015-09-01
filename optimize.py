@@ -36,7 +36,7 @@ def main():
     opti_method   = 'aggregated' # can be 'aggregated' 
                              #            'individual'
                              #            'average_combi'
-    opti_metric   = 'yield'  # can be 'yield' or 'harvest'
+    opti_metric   = 'harvest'  # can be 'yield' or 'harvest'
                              # option only used if opti_method = 'aggregated'
     opti_nyears   = 3        # nb of years considered for the optimization
                              # minimum 3 years, maximum 30.
@@ -178,6 +178,14 @@ def main():
                    selected_soil_types[grid]],'for grid', grid
 
 #-------------------------------------------------------------------------------
+# Count the area used to calculate the harvest
+
+        if (opti_metric == 'harvest'):
+
+            areas = calc_cultivated_area_of_crop(selected_grid_cells, 
+                                                 selected_soil_types)
+
+#-------------------------------------------------------------------------------
 # Perform optimization of the yield gap factor
 
         output_tagname = 'crop%i_region%s_%s_%igx%is_%s_%i-%i'%(crop_no, NUTS_no,
@@ -277,6 +285,47 @@ def main():
 
 
 #===============================================================================
+# function to calculate the simulated cultivated area of a NUTS region
+def calc_cultivated_area_of_crop(selected_grid_cells_, selected_soil_types_):
+#===============================================================================
+
+    from datetime import datetime
+    from operator import itemgetter as operator_itemgetter
+
+    # 1- we add a timestamp to time the function
+    print '\nStarted counting area at timestamp:', datetime.utcnow()
+
+    # 3- we calculate all the individual yields from the selected grid cells x
+    # soils combinations
+
+    grid_land   = 0.
+    arable_land = 0.
+    soil_land   = 0.
+
+    for grid, arable_area in selected_grid_cells_:
+ 
+        grid_land   = grid_land   + 625000000.  # area of a grid cell is in m2
+        arable_land = arable_land + arable_area # grid arable land area is in m2
+        
+        for smu, stu_no, stu_area, soildata in selected_soil_types_[grid]:
+
+            soil_land = soil_land + stu_area # soil type area is in m2
+    
+    total_grid   = grid_land   / 10000000. # in 1000 ha
+    total_soils  = soil_land   / 10000000. # in 1000 ha
+    total_arable = arable_land / 10000000. # in 1000 ha
+
+    print '\nGrid area total: %.2f (in 1000 ha)'%total_grid
+    print '\nArable land total: %.2f (in 1000 ha)'%total_arable
+    print '\nSoil types area total: %.2f (in 1000 ha)'%total_soils
+
+    # 9- we add a timestamp to time the function
+    print 'Finished counting area at timestamp:', datetime.utcnow()
+
+    # 10- we return the land areas
+    return total_grid, total_arable, total_soils
+
+#===============================================================================
 # Function to optimize the regional yield gap factor using the difference
 # between the regional simulated and the observed harvest or yield (ie. 1 gap to
 # optimize per NUTS region). This function iterates dynamically to find the
@@ -308,6 +357,10 @@ def optimize_regional_yldgapf_dyn(crop_no_, selected_grid_cells_,
     OBS = np.tile(row, (5,1)) # repeats the list as a row 3 times, to get a 
                               # 2D array
 
+    # retrieve the observed fraction of arable land cultivated for that crop 
+    if (obs_type == 'harvest'):
+        frac_crop = 0.36 # for now is hardcoded
+
     # 3- we calculate all the individual yields from the selected grid cells x
     # soils combinations
 
@@ -333,8 +386,11 @@ def optimize_regional_yldgapf_dyn(crop_no_, selected_grid_cells_,
 
         RES = [] # list in which we will store the yields of the combinations
 
-        for grid in [g for g,a in selected_grid_cells_]:
+        for grid, arable_land in selected_grid_cells_:
  
+            if (obs_type == 'harvest'):
+                frac_arable = arable_land / 625000000.
+
             # Retrieve the weather data of one grid cell (all years are in one
             # file) 
             filename = folderpickle+'weatherobject_g%d.pickle'%grid
@@ -376,7 +432,7 @@ def optimize_regional_yldgapf_dyn(crop_no_, selected_grid_cells_,
                         # get the yield (in kgDM.ha-1) 
                         TSO[f,y] = wofost_object.get_variable('TWSO')
 
-                RES = RES + [(grid, stu_no, weight, TSO)]
+                RES = RES + [(grid, stu_no, weight*frac_arable*frac_crop, TSO)]
 
         # 4- we aggregate the yield or harvest into the regional one with array
         # operations
@@ -386,9 +442,9 @@ def optimize_regional_yldgapf_dyn(crop_no_, selected_grid_cells_,
         sum_weights       = 0.
         for grid, stu_no, weight, TSO in RES:
             # adding weighted 2D-arrays in the empty array sum_weighted_yields
-            # 'weight' is actually the area of a soil type in m2
+            # NB: variable 'weight' is actually the cultivated area in m2
             sum_weighted_vals   = sum_weighted_vals + (weight/10000.)*TSO 
-            # computing the sum of the soil type area weights
+            # computing the total sum of the cultivated area in ha 
             sum_weights         = sum_weights       + (weight/10000.) 
 
         if (obs_type == 'harvest'):
@@ -411,7 +467,10 @@ def optimize_regional_yldgapf_dyn(crop_no_, selected_grid_cells_,
         print 'matrix of observed yields:'
         print ' '.join(str(f) for f in OBS)
         print 'matrix of sim-obs differences:'
-        print ' '.join(str(f) for f in DIFF)
+        if (obs_type == 'harvest'):
+            print ' '.join(str(f) for f in DIFF)
+            print 'cultivated area of region: %.2f (in 1000 ha)'%\
+                                                             (sum_weights/1000.)
 
         # 6- we calculate the RMSE (root mean squared error) of the 3 yldgapf
         # The RMSE of each yldgapf is based on N obs-sim differences for the N
@@ -1121,7 +1180,7 @@ def select_soils(grid_cell_id, soil_iterator_, suitable_soils, method='topn', n=
     sorted_soils = []
     for smu_no, area_smu, stu_no, percentage_stu, soildata in soil_iterator_:
         if stu_no not in suitable_soils: continue
-        weight_factor = area_smu * percentage_stu
+        weight_factor = area_smu * percentage_stu/100.
         sorted_soils = sorted_soils + [(smu_no, stu_no, weight_factor, soildata)]
     sorted_soils = sorted(sorted_soils, key=operator_itemgetter(2), reverse=True)
    
