@@ -20,8 +20,8 @@ def main():
 # Define the settings of the run:
  
     # NUTS region and crop:
-    NUTS_no       = 'ES41'
-    NUTS_name     = 'Castilla y Leon' #'Noord-Holland'
+    NUTS_no       = 'ES43'
+    NUTS_name     = 'Extremadura' #'Noord-Holland'
     crop_no       = 3        # CGMS crop number
 
     # yield gap factor optimization:
@@ -36,13 +36,13 @@ def main():
     opti_method   = 'aggregated' # can be 'aggregated' 
                              #            'individual'
                              #            'average_combi'
-    opti_metric   = 'harvest'  # can be 'yield' or 'harvest'
+    opti_metric   = 'yield'  # can be 'yield' or 'harvest'
                              # option only used if opti_method = 'aggregated'
-    opti_nyears   = 3        # nb of years considered for the optimization
+    opti_nyears   = 1        # nb of years considered for the optimization
                              # minimum 3 years, maximum 30.
 
     # forward crop growth simulations:
-    forward_sims  = False
+    forward_sims  = True
     start_year    = 2000     # start_year and end_year define the period of time
     end_year      = 2014     # for which we do forward simulations
 
@@ -113,7 +113,7 @@ def main():
             # trend! 
             detrend = detrend_obs(1975, 2014, NUTS_name, crop_name,
                                   NUTS_data['harvests'], DM_content, 2000,
-                                  obs_type='harvest', prod_fig=True)
+                                  obs_type='harvest', prod_fig=False)
 
         elif (opti_metric == 'yield'):
             # we retrieve the yield observed data:
@@ -185,6 +185,8 @@ def main():
             areas = calc_cultivated_area_of_crop(selected_grid_cells, 
                                                  selected_soil_types)
 
+        frac_crop = 0.36 # for now is hardcoded
+
 #-------------------------------------------------------------------------------
 # Perform optimization of the yield gap factor
 
@@ -204,6 +206,7 @@ def main():
                                                            opti_years)
         elif (opti_method == 'aggregated'):
             optimum_yldgapf = optimize_regional_yldgapf_dyn(crop_no,
+                                                           frac_crop,
                                                            selected_grid_cells,
                                                            selected_soil_types,
                                                            opti_years,
@@ -330,7 +333,7 @@ def calc_cultivated_area_of_crop(selected_grid_cells_, selected_soil_types_):
 # between the regional simulated and the observed harvest or yield (ie. 1 gap to
 # optimize per NUTS region). This function iterates dynamically to find the
 # optimum YLDGAPF.
-def optimize_regional_yldgapf_dyn(crop_no_, selected_grid_cells_,
+def optimize_regional_yldgapf_dyn(crop_no_, frac_crop, selected_grid_cells_,
            selected_soil_types_, opti_years_, output_tagname_, obs_type='yield',
            plot_rmse=True):
 #===============================================================================
@@ -356,10 +359,6 @@ def optimize_regional_yldgapf_dyn(crop_no_, selected_grid_cells_,
         row = row + [detrend[0][y]]
     OBS = np.tile(row, (5,1)) # repeats the list as a row 3 times, to get a 
                               # 2D array
-
-    # retrieve the observed fraction of arable land cultivated for that crop 
-    if (obs_type == 'harvest'):
-        frac_crop = 0.36 # for now is hardcoded
 
     # 3- we calculate all the individual yields from the selected grid cells x
     # soils combinations
@@ -388,8 +387,7 @@ def optimize_regional_yldgapf_dyn(crop_no_, selected_grid_cells_,
 
         for grid, arable_land in selected_grid_cells_:
  
-            if (obs_type == 'harvest'):
-                frac_arable = arable_land / 625000000.
+            frac_arable = arable_land / 625000000.
 
             # Retrieve the weather data of one grid cell (all years are in one
             # file) 
@@ -483,9 +481,11 @@ def optimize_regional_yldgapf_dyn(crop_no_, selected_grid_cells_,
                 list_of_DIFF = list_of_DIFF + [DIFF[f,y]]
             RMSE[f] = np.sqrt(np.mean( [ math.pow(j,2) for j in
                                                            list_of_DIFF ] ))
+
         print 'Root Mean Square Error:'
         print ' '.join(str(f) for f in RMSE)
 
+        # We store the value of the RMSE for plotting purposes
         RMSE_stored = RMSE_stored + [(f_range[1], RMSE[1]), (f_range[3], RMSE[3])]
         if (iter_no == 1):
             RMSE_stored = RMSE_stored + [(f_range[0], RMSE[0]), 
@@ -1097,14 +1097,14 @@ def perform_yield_sims(selected_grid_cells_, selected_soil_types_,
         print '\nDeleted old file %s in folder output_data/'%Res_filename
     Results = open(os.path.join(currentdir, 'output_data', Res_filename), 'w')
     # we write the header line:
-    Results.write('YLDGAPF(-),  grid_no,  year,  stu_no,      weight(-), '\
+    Results.write('YLDGAPF(-),  grid_no,  year,  stu_no, arable_area(ha), stu_area(ha), '\
                  +'TSO(kgDM.ha-1), TLV(kgDM.ha-1), TST(kgDM.ha-1), '\
                  +'TRT(kgDM.ha-1), maxLAI(m2.m-2), rootdepth(cm), '\
                  +'TAGP(kgDM.ha-1)\n')
 
     print '\nStarted forward runs at timestamp:', datetime.utcnow()
     
-    for grid in [g for g,a in selected_grid_cells_]:
+    for grid, arable_area in selected_grid_cells_:
 
         # Retrieve the weather data of one grid cell (all years are in one file) 
         filename = folderpickle+'weatherobject_g%d.pickle'%grid
@@ -1130,7 +1130,7 @@ def perform_yield_sims(selected_grid_cells_, selected_soil_types_,
             # Set the yield gap factor
             cropdata['YLDGAPF'] = yldgapf
 
-            for smu, soil_type, weight, soildata in selected_soil_types_[grid]:
+            for smu, soil_type, stu_area, soildata in selected_soil_types_[grid]:
                 
                 # Retrieve the site data of one soil, one year, one grid cell
                 filename = folderpickle+'siteobject_g%d_c%d_y%d_s%d.pickle'%(
@@ -1158,10 +1158,10 @@ def perform_yield_sims(selected_grid_cells_, selected_soil_types_,
                 # Total above ground dry matter (kg/ha)
                 TAGP      = wofost_object.get_variable('TAGP')
 
-                Results.write('%10.3f, %8i, %5i, %7i, %14.0f, %14.2f, %14.2f, '\
-                              '%14.2f, %14.2f, %14.2f, %13.2f, %15.2f\n'
-                              %(yldgapf, grid, year, soil_type, weight, TSO, 
-                               TLV, TST, TRT, MLAI, RD, TAGP))
+                Results.write('%10.3f, %8i, %5i, %7i, %15.2f, %12.5f, %14.2f, '\
+                              '%14.2f, %14.2f, %14.2f, %14.2f, %13.2f, %15.2f\n'
+                           %(yldgapf, grid, year, soil_type, arable_area/10000.,
+                           stu_area/10000., TSO, TLV, TST, TRT, MLAI, RD, TAGP))
     Results.close()	
 
     print 'Finished forward runs at timestamp:', datetime.utcnow()
