@@ -4,8 +4,8 @@ import os, sys
 import numpy as np
 
 from maries_toolbox import get_crop_name, open_csv, open_csv_EUROSTAT,\
-                           detrend_obs, find_consecutive_years,\
-                           retrieve_crop_DM_content
+                           detrend_obs, define_opti_years,\
+                           retrieve_crop_DM_content, get_EUR_frac_crop
 from matplotlib import pyplot as plt
 
 #===============================================================================
@@ -18,11 +18,11 @@ def main():
 # the user selects the figures to plot:
 
     # figures for the sensitivity analysis on the n combi:
-    figure_1 = True # figure showing RMSE = f(YLDGAPF) for various top n combi 
-    figure_2 = True # figure showing yldgapf = f(various n cell x soil combi)
+    figure_1 = False # figure showing RMSE = f(YLDGAPF) for various top n combi 
+    figure_2 = False # figure showing yldgapf = f(various n cell x soil combi)
 
     # figures for the sensitivity analysis to the value of the yldgapf
-    figure_3 = True # figure showing the relative deviation of the simulated 
+    figure_3 = False # figure showing the relative deviation of the simulated 
                     # yield from the observed yield
 
     # figures for the forward simulations:
@@ -46,14 +46,14 @@ def main():
 
     # user defined:
     crops     = [3]
-    regions   = ['ES41'] # the regions for which we have performed
+    regions   = ['ES41','ES43'] # the regions for which we have performed
                                # the sensitivity analysis
-    cases     = ['all_2gx2s_harvest', 'all_2gx2s_yield', 'topn_10gx10s',
-                 'topn_5gx5s', 'topn_3gx3s',
-                 'randomn1', 'randomn2', 'randomn3'] # these are search terms to
+    cases     = ['all_2gx2s_yield_2006-2006', 'topn_10gx10s_yield_2006-2006',
+                 'topn_5gx5s_yield_2006-2006', 'topn_3gx3s_yield_2006-2006']
+                            # these are search terms to
                             # find the results files of the sensitivity analysis
-    labels    = ['all (harvest)', 'all (yield)', 'top 10', 'top 5', 'top 3', 'rand1', 'rand2', 'rand3'] 
-    colors    = ['grey','k','r','b','g','cyan','orange','yellow']
+    labels    = ['all', 'top 10', 'top 5', 'top 3'] 
+    colors    = ['k','r','b','g']#,'cyan','orange','yellow']
     RMSEdir   = os.path.join(currentdir, 'output_data') # directory where the
                             # sensitivity analysis results files are located
 
@@ -64,17 +64,20 @@ def main():
     crop_name = get_crop_name(crops)
     NUTS_name = dict() # this should not be hardcoded
     NUTS_name['ES41'] = 'Castilla y Leon'
+    NUTS_name['ES42'] = 'Castilla-la Mancha'
     NUTS_name['ES43'] = 'Extremadura'
 
     for crop in crops:
     
         # Plot the RMSE = f(YLDGAPF) graph for each region x crop combination
         if (figure_1 == True):
+            print '\n============================== tackling figure 1 =============================='
             figs1 = plot_RMSE_asf_YLDGAPF(crop_name[crop][0], regions, cases, 
                                           labels, colors, RMSE[0])
 
         # Plot the optimum YLDGAPF = f(case) for each region x crop combination
         if (figure_2 == True):
+            print '\n============================== tackling figure 2 =============================='
             figs2 = plot_optiYLDGAPF_asf_cases(crop_name[crop][0], regions, 
                                                cases, labels, colors, RMSE[1])
 
@@ -86,53 +89,58 @@ def main():
     crops     = [3]
     regions   = ['ES41'] # the regions for which we have performed
                                # the sensitivity analysis
-    start_year    = 2000     # start_year and end_year define the period of time
-    end_year      = 2014     # for which we did our forward simulations
-    opti_nyears   = 3.       # nb of years for which we optimized the YLDGAPF
+    start_year  = 2000     # start_year and end_year define the period of time
+    end_year    = 2014     # for which we did our forward simulations
+    opti_year   = 2006       # nb of years for which we optimized the YLDGAPF
     ForwardSimdir = os.path.join (currentdir, 'output_data') # directory where
                              # the results files of the forward simulations are
                              # located
 
-    # retrieve the observed and simulated yields and aggregate into regional 
-    # values
-    Regional_yield = compute_regional_yields_series(crops, regions, start_year,
-                                               end_year, 'yield', ForwardSimdir)
-
-    #rel_dif_top3 = (Regional_yield[1][crops[0]][regions[0]]['opt-0.05'] -
-    #                 Regional_yield[1][crops[0]][regions[0]]['opt']) / \
-    #                   Regional_yield[1][crops[0]][regions[0]]['opt']
-    #print rel_dif_top3 
-
-    # Plot the time series of opt vs. non-optimized yields, and observed yields
-    # for each crop x region
     if (figure_3 == True):
+        print '\n============================== tackling figure 3 =============================='
+        # retrieve the observed and simulated yields and aggregate into regional 
+        # values
+        Regional_yield = compute_regional_yields_series(crops, regions, start_year,
+                                                   end_year, 'yield', ForwardSimdir)
+ 
+        #rel_dif_top3 = (Regional_yield[1][crops[0]][regions[0]]['opt-0.05'] -
+        #                 Regional_yield[1][crops[0]][regions[0]]['opt']) / \
+        #                   Regional_yield[1][crops[0]][regions[0]]['opt']
+        #print rel_dif_top3 
+ 
+        # Plot the time series of opt vs. non-optimized yields, and observed yields
+        # for each crop x region
         fig3 = plot_precision_yldgapf(crops, regions, start_year, 
-                                 end_year, opti_nyears, Regional_yield, 'yield')
+                                 end_year, opti_year, Regional_yield, 'yield')
 
 #-------------------------------------------------------------------------------
 # Plot the figure showing a time series of opt vs. obs yields
 
     # list the regions and crops for which we do that figure
-    crops = [3]              # crop ID numbers
-    regions   = ['ES41', 'ES43'] # regions ID numbers for which we have performed
-                             # the sensitivity analysis
-    start_year    = 2000     # start_year and end_year define the period of time
-    end_year      = 2014     # for which we did our forward simulations
-    opti_nyears   = 3.       # nb of years for which we optimized the YLDGAPF
+    crops      = [3]      # crop ID numbers
+    regions    = ['ES41', 'ES42', 'ES43']
+                          # regions ID numbers for which we have performed
+                          # the sensitivity analysis
+    val_type   = 'harvest'  # regional variable we want to plot
+                          # can be 'yield', 'harvest', 'area' (cultivated)
+    start_year = 2000     # start_year and end_year define the period of time
+    end_year   = 2014     # for which we did our forward simulations
+    opti_year  = 2006     # nb of years for which we optimized the YLDGAPF
     ForwardSimdir = os.path.join (currentdir, 'output_data') # directory where
-                             # the results files of the forward simulations are
-                             # located
+                          # the results files of the forward simulations are
+                          # located
 
-    # retrieve the observed and simulated yields and aggregate into regional 
-    # values
-    Regional_yield = compute_regional_yield(crops, regions, start_year,
-                                               end_year, 'yield', ForwardSimdir)
-
-    # Plot the time series of opt vs. non-optimized yields, and observed yields
-    # for each crop x region
     if (figure_4 == True):
+        print '\n============================== tackling figure 4 =============================='
+        # retrieve the observed and simulated yields and aggregate into regional 
+        # values
+        Regional_values = compute_regional_yield(crops, regions, start_year,
+                                              end_year, val_type, ForwardSimdir)
+
+        # Plot the time series of opt vs. non-optimized yields, and observed 
+        # yields for each crop x region
         fig4 = plot_yield_time_series(crops, regions, start_year, 
-                                 end_year, opti_nyears, Regional_yield, 'yield')
+                                 end_year, opti_year, Regional_values, val_type)
 
 #-------------------------------------------------------------------------------
 # Plot the figure showing a map of yield over a region
@@ -141,7 +149,7 @@ def main():
         
 #===============================================================================
 def plot_precision_yldgapf(list_of_crops, list_of_regions, start_year_, 
-                              end_year_, opti_nyears_, yield_dict, obs_type_):
+                                  end_year_, opti_year_, yield_dict, obs_type_):
 #===============================================================================
 
     crop_name = get_crop_name(list_of_crops)
@@ -156,8 +164,9 @@ def plot_precision_yldgapf(list_of_crops, list_of_regions, start_year_,
         for region in list_of_regions:
 			# Retrieve the most recent N years of continuous yield data that 
 			# have been used for the optimization of the yield gap factor.
-            opti_years = find_consecutive_years(yield_dict[0][crop][region][1], 
-                                                                   opti_nyears_)
+            opti_years = define_opti_years(opti_year_, 
+                                           yield_dict[0][crop][region][1])
+
             # produce the plot:
             fig, ax = plt.subplots(nrows = 1, ncols = 1, figsize=(7,3))
             fig.subplots_adjust(0.15,0.3,0.95,0.88,0.4,0.6)
@@ -200,6 +209,8 @@ def plot_precision_yldgapf(list_of_crops, list_of_regions, start_year_,
                 ax.set_ylabel(r'yield (kg$_{DM}$ ha$^{-1}$)')
             elif (obs_type_=='harvest'):
                 ax.set_ylabel(r'harvest (1000 tDM)')
+            elif (obs_type_=='area'):
+                ax.set_ylabel(r'area (1000 ha)')
             ax.set_xlabel('time (year)')
             ax.set_title('%s (%s) - %s'%(region, NUTS_name[region], 
                                                             crop_name[crop][0]))
@@ -217,13 +228,14 @@ def plot_precision_yldgapf(list_of_crops, list_of_regions, start_year_,
 
 #===============================================================================
 def plot_yield_time_series(list_of_crops, list_of_regions, start_year_, 
-                              end_year_, opti_nyears_, yield_dict, obs_type_):
+                              end_year_, opti_year_, yield_dict, obs_type_):
 #===============================================================================
 
     crop_name = get_crop_name(list_of_crops)
     # THIS SHOULD NOT BE HARDCODED:
     NUTS_name = dict() # this should not be hardcoded
     NUTS_name['ES41'] = 'Castilla y Leon'
+    NUTS_name['ES42'] = 'Castilla-la Mancha'
     NUTS_name['ES43'] = 'Extremadura'
     #####
     nb_years = int(end_year_ - start_year_ + 1.)
@@ -233,8 +245,8 @@ def plot_yield_time_series(list_of_crops, list_of_regions, start_year_,
         for region in list_of_regions:
 			# Retrieve the most recent N years of continuous yield data that 
 			# have been used for the optimization of the yield gap factor.
-            opti_years = find_consecutive_years(yield_dict[0][crop][region][1], 
-                                                                   opti_nyears_)
+            opti_years = define_opti_years(opti_year_, 
+                                           yield_dict[0][crop][region][1])
             # produce the plot:
             fig, ax = plt.subplots(nrows = 1, ncols = 1, figsize=(7,3))
             fig.subplots_adjust(0.15,0.3,0.95,0.88,0.4,0.6)
@@ -245,7 +257,12 @@ def plot_yield_time_series(list_of_crops, list_of_regions, start_year_,
             ax.scatter(yield_dict[0][crop][region][1], 
                        yield_dict[0][crop][region][0], c='r', marker='+', 
                        linewidth=2, s=70, label='detrended obs')
-            ylims = frame_at_order_of_magnitude(0., 
+            if (obs_type_=='area'):
+                ylims = frame_at_order_of_magnitude(0., 
+                          max(max(yield_dict[0][crop][region][0]), 
+                              max(yield_dict[1][crop][region]['nonopt'])), 100.)
+            else:
+                ylims = frame_at_order_of_magnitude(0., 
                               max(yield_dict[1][crop][region]['nonopt']), 1000.)
             ystep = ylims[1] / 5.
             yticks = np.arange(0.,ylims[1]+0.5,ystep)
@@ -256,12 +273,14 @@ def plot_yield_time_series(list_of_crops, list_of_regions, start_year_,
                 ax.set_ylabel(r'yield (kg$_{DM}$ ha$^{-1}$)')
             elif (obs_type_=='harvest'):
                 ax.set_ylabel(r'harvest (1000 tDM)')
+            elif (obs_type_=='area'):
+                ax.set_ylabel(r'area (1000 ha)')
             ax.set_xlabel('time (year)')
             ax.set_title('%s (%s) - %s'%(region, NUTS_name[region], 
                                                             crop_name[crop][0]))
             ax.axvspan(opti_years[0]-0.5, opti_years[-1]+0.5, color='grey',
                                                                       alpha=0.3)
-            ax.annotate('yldgapf=%.2f'%yield_dict[2][crop][region], xy=(0.89,0.1), 
+            ax.annotate('yldgapf=%.3f'%yield_dict[2][crop][region], xy=(0.89,0.1), 
                         xycoords='axes fraction',horizontalalignment='center',
                         verticalalignment='center')
             plt.legend(loc='best', ncol=3, fontsize=12,
@@ -366,6 +385,11 @@ def compute_regional_yields_series(list_of_crops, list_of_regions, start_year_,
 
         for region in list_of_regions: # for each region of our list:
 
+            # Retrieve the crop fraction of each region:
+            frac_crop = get_EUR_frac_crop(crop_name[crop][1], NUTS_name[region], 
+                        EUROSTATdir)
+            print 'EUROSTAT crop area fraction:', frac_crop
+
             DM_content = retrieve_crop_DM_content(crop, region)
             # detrend the yield observations
             detrend[crop][region] = detrend_obs(1975, 2014, NUTS_name[region], 
@@ -376,7 +400,8 @@ def compute_regional_yields_series(list_of_crops, list_of_regions, start_year_,
             # Retrieve the forward simulation datasets (one for the optimized
             # and one for the non-optimized simulations)
             list_of_files = [f for f in os.listdir(ForwardSimdir) if ((region 
-                             in f) and ('ForwardSim' in f))]
+                         in f) and ('ForwardSim' in f)) and not ('.swp' in f)]
+            print list_of_files
             Forward_Sim   = open_csv(ForwardSimdir, list_of_files)
 
             # we identify the dictionaries keys:
@@ -387,26 +412,28 @@ def compute_regional_yields_series(list_of_crops, list_of_regions, start_year_,
             key_opt5   = [f for f in list_of_files if ('_Opt_0.635_' in f)][0]
             key_opt6   = [f for f in list_of_files if ('_Opt_0.645_' in f)][0]
             key_opt7   = [f for f in list_of_files if ('_Opt_0.675_' in f)][0]
-            key_nonopt = [f for f in list_of_files if ('_Non-Opt_' in f)][0]
+            key_nonopt = [f for f in list_of_files if ('_Non-Opt_crop' in f)][0]
 
             # aggregate the individual yields into a regional yield
             Regional_yield[crop][region] = dict()
             Regional_yield[crop][region]['opt-0.05'] = \
-                      calc_regional_yields(Forward_Sim[key_opt1], campaign_years)
+                     calc_regional_yields(Forward_Sim[key_opt1], campaign_years)
             Regional_yield[crop][region]['opt-0.02'] = \
-                      calc_regional_yields(Forward_Sim[key_opt2], campaign_years)
+                     calc_regional_yields(Forward_Sim[key_opt2], campaign_years)
             Regional_yield[crop][region]['opt-0.01'] = \
-                      calc_regional_yields(Forward_Sim[key_opt3], campaign_years)
+                     calc_regional_yields(Forward_Sim[key_opt3], campaign_years)
             Regional_yield[crop][region]['opt'] = \
-                      calc_regional_yields(Forward_Sim[key_opt4], campaign_years)
+                     calc_regional_values(Forward_Sim[key_opt4], campaign_years,
+                                                             frac_crop, 'yield')
             Regional_yield[crop][region]['opt+0.01'] = \
-                      calc_regional_yields(Forward_Sim[key_opt5], campaign_years)
+                     calc_regional_yields(Forward_Sim[key_opt5], campaign_years)
             Regional_yield[crop][region]['opt+0.02'] = \
-                      calc_regional_yields(Forward_Sim[key_opt6], campaign_years)
+                     calc_regional_yields(Forward_Sim[key_opt6], campaign_years)
             Regional_yield[crop][region]['opt+0.05'] = \
-                      calc_regional_yields(Forward_Sim[key_opt7], campaign_years)
+                     calc_regional_yields(Forward_Sim[key_opt7], campaign_years)
             Regional_yield[crop][region]['nonopt'] = \
-                   calc_regional_yields(Forward_Sim[key_nonopt], campaign_years)
+                   calc_regional_values(Forward_Sim[key_nonopt], campaign_years,
+                                                             frac_crop, 'yield')
             opti_yldgapf[crop][region] = Forward_Sim[key_opt4]['YLDGAPF(-)'][0]
 
     return detrend, Regional_yield, opti_yldgapf
@@ -423,20 +450,23 @@ def compute_regional_yield(list_of_crops, list_of_regions, start_year_,
     # THIS SHOULD NOT BE HARDCODED:
     NUTS_name = dict() # this should not be hardcoded
     NUTS_name['ES41'] = 'Castilla y Leon'
+    NUTS_name['ES42'] = 'Castilla-la Mancha'
     NUTS_name['ES43'] = 'Extremadura'
     #####
     nb_years = int(end_year_ - start_year_ + 1.)
     campaign_years = np.linspace(int(start_year_),int(end_year_),nb_years)
 
+
     # Retrieve the observational dataset:
-    NUTS_data   =  open_csv_EUROSTAT(EUROSTATdir,
-                                     ['agri_yields_NUTS1-2-3_1975-2014.csv'],
+    if (obs_type_ == 'harvest'):
+        NUTS_filename = 'agri_harvest_NUTS1-2-3_1975-2014.csv'
+    elif (obs_type_ == 'yield'):
+        NUTS_filename = 'agri_yields_NUTS1-2-3_1975-2014.csv'
+    elif (obs_type_ == 'area'):
+        NUTS_filename = 'agri_croparea_NUTS1-2-3_1975-2014.csv'
+    NUTS_data   =  open_csv_EUROSTAT(EUROSTATdir, [NUTS_filename],
                                      convert_to_float=True)
 
-    # we simplify the dictionaries keys:
-    NUTS_data['yields'] = NUTS_data['agri_yields_NUTS1-2-3_1975-2014.csv']
-    del NUTS_data['agri_yields_NUTS1-2-3_1975-2014.csv']
-        
     opti_yldgapf   = dict()
     Regional_yield = dict()
     detrend        = dict()
@@ -449,17 +479,22 @@ def compute_regional_yield(list_of_crops, list_of_regions, start_year_,
 
         for region in list_of_regions: # for each region of our list:
 
+            # Retrieve the crop fraction of each region:
+            frac_crop = get_EUR_frac_crop(crop_name[crop][1], NUTS_name[region], 
+                                          EUROSTATdir)
+            print 'EUROSTAT crop area fraction:', frac_crop
+
             DM_content = retrieve_crop_DM_content(crop, region)
-            # detrend the yield observations
+            # detrend the yield observations (except area)
             detrend[crop][region] = detrend_obs(1975, 2014, NUTS_name[region], 
-                                    crop_name[crop][1], NUTS_data['yields'], 
+                                    crop_name[crop][1], NUTS_data[NUTS_filename], 
                                     DM_content, 2000, obs_type=obs_type_, 
                                     prod_fig=False)
-        
             # Retrieve the forward simulation datasets (one for the optimized
             # and one for the non-optimized simulations)
             list_of_files = [f for f in os.listdir(ForwardSimdir) if ((region 
-                             in f) and ('ForwardSim' in f))]
+                             in f) and ('ForwardSim' in f) and ('Opt_crop' in f)
+                             and not ('.swp' in f))]
             Forward_Sim   = open_csv(ForwardSimdir, list_of_files)
 
             # we identify the dictionaries keys:
@@ -469,9 +504,15 @@ def compute_regional_yield(list_of_crops, list_of_regions, start_year_,
             # aggregate the individual yields into a regional yield
             Regional_yield[crop][region] = dict()
             Regional_yield[crop][region]['opt'] = \
-                      calc_regional_yields(Forward_Sim[key_opt], campaign_years)
+                                   calc_regional_values(Forward_Sim[key_opt], 
+                                                        campaign_years, 
+                                                        frac_crop,
+                                                        obs_type_)
             Regional_yield[crop][region]['nonopt'] = \
-                   calc_regional_yields(Forward_Sim[key_nonopt], campaign_years)
+                                   calc_regional_values(Forward_Sim[key_nonopt], 
+                                                        campaign_years, 
+                                                        frac_crop,
+                                                        obs_type_)
             opti_yldgapf[crop][region] = Forward_Sim[key_opt]['YLDGAPF(-)'][0]
 
     return detrend, Regional_yield, opti_yldgapf
@@ -505,6 +546,47 @@ def retrieve_RMSE_and_YLDGAPF(list_of_regions, list_of_cases):
         O_YLDGAPF[region] = list(optimum_yldgapf) 
 
     return RMSE, O_YLDGAPF
+
+#===============================================================================
+# Function to aggregate the individual yields into the yearly regional yields
+def calc_regional_values(FINAL_YLD, campaign_years_, frac_crop_, _obs_type_):
+#===============================================================================
+
+    import math
+
+    TSO_regional = np.zeros(len(campaign_years_))
+    # we calculate one regional value per year
+    for y,year in enumerate(campaign_years_):
+        indx_crop            = np.array([math.pow(j,2) for j in \
+                                         (frac_crop_[1]-year)]).argmin()
+        frac_crop            = frac_crop_[0][indx_crop]
+        sum_weighted_yields  = 0.
+        sum_weights          = 0.
+        # we read each line of the ouput file
+        for l in range(0,len(FINAL_YLD['year'])):
+            # if the line concerns the year we are interested in
+            if (FINAL_YLD['year'][l] == year):
+                # we multiply the yield with the area cultivated for the crop
+                frac_arable         = FINAL_YLD['arable_area(ha)'][l] / 62500.
+                frac_culti          = frac_arable * frac_crop
+                area_culti          = FINAL_YLD['stu_area(ha)'][l] * frac_culti   
+                sum_weighted_yields = sum_weighted_yields + \
+                                      FINAL_YLD['TSO(kgDM.ha-1)'][l] * area_culti 
+                # we sum the cultivated area
+                sum_weights         = sum_weights + area_culti
+            else:
+                pass
+        if (_obs_type_ == 'yield'):
+            # area-weighted average of the yield
+            TSO_regional[y] = sum_weighted_yields / sum_weights # kgDM/ha
+        elif (_obs_type_ == 'harvest'):
+            # sum of the individual harvests
+            TSO_regional[y] = sum_weighted_yields / 1000000. # 1000 tDM
+        elif (_obs_type_ == 'area'):
+            # sum of the individual cultivated areas
+            TSO_regional[y] = sum_weights / 1000. # 1000 ha
+
+    return TSO_regional
 
 #===============================================================================
 # Function to aggregate the individual yields into the yearly regional yields

@@ -6,6 +6,76 @@ import numpy as np
 # This script gathers a few useful general functions used by several scripts
 
 #===============================================================================
+# retrieve the crop fraction from EUROSTAT data
+def get_EUR_frac_crop(crop_name, NUTS_name, EUROSTATdir_, 
+                                                                prod_fig=False):
+#===============================================================================
+
+    import math
+    from matplotlib import pyplot as plt
+
+    name1       = 'agri_croparea_NUTS1-2-3_1975-2014.csv'
+    name2       = 'agri_landuse_NUTS1-2-3_2000-2013.csv'
+    NUTS_data   =  open_csv_EUROSTAT(EUROSTATdir_, [name1, name2],
+                                     convert_to_float=True)
+    # retrieve the region's crop area and arable area for the years 2000-2013
+    # NB: by specifying obs_type='area', we do not remove a long term trend in
+    # the observations 
+    crop_area   = detrend_obs(2000, 2013, NUTS_name, crop_name,
+                              NUTS_data[name1], 1., 2000, obs_type='area',
+                              prod_fig=False)
+    arable_area = detrend_obs(2000, 2013, NUTS_name, 'Arable land', 
+                              NUTS_data[name2], 1., 2000, obs_type='area',
+                              prod_fig=False)
+    # we calculate frac_crop for the years where we both have observations of 
+    # arable land AND crop area
+    frac_crop = np.array([])
+    years     = np.array([])
+    for year in range(2000, 2015):
+        if ((year in crop_area[1]) and (year in arable_area[1])):
+            indx_crop = np.array([math.pow(j,2) for j in (crop_area[1]-year)]).argmin()  
+            indx_arab = np.array([math.pow(j,2) for j in (arable_area[1]-year)]).argmin()
+            frac_crop = np.append(frac_crop, crop_area[0][indx_crop] / \
+                                     arable_area[0][indx_arab])
+            years     = np.append(years, year)
+        else:
+            years     = np.append(years, np.nan)
+            frac_crop = np.append(frac_crop, np.nan)
+
+    # for years without data, we fit a linear trend line in the record of 
+    # observed frac
+    all_years = range(2000, 2015)
+    mask = ~np.isnan(np.array(years))
+    z = np.polyfit(years[mask], frac_crop[mask], 1)
+    p = np.poly1d(z)
+    for y,year in enumerate(years):
+        if np.isnan(year):
+            frac_crop[y] = p(all_years[y])
+
+    # return the yearly ratio of crop / arable land, and the list of years 
+    return frac_crop, all_years
+
+#===============================================================================
+# Select the list of years over which we optimize the yldgapf
+def define_opti_years(opti_year_, obs_years):
+#===============================================================================
+
+    if opti_year_ in obs_years:
+        # if the year is available in the record of observed yields, we
+        # use that particular year to optimize the yldgapf
+        print '\nWe use the available yield observations from', opti_year_
+        opti_years = [opti_year_]
+    else:
+        # if we don't have yield observations for that year, we use the
+        # most recent 3 years of observations available to optimize the 
+        # yldgapf. The generated yldgapf will be used as proxy of the 
+        # opti_year yldgapf
+        opti_years = find_consecutive_years(obs_years, 3)
+        print '\nWe use', opti_years, 'as proxy for', opti_year
+
+    return opti_years
+
+#===============================================================================
 # Return a list of consecutive years longer than n items
 def find_consecutive_years(years, nyears):
 #===============================================================================
@@ -91,6 +161,10 @@ def detrend_obs( _start_year, _end_year, _NUTS_name, _crop_name,
         header_to_search = 'Harvested production (1000 t)'
         conversion_factor = _DM_content
         obs_unit = '1000 tDM'
+    elif (obs_type == 'area'):
+        header_to_search = 'Area (1 000 ha)'
+        conversion_factor = 1.
+        obs_unit = '1000 ha'
     
     # select yields for the required region, crop and period of time
     # and convert them from kg_humid_matter/ha to kg_dry_matter/ha 
@@ -136,9 +210,17 @@ def detrend_obs( _start_year, _end_year, _NUTS_name, _crop_name,
         print 'the trend line is y=%.6fx+(%.6f)'%(z[0],z[1])
         plt.show()
     
-    print '\nsuccesfully detrended the dry matter %ss!'%obs_type
-    
-    return OBS['DETRENDED'], campaign_years[mask]
+    if ((obs_type == 'yield') or (obs_type == 'harvest')):
+        print '\nsuccesfully detrended the dry matter %ss!'%obs_type
+    elif (obs_type == 'area'): 
+        print '\nno %ss to detrend! returning the original obs'%obs_type
+   
+    if ((obs_type == 'yield') or (obs_type == 'harvest')):
+        obstoreturn = OBS['DETRENDED']
+    elif (obs_type == 'area'): 
+        obstoreturn = OBS['ORIGINAL']
+
+    return obstoreturn, campaign_years[mask]
 
 #===============================================================================
 # Function to retrieve the dry matter content of a given crop in a given
