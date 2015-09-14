@@ -15,7 +15,7 @@ def main():
     from maries_toolbox import open_csv_EUROSTAT, detrend_obs, get_crop_name,\
                                define_opti_years, retrieve_crop_DM_content
 #-------------------------------------------------------------------------------
-    global currentdir, EUROSTATdir, folderpickle, detrend
+    global currentdir, EUROSTATdir, folderpickle, pcseoutput, detrend
 #-------------------------------------------------------------------------------
 # Define the settings of the run:
  
@@ -25,15 +25,15 @@ def main():
     crop_no       = 3        # CGMS crop number
 
     # yield gap factor optimization:
-    optimization  = True     # if False: we assign a YLDGAPF = 1.
+    optimization  = False     # if False: we assign a YLDGAPF = 1.
                              # if True: we optimize YLDGAPF
     opti_year     = 2006     # the year we want to match the yield obs. for
     selec_method  = 'topn'   # can be 'topn' or 'randomn' or 'all'
-    ncells        = 2        # number of selected grid cells within a region
-    nsoils        = 2        # number of selected soil types within a grid cell
+    ncells        = 1        # number of selected grid cells within a region
+    nsoils        = 1        # number of selected soil types within a grid cell
 
     # forward crop growth simulations:
-    forward_sims  = False
+    forward_sims  = True
     start_year    = 2000     # start_year and end_year define the period of time
     end_year      = 2014     # for which we do forward simulations
 
@@ -68,10 +68,13 @@ def main():
 				   +'EUROSTAT_data'
     folderpickle  = '/Users/mariecombe/Documents/Work/Research_project_3/'\
                    +'pcse/pickled_CGMS_input_data/'
+    pcseoutput    = '/Users/mariecombe/Documents/Work/Research_project_3/'\
+                   +'pcse/pcse_individual_output/'
 
     # directories on capegrim:
-    #folderpickle  = '/Storage/CO2/mariecombe/pickled_CGMS_input_data/'
     #EUROSTATdir   = "/Users/mariecombe/Cbalance/EUROSTAT_data"
+    #folderpickle  = '/Storage/CO2/mariecombe/pickled_CGMS_input_data/'
+    #pcseoutput    = '/Storage/CO2/mariecombe/pcse_individual_output/'
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
@@ -426,8 +429,8 @@ def optimize_regional_yldgapf_dyn(crop_no_, frac_crop, selected_grid_cells_,
 	# when we are finished iterating on the yield gap factor range, we sort the
 	# (RMSE, YLDGAPF) tuples by values of YLDGAPF
     RMSE_stored  = sorted(RMSE_stored, key=operator_itemgetter(0))
-    pickle_dump(RMSE_stored, open(os.path.join(currentdir,'output_data','RMSE_' 
-                                           + output_tagname_ + '.pickle'),'wb'))       
+    pickle_dump(RMSE_stored, open(os.path.join(currentdir,'pcse_summary_output',
+                                   'RMSE_' + output_tagname_ + '.pickle'),'wb'))       
 
 	# when we are finished iterating on the yield gap factor range, we plot the
     # RMSE as a function of the yield gap factor
@@ -614,8 +617,8 @@ def optimize_yldgapf_dyn_agyield(crop_no_, selected_grid_cells_,
 	# when we are finished iterating on the yield gap factor range, we sort the
 	# (RMSE, YLDGAPF) tuples by values of YLDGAPF
     RMSE_stored  = sorted(RMSE_stored, key=operator_itemgetter(0))
-    pickle_dump(RMSE_stored, open(os.path.join(currentdir,'output_data','RMSE_' 
-                                           + output_tagname_ + '.pickle'),'wb'))       
+    pickle_dump(RMSE_stored, open(os.path.join(currentdir,'pcse_summary_output',
+                                   'RMSE_' + output_tagname_ + '.pickle'),'wb'))       
 
 	# when we are finished iterating on the yield gap factor range, we plot the
     # RMSE as a function of the yield gap factor
@@ -803,10 +806,12 @@ def perform_yield_sims(selected_grid_cells_, selected_soil_types_,
     from pcse.base_classes import WeatherDataProvider
 
     # 0- we open a file to write summary output in it
-    if (os.path.isfile(os.path.join(currentdir, 'output_data', Res_filename))):
-        os.remove(os.path.join(currentdir, 'output_data', Res_filename))
-        print '\nDeleted old file %s in folder output_data/'%Res_filename
-    Results = open(os.path.join(currentdir, 'output_data', Res_filename), 'w')
+    if (os.path.isfile(os.path.join(currentdir, 'pcse_summary_output',   
+                                                                Res_filename))):
+        os.remove(os.path.join(currentdir, 'pcse_summary_output', Res_filename))
+        print '\nDeleted old file %s in folder pcse_summary_output/'%Res_filename
+    Results = open(os.path.join(currentdir, 'pcse_summary_output', Res_filename), 
+                                                                             'w')
     # we write the header line:
     Results.write('YLDGAPF(-),  grid_no,  year,  stu_no, arable_area(ha), stu_area(ha), '\
                  +'TSO(kgDM.ha-1), TLV(kgDM.ha-1), TST(kgDM.ha-1), '\
@@ -852,7 +857,17 @@ def perform_yield_sims(selected_grid_cells_, selected_soil_types_,
                 wofost_object = Wofost71_WLP_FD(sitedata, timerdata, soildata, 
                                                 cropdata, weatherdata)
                 wofost_object.run_till_terminate() #will stop the run when DVS=2
-    
+
+                # get time series of the output and take the selected variables
+                #output = wofost_object.get_output()
+                #varnames = ["day","GASS","MRES"]
+                #timeseries = dict()
+                #for var in varnames:
+                #    timeseries[var] = [t[var] for t in output]
+                wofost_object.store_to_file( pcseoutput +\
+                                            "pcse_output_c%s_g%s_s%s_y%i.csv"\
+                                            %(crop_no_,grid,soil_type,year))
+
                 # get major summary output variables for each run
                 # total dry weight of - dead and alive - storage organs (kg/ha)
                 TSO       = wofost_object.get_variable('TWSO')
