@@ -167,4 +167,4 @@ class Wofost71_WLP_FD(_Wofost71Base):
     for free draining soils and the right configuration file.
     """
     simulation_mode = "wlp"
-    config = "Wofost71_WLP_FD.conf"
+    config = "Wofost71_WLP_FD_Marie.conf"
