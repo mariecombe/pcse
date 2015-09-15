@@ -257,6 +257,57 @@ def retrieve_crop_DM_content(crop_no_, NUTS_no_):
 
 #===============================================================================
 # Function to open normal csv files
+def open_pcse_csv_output(inpath,filelist):
+#===============================================================================
+
+    from csv import reader as csv_reader
+    from datetime import date
+    from string import split
+
+    Dict = {}
+
+    for i,namefile in enumerate(filelist):
+         
+        print "\nOpening %s......"%(namefile)
+
+        # open file, read all lines
+        inputpath = os.path.join(inpath,namefile)
+        f=open(inputpath,'rU') 
+        reader=csv_reader(f, delimiter=',', skipinitialspace=True)
+        lines=[]
+        for row in reader:
+            lines.append(row)
+        f.close()
+
+        # storing headers in list headerow
+        headerow=lines[18]
+
+        # deleting rows that are not data (first and last rows of the file)
+        del lines[0:19]
+
+        # transforming data from string to float type
+        converted_data=[]
+        for line in lines:
+            datestr = split(line[0], '-')
+            a = [date(int(datestr[0]),int(datestr[1]),int(datestr[2])), \
+                 float(line[1]), float(line[2]), float(line[3]), float(line[4]), \
+                 float(line[5]), float(line[6]), float(line[7]), float(line[8]), \
+                 float(line[9]), float(line[10]), float(line[11])]
+            converted_data.append(a)
+        data = np.array(converted_data)
+
+        # creating one dictionnary and storing the float data in it
+        dictnamelist= {}
+        for j,varname in enumerate(headerow):
+            dictnamelist[varname]=data[:,j]
+        Dict[namefile] = dictnamelist
+    
+        print "Dictionary created!"
+
+    return Dict
+
+#===============================================================================
+# Function to open normal csv files
 def open_csv(inpath,filelist,convert_to_float=False):
 #===============================================================================
 
