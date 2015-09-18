@@ -5,10 +5,154 @@ import numpy as np
 
 # This script gathers a few useful general functions used by several scripts
 
+
+#===============================================================================
+# Function to select a subset of grid cells within a NUTS region
+def select_cells(NUTS_no, folder_pickle, method='topn', n=3):
+#===============================================================================
+    '''
+    This function selects a subset of grid cells contained in a NUTS region
+    This function should be used AFTER having listed the available CGMS grid 
+    cells of a NUTS region with Allard's SQL routine.
+
+    The function returns a list of (grid_cell_id, arable_land_area) tuples that 
+    are sorted by arable_land_area.
+
+    Function arguments:
+    ------------------
+    NUTS_no        is a string and is the NUTS region abbreviation
+
+    folder_pickle  is a string and is the path to the folder where the CGMS 
+                   input pickle files are located (the pickled lists of 
+                   available grid cells). To produce these input files, use the
+                   script CGMS_input_files_retrieval.py
+
+    method         is a string specifying how we select our subset of grid cells.
+                   if 'all': we select all grid cells from the list.
+                   if 'topn': we select the top n cells from the list that 
+                   contain the most arable land.
+                   if 'randomn': we select n grid cells randomly from the list.
+                   method='topn' by default.
+
+    n              is an integer specifying the number of grid cells to select 
+                   for the method 'topn' and 'randomn'. n=3 by default.
+
+    '''
+    from cPickle import load as pickle_load
+    from random import sample as random_sample
+    
+    # we first read the list of all 'whole' grid cells of that region
+    # NB: list_of_tuples is a list of (grid_cell_id, arable_land_area)
+    # tuples, which are already sorted by decreasing amount of arable land
+    filename = folder_pickle+'gridlistobject_all_r%s.pickle'%NUTS_no
+    list_of_tuples = pickle_load(open(filename,'rb'))
+    # we select the first item from the file, which is the actual list of tuples
+    list_of_tuples = list_of_tuples[0]
+
+    # first option: we select the top n grid cells in terms of arable land area
+    if (method == 'topn'):
+        subset_list   = list_of_tuples[0:n]
+    # second option: we select a random set of n grid cells
+    elif (method == 'randomn'):
+        try: # try to sample n random soil types:
+            subset_list   = random_sample(list_of_tuples,n)
+        except: # if an error is raised ie. sample size bigger than population 
+            subset_list   = list_of_tuples
+    # last option: we select all available grid cells of the region
+    else:
+        subset_list   = list_of_tuples
+
+    print '\nWe have selected', len(subset_list),'grid cells:',\
+              [g for g,a in subset_list]
+
+    return subset_list
+
+#===============================================================================
+# Function to select a subset of suitable soil types for a list of grid cells
+def select_soils(crop_no, grid_cells, folder_pickle, method='topn', n=3):
+#===============================================================================
+    '''
+    This function selects a subset of suitable soil types for a given crop from 
+    all the ones contained in a CGMS grid cell. This function should be used 
+    AFTER having listed the available CGMS grid cells of a NUTS region, and its
+    soil types, with Allard's SQL routine.
+
+    The function returns a dictionary of lists of (smu_no, stu_no, stu_area, 
+    soil_data) sets, one list being assigned per grid cell number.
+
+    Function arguments:
+    ------------------
+    crop_no        is an integer and is the CGMS crop ID number.
+
+    grid_cells     is the list of selected (grid_cell_id, arable_land_area)
+                   tuples for which we want to select a subset of soil types.
+
+    folder_pickle  is a string and is the path to the folder where the CGMS 
+                   input pickle files are located (the pickled lists of 
+                   suitable soil types and lists of soil type data). To produce
+                   these input files, use the script CGMS_input_files_retrieval.py
+
+    method         is a string specifying how we select our subset of soil types.
+                   if 'all': we select all suitable soil types from the list.
+                   if 'topn': we select the top n soil types from the list with 
+                   the biggest soil type area.
+                   if 'randomn': we select n soil types randomly from the list.
+
+    n              is an integer specifying the number of soil types to select 
+                   for the method 'topn' and 'randomn'. n=3 by default.
+
+    '''
+
+    from random import sample as random_sample
+    from operator import itemgetter as operator_itemgetter
+    from cPickle import load as pickle_load
+
+    # we first read the list of suitable soil types for our chosen crop 
+    filename = folder_pickle+'suitablesoilsobject_c%d.pickle'%crop_no
+    suitable_soils = pickle_load(open(filename,'rb')) 
+ 
+    dict_soil_types = {}
+ 
+    for grid in [g for g,a in grid_cells]:
+ 
+        # we read the list of soil types contained within the grid cell
+        filename = folder_pickle+'soilobject_g%d.pickle'%grid
+        soil_iterator_ = pickle_load(open(filename,'rb'))
+ 
+        # Rank soils by decreasing area
+        sorted_soils = []
+        for smu_no, area_smu, stu_no, percentage_stu, soildata in soil_iterator_:
+            if stu_no not in suitable_soils: continue
+            weight_factor = area_smu * percentage_stu/100.
+            sorted_soils = sorted_soils + [(smu_no, stu_no, weight_factor, 
+                                                                       soildata)]
+        sorted_soils = sorted(sorted_soils, key=operator_itemgetter(2),
+                                                                    reverse=True)
+       
+        # select a subset of soil types to loop over 
+        # first option: we select the top n most present soils in the grid cell
+        if   (method == 'topn'):
+            subset_list   = sorted_soils[0:n]
+        # second option: we select a random set of n soils within the grid cell
+        elif (method == 'randomn'):
+            try: # try to sample n random soil types:
+                subset_list   = random_sample(sorted_soils,n)
+            except: # if sample size bigger than population, do:
+                subset_list   = sorted_soils
+        # last option: we select all available soils in the grid cell
+        else:
+            subset_list   = sorted_soils
+
+        dict_soil_types[grid] = subset_list
+
+        print 'We have selected',len(subset_list),'soil types:',\
+               [stu for smu, stu, w, data in subset_list],'for grid', grid
+ 
+    return dict_soil_types
+
 #===============================================================================
 # retrieve the crop fraction from EUROSTAT data
-def get_EUR_frac_crop(crop_name, NUTS_name, EUROSTATdir_, 
-                                                                prod_fig=False):
+def get_EUR_frac_crop(crop_name, NUTS_name, EUROSTATdir_, prod_fig=False):
 #===============================================================================
 
     import math
@@ -33,10 +177,12 @@ def get_EUR_frac_crop(crop_name, NUTS_name, EUROSTATdir_,
     years     = np.array([])
     for year in range(2000, 2015):
         if ((year in crop_area[1]) and (year in arable_area[1])):
-            indx_crop = np.array([math.pow(j,2) for j in (crop_area[1]-year)]).argmin()  
-            indx_arab = np.array([math.pow(j,2) for j in (arable_area[1]-year)]).argmin()
+            indx_crop = np.array([math.pow(j,2) for j in \
+                                                  (crop_area[1]-year)]).argmin()
+            indx_arab = np.array([math.pow(j,2) for j in \
+                                                (arable_area[1]-year)]).argmin()
             frac_crop = np.append(frac_crop, crop_area[0][indx_crop] / \
-                                     arable_area[0][indx_arab])
+                                                      arable_area[0][indx_arab])
             years     = np.append(years, year)
         else:
             years     = np.append(years, np.nan)
@@ -127,11 +273,38 @@ def get_crop_name(list_of_CGMS_crop_no):
     return dict_names
 
 #===============================================================================
-#def fetch_EUROSTAT_NUTS_name(NUTS_no):
+def fetch_EUROSTAT_NUTS_name(NUTS_no, EUROSTATdir):
 #===============================================================================
-    
-#    print 'Not yet coded!'
-#    return None
+   
+    from csv import reader as csv_reader
+
+# read the EUROSTAT file containing the NUTS codes and names
+
+    # open file, read all lines
+    inputpath = os.path.join(EUROSTATdir,'NUTS_codes_2013.csv')
+    f=open(inputpath,'rU') 
+    reader=csv_reader(f, delimiter=',', skipinitialspace=True)
+    lines=[]
+    for row in reader:
+        lines.append(row)
+    f.close()
+
+    # storing headers in list headerow
+    headerow=lines[0]
+
+    # deleting rows that are not data
+    del lines[0]
+
+    print lines[1]
+
+    # we keep the string format, we just separate the string items
+    dictnames = dict()
+    for row in lines:
+        dictnames[row[0]] = row[1]
+
+# we fetch the NUTS region name corresponding to the code
+ 
+    return dictnames[NUTS_no]
 
 #===============================================================================
 # Function to detrend the observed EUROSTAT yields or harvests
@@ -291,8 +464,8 @@ def open_pcse_csv_output(inpath,filelist):
             datestr = split(line[0], '-')
             a = [date(int(datestr[0]),int(datestr[1]),int(datestr[2])), \
                  float(line[1]), float(line[2]), float(line[3]), float(line[4]), \
-                 float(line[5]), float(line[6]), float(line[7]), float(line[8]), \
-                 float(line[9]), float(line[10]), float(line[11])]
+                 float(line[5]), float(line[6]), float(line[7]), float(line[8])]#, \
+                 #float(line[9]), float(line[10]), float(line[11])]
             converted_data.append(a)
         data = np.array(converted_data)
 

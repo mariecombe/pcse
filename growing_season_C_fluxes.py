@@ -9,86 +9,67 @@ import numpy as np
 # heterotrophic respiration
 def main():
 #===============================================================================
-    from maries_toolbox import open_pcse_csv_output
+    from maries_toolbox import open_pcse_csv_output, get_crop_name, \
+                               select_cells, select_soils
     from cPickle import load as pickle_load
+    from cPickle import dump as pickle_dump
     import datetime
     import math
 #-------------------------------------------------------------------------------
-    global ecmwfdir1, ecmwfdir2, ecmwfdir3, folderpickle, pcseouputdir
+    global ecmwfdir_ssrd, ecmwfdir_tsurf, pickled_inputdir, pcse_ouputdir
 #-------------------------------------------------------------------------------
 # User-defined:
 
     NUTS_no = 'ES43'
     crop_no = 3
     opti_year = 2006
+    prod_figure = True
 
 #-------------------------------------------------------------------------------
+# variables calculated from user input
+    crop_name = get_crop_name([crop_no])
+    crop_name = crop_name[3][0]
+#-------------------------------------------------------------------------------
 # constants for R_hetero
-    Eact0 = 53.3e3
-    R10 = 0.23
-    Cw = 1.6e-3
-    wsmax = 0.55
-    wsmin = 0.005
+    Eact0   = 53.3e3    # activation energy [kJ kmol-1]
+    R10     = 0.23      # respiration at 10C [mgCO2 m-2 s-1], can be between
+    Cw      = 1.6e-3    # constant water stress correction (Jacobs et al. 2007)
+    wsmax   = 0.55      # upper reference value soil water [-]
+    wsmin   = 0.005     # lower reference value soil water [-]
+# molar masses for unit conversion of carbon fluxes
+    mmC    = 12.01
+    mmCO2  = 44.01
+    mmCH2O = 30.03 
 #-------------------------------------------------------------------------------
 # We define working directories
 
-    # ecmwfdir1/year/month contains: cld, convec, mfuv, mfw, q, sp, sub, t, tsp
-    ecmwfdir1 = '/Storage/TM5/METEO/tm5-nc/ec/ei/fc012up2tr3/tropo25/eur100x100'
+    ecmwfdir_tsurf = '/Storage/TM5/METEO/tm5-nc/ec/ei/fc012up2tr3/tropo25/'+\
+                     'eur100x100/'
 
-
-    # ecmwfdir3/year/month contains: albedo, sr, srols, veg
-    ecmwfdir3 = '/Storage/TM5/METEO/tm5-nc/ec/ei/an0tr6/sfc/glb100x100/'
+    ecmwfdir_ssrd = '/Storage/TM5/METEO/tm5-nc/ec/ei/fc012up2tr3/sfc/glb100x100/'
 
     # storage folder for individual PCSE runs:
-    pcseoutputdir = '/Storage/CO2/mariecombe/pcse_individual_output/'
+    #pcse_outputdir = '/Storage/CO2/mariecombe/pcse_individual_output/'
+    pcse_outputdir  = '/Users/mariecombe/Documents/Work/Research_project_3/'+\
+                      'pcse/pcse_individual_output/'
     
     # storage folder for the CGMS input data files
-    folderpickle  = '/Storage/CO2/mariecombe/pickled_CGMS_input_data/'
+    #pickled_inputdir  = '/Storage/CO2/mariecombe/pickled_CGMS_input_data/'
+    pickled_inputdir  = '/Users/mariecombe/Documents/Work/Research_project_3/'+\
+                        'pcse/pickled_CGMS_input_data/'
 
 #-------------------------------------------------------------------------------
-# Select the grid cells
+# Select all grid cells of the NUTS region
 
-	# we first read the list of all 'whole' grid cells contained in that
-	# region NB: grid_list_tuples[0] is a list of (grid_cell_id,
-	# arable_land_area) tuples, which are already sorted by decreasing
-	# amount of arable land
-    filename = folderpickle+'gridlistobject_all_r%s.pickle'%NUTS_no
-    grid_list_tuples = pickle_load(open(filename,'rb'))
-
-    # we select all grid cells
-    selected_grid_cells = grid_list_tuples[0]
-    print '\nWe have selected all', len(selected_grid_cells),'grid cells:',\
-              [g for g,a in selected_grid_cells]
+    # we select all whole grid cells contained in the NUTS region
+    selected_grid_cells = select_cells(NUTS_no, pickled_inputdir, method='all')
 
 #-------------------------------------------------------------------------------
-# Select the soil types
+# Select all soil types of the NUTS region
 
-    # we first read the list of suitable soil types for our chosen crop 
-    filename   = folderpickle+'suitablesoilsobject_c%d.pickle'%crop_no
-    suit_soils = pickle_load(open(filename,'rb')) 
-
-    selected_soil_types = {}
-
-    for grid, arable_land in selected_grid_cells:
-
-        # we read the entire list of soil types contained within the grid
-        # cell
-        filename = folderpickle+'soilobject_g%d.pickle'%grid
-        soils    = pickle_load(open(filename,'rb'))
-
-        # We select all of them
-        selected_soil_types[grid] = select_soils(grid, soils, suit_soils, 
-                                                 method='all', n=1)
-        print 'We have selected all', len(selected_soil_types[grid]),\
-              'soil types:',\
-              [stu for smu, stu, w, data in selected_soil_types[grid]],\
-              'for grid', grid
-
-#-------------------------------------------------------------------------------
-# we retrieve the crop cultivated fraction frac_crop
-# it is read from EUROSTAT data
-
-    # frac_crop = 
+    # We select all suitable soil types for each selected grid cell
+    selected_soil_types = select_soils(crop_no, selected_grid_cells,
+                          pickled_inputdir, method='all')
 
 #-------------------------------------------------------------------------------
 #   WE NEED TO LOOP OVER THE GRID CELLS
@@ -96,29 +77,34 @@ def main():
 #-------------------------------------------------------------------------------
 # We retrieve the longitude and latitude of the CGMS grid cell
 
-    # TO BE CODED WITH ALLARD's GRID DICTIONNARY
-    # for now we assume one fixed coordinates at the beginning of the script
+        # TO BE CODED WITH ALLARD's GRID DICTIONNARY
+        # for now we assume one fixed coordinates to retrieve ssrd and tsurf
         lat = 42. # degrees N of the CGMS grid cell
         lon = -4. # degrees E of the CGMS grid cell
 
 #-------------------------------------------------------------------------------
 # We open the incoming surface shortwave radiation [W.m-2] 
 
-        rad = retrieve_ecmwf_ssrd(opti_year, lon, lat)
+        filename_rad = 'rad_ecmwf_%i_lon%.2f_lat%.2f.pickle'%(opti_year,lon,lat)
+        if os.path.exists(filename_rad):
+            print
+            rad = pickle_load(open(filename_rad, 'rb'))
+        else:
+            rad = retrieve_ecmwf_ssrd(opti_year, lon, lat)
+            pickle_dump(rad,open(filename_rad, 'wb'))
 
 #-------------------------------------------------------------------------------
 # We open the surface temperature record
 
-        ts  = retrieve_ecmwf_tsurf(opti_year, lon, lat)
+        filename_ts = 'ts_ecmwf_%i_lon%.2f_lat%.2f.pickle'%(opti_year,lon,lat)
+        if os.path.exists(filename_ts):
+            ts = pickle_load(open(filename_ts, 'rb'))
+        else:
+            ts = retrieve_ecmwf_tsurf(opti_year, lon, lat)
+            pickle_dump(ts,open(filename_ts, 'wb'))
 
 #-------------------------------------------------------------------------------
-# we retrieve the arable_land area of the grid cell
-
-        #frac_arable    = FINAL_YLD['arable_area(ha)'][l] / 62500.
-        #frac_culti     = frac_arable * frac_crop
-
-#-------------------------------------------------------------------------------
-# we initialize the timeseries of harvest gpp and Resp for the grid cell
+# we initialize the timeseries of gpp and Resp for the grid cell
 
         time_cell_timeseries = rad[0]
         len_cell_timeseries  = len(rad[0])
@@ -126,6 +112,13 @@ def main():
         raut_cell_timeseries = np.array([0.]*len_cell_timeseries)
         rhet_cell_timeseries = np.array([0.]*len_cell_timeseries)
         sum_stu_areas        = 0.
+
+
+        if (prod_figure == True):
+            from matplotlib import pyplot
+            pyplot.close('all')
+            fig1 = pyplot.figure('GPP per stu',figsize=(14,6))
+            fig1.subplots_adjust(0.1,0.2,0.98,0.85,0.4,0.6)
 
 #-------------------------------------------------------------------------------
 #       WE NEED TO LOOP OVER THE SOIL TYPE
@@ -136,7 +129,7 @@ def main():
 
             filelist    = 'pcse_output_c%i_g%i_s%i_y%i.csv'\
                            %(crop_no, grid_no, stu_no, opti_year) 
-            wofost_data = open_pcse_csv_output(pcseoutputdir, [filelist])
+            wofost_data = open_pcse_csv_output(pcse_outputdir, [filelist])
 
 #-------------------------------------------------------------------------------
 # We apply the short wave radiation diurnal cycle on the GPP and R_auto
@@ -180,10 +173,12 @@ def main():
                     # translation of cell to stu timeseries index
                     index_day_w  = DOY - DOY_sowing
                     #print 'index of day in wofost record:', index_day_w
-                    gpp_day      = wofost_data[filelist]['RD'][index_day_w] * \
-                                                 stu_area # need to specify GASS
-                    raut_day     = wofost_data[filelist]['RD'][index_day_w] * \
-                                                 stu_area # need to specify MRES
+
+                    # unit conversion: from kgCH2O/ha/day to gC/m2/day
+                    gpp_day   = - wofost_data[filelist]['GASS'][index_day_w] * \
+                                             stu_area * (mmC / mmCH2O) * 0.1
+                    raut_day  = wofost_data[filelist]['MRES'][index_day_w] * \
+                                             stu_area * (mmC / mmCH2O) * 0.1
 
                 # we select the radiation diurnal cycle for that date
                 # NB: the last index is ignored in the selection, so we DO have
@@ -191,20 +186,42 @@ def main():
                 rad_cycle   = rad[1][DOY*8:DOY*8+8] 
 
                 # we apply the radiation cycle on the GPP and Rauto
-                # NB: we check if the applied kernel is correct
-                kernel      = rad_cycle / sum(rad_cycle)
-                gpp_cycle   = kernel * gpp_day
-                raut_cycle  = kernel * raut_day
-                if (sum(gpp_cycle)-gpp_day) > 0.00001: 
+                # and we transform the daily integral into a rate
+                weights       = rad_cycle / sum(rad_cycle)
+                # average gpp and raut rates per second:
+                dt            = 3600. * 24.
+                ave_gpp_rate  = gpp_day   / dt
+                ave_raut_rate = raut_day  / dt 
+                # the day's time series of actual gpp and raut rates per second:
+                gpp_cycle     = weights * ave_gpp_rate
+                raut_cycle    = weights * ave_raut_rate
+                # NB: we check if the applied diurnal cycle is correct
+                if (sum(gpp_cycle)*dt-gpp_day) > 0.01: 
                     print 'wrong kernel applied on GPP', \
-                                        sum(gpp_cycle)-gpp_day, sum(kernel), DOY
-                if (sum(raut_cycle)-raut_day) > 0.00001: 
+                           sum(gpp_cycle)*dt- gpp_day, sum(weights), DOY
+                if (sum(raut_cycle)*dt-raut_day) > 0.01: 
                     print 'wrong kernel applied on Rauto', \
-                                      sum(raut_cycle)-raut_day, sum(kernel), DOY
+                           sum(raut_cycle)*dt-raut_day, sum(weights), DOY
                 gpp_stu_timeseries  = np.concatenate((gpp_stu_timeseries, 
                                                       gpp_cycle), axis=0)
                 raut_stu_timeseries = np.concatenate((raut_stu_timeseries,
                                                       raut_cycle), axis=0)
+
+
+            if (prod_figure == True):
+                pyplot.plot(time_cell_timeseries/(3600.*24.),gpp_stu_timeseries*\
+                                          1000./stu_area, label='stu %i'%stu_no)
+        if (prod_figure == True):
+            pyplot.xlim([40.,170.])
+            pyplot.xlabel('time (DOY)')
+            pyplot.ylabel(r'carbon flux (mg$_{C}$ m$^{-2}$ s$^{-1}$)')
+            pyplot.legend(loc='best', ncol=2, fontsize=10)
+            pyplot.title('Carbon fluxes of %s over the  '%crop_name+\
+                         'cultivated area of grid cell %i (%s) in %i'%(grid_no,
+                                                            NUTS_no, opti_year))
+            figname = 'GPP_per_stu_c%s_%s_y%i_g%i.png'%(crop_no,NUTS_no,opti_year,\
+                                                                        grid_no)
+            #fig1.savefig(figname)
 
 #-------------------------------------------------------------------------------
 # We add the gpp of all soil types in the grid cell. NB: different calendars
@@ -226,31 +243,57 @@ def main():
         # pb: we need to simulate wg with that approach...
         #fw = Cw * wsmax / (wg + wsmin)
         tsurf_inter = Eact0 / (283.15 * 8.314) * (1 - 283.15 / ts[1])
-        print [math.exp(t) for t in tsurf_inter], R10
         rhet_cell_timeseries = R10 * np.array([ math.exp(t) for t in tsurf_inter ]) 
+        # conversion from mgCO2/m2/s to gC/m2/s
+        rhet_cell_timeseries = rhet_cell_timeseries * (mmC / mmCO2) * 0.001
 
 #-------------------------------------------------------------------------------
-# We store the growing season's C fluxes for each grid x soil combi
+# We calculate NEE as the net flux
+
+        nee_cell_timeseries = gpp_cell_timeseries + raut_cell_timeseries +\
+                              rhet_cell_timeseries
+
+#-------------------------------------------------------------------------------
+# We store the growing season's C fluxes for each CGMS grid cell
 
 # crop_no, year, lon_ecmwf, lat_ecmwf, grid_no, soil_no, GPP, R_auto_, R_hetero  
 
-        from matplotlib import pyplot
-        pyplot.close('all')
-        fig = pyplot.figure(figsize=(14,3))
-        fig.subplots_adjust(0.1,0.2,0.98,0.88,0.4,0.6)
-        pyplot.plot(time_cell_timeseries/(3600.*24.),gpp_cell_timeseries, label='GPP')
-        pyplot.plot(time_cell_timeseries/(3600.*24.),raut_cell_timeseries, label=r'$R_{aut}$')
-        pyplot.plot(time_cell_timeseries/(3600.*24.),rhet_cell_timeseries, label=r'$R_{het}$')
-        #pyplot.plot(time_cell_timeseries/(3600.*24.),gpp_stu_timeseries, label='GPP')
-        pyplot.xlim([40.,170.])
-        pyplot.xlabel('time (DOY)')
-        pyplot.ylabel(r'carbon flux (kg$_{CH_2O}$ ha$^{-1}$)')
-        pyplot.legend(loc='best')
-        pyplot.show()
+#-------------------------------------------------------------------------------
+# if requested by the user, we produce one NEE figure per grid cell
+ 
+        if (prod_figure == True):
+            from matplotlib import pyplot
+            fig2 = pyplot.figure(figsize=(14,3))
+            fig2.subplots_adjust(0.1,0.2,0.98,0.85,0.4,0.6)
+            pyplot.plot(time_cell_timeseries/(3600.*24.),gpp_cell_timeseries*1000., 
+                                                             label='GPP', c='g')
+            pyplot.plot(time_cell_timeseries/(3600.*24.),raut_cell_timeseries*1000.,
+                                                      label=r'$R_{aut}$', c='b')
+            pyplot.plot(time_cell_timeseries/(3600.*24.),rhet_cell_timeseries*1000.,
+                                                      label=r'$R_{het}$', c='r')
+            pyplot.plot(time_cell_timeseries/(3600.*24.),nee_cell_timeseries*1000., 
+                                                             label='NEE', c='k')
+            pyplot.xlim([40.,170.])
+            pyplot.xlabel('time (DOY)')
+            pyplot.ylabel(r'carbon flux (mg$_{C}$ m$^{-2}$ s$^{-1}$)')
+            pyplot.legend(loc='best', ncol=2, fontsize=10)
+            pyplot.title('Average carbon fluxes of %s over the  '%crop_name+\
+                         'cultivated area of grid cell %i (%s) in %i'%(grid_no,
+                                                            NUTS_no, opti_year))
+            figname = 'Cbalance_c%s_%s_y%i_g%i.png'%(crop_no,NUTS_no,opti_year,\
+                                                                        grid_no)
+            fig2.savefig(figname)
+            pyplot.show()
+
+#-------------------------------------------------------------------------------
+        # until the whole code has been validated, we stop the script after
+        # testing it on one grid cell only:
+        sys.exit(2)
 
 #-------------------------------------------------------------------------------
 #   END OF THE TWO LOOPS
 #-------------------------------------------------------------------------------
+# END OF THE MAIN CODE
 
 #===============================================================================
 # function that will retrieve the surface temperature from the ECMWF data
@@ -261,7 +304,6 @@ def retrieve_ecmwf_tsurf(year, lon, lat):
 
     import netCDF4 as cdf
 
-    ecmwfdir = '/Storage/TM5/METEO/tm5-nc/ec/ei/fc012up2tr3/tropo25/eur100x100/'
     tsurf = np.array([])
     time  = np.array([])
 
@@ -271,11 +313,11 @@ def retrieve_ecmwf_tsurf(year, lon, lat):
 
             # open file if it exists
             namefile = 't_%i%02d%02d_00p03.nc'%(year,month,day)
-            if (os.path.exists(os.path.join(ecmwfdir,'%i/%02d'%(year,month),
+            if (os.path.exists(os.path.join(ecmwfdir_tsurf,'%i/%02d'%(year,month),
                                                              namefile))==False):
                 print 'cannot find %s'%namefile
                 continue
-            pathfile = os.path.join(ecmwfdir,'%i/%02d'%(year,month),namefile)
+            pathfile = os.path.join(ecmwfdir_tsurf,'%i/%02d'%(year,month),namefile)
             f = cdf.Dataset(pathfile)
 
             # retrieve closest latitude and longitude index of desired location
@@ -298,7 +340,7 @@ def retrieve_ecmwf_tsurf(year, lon, lat):
     if (len(time) < 2920):
         print '!!!WARNING!!!'
         print 'there are less than 365 days of data that we could retrieve'
-        print 'check the folder %s for year %i'%(ecmwfdir2, year)
+        print 'check the folder %s for year %i'%(ecmwfdir_tsurf, year)
  
     return time, tsurf
 
@@ -311,11 +353,6 @@ def retrieve_ecmwf_ssrd(year, lon, lat):
 
     import netCDF4 as cdf
 
-    # ecmwfdir/year/month contains: blh, ci, cp, d2m, ewss, g10m, lsp, nsss, 
-    # sd, sf, skt, slhf, src, sshf, ssr, ssrd, sst, str, strd, swvl1, t2m, u10m,
-    # v10m
-    ecmwfdir = '/Storage/TM5/METEO/tm5-nc/ec/ei/fc012up2tr3/sfc/glb100x100/'
-
     ssrd = np.array([])
     time = np.array([])
 
@@ -325,11 +362,11 @@ def retrieve_ecmwf_ssrd(year, lon, lat):
 
             # open file if it exists
             namefile = 'ssrd_%i%02d%02d_00p03.nc'%(year,month,day)
-            if (os.path.exists(os.path.join(ecmwfdir,'%i/%02d'%(year,month),
+            if (os.path.exists(os.path.join(ecmwfdir_ssrd,'%i/%02d'%(year,month),
                                                              namefile))==False):
                 print 'cannot find %s'%namefile
                 continue
-            pathfile = os.path.join(ecmwfdir,'%i/%02d'%(year,month),namefile)
+            pathfile = os.path.join(ecmwfdir_ssrd,'%i/%02d'%(year,month),namefile)
             f = cdf.Dataset(pathfile)
 
             # retrieve closest latitude and longitude index of desired location
@@ -351,41 +388,9 @@ def retrieve_ecmwf_ssrd(year, lon, lat):
     if (len(time) < 2920):
         print '!!!WARNING!!!'
         print 'there are less than 365 days of data that we could retrieve'
-        print 'check the folder %s for year %i'%(ecmwfdir2, year)
+        print 'check the folder %s for year %i'%(ecmwfdir_ssrd, year)
  
     return time, ssrd
-
-#===============================================================================
-# Function to select a subset of soil types within a grid cell
-def select_soils(grid_cell_id, soil_iterator_, suitable_soils, method='topn', n=3):
-#===============================================================================
-
-    from random import sample as random_sample
-    from operator import itemgetter as operator_itemgetter
-
-    # Rank soils by decreasing area
-    sorted_soils = []
-    for smu_no, area_smu, stu_no, percentage_stu, soildata in soil_iterator_:
-        if stu_no not in suitable_soils: continue
-        weight_factor = area_smu * percentage_stu/100.
-        sorted_soils = sorted_soils + [(smu_no, stu_no, weight_factor, soildata)]
-    sorted_soils = sorted(sorted_soils, key=operator_itemgetter(2), reverse=True)
-   
-    # select a subset of soil types to loop over 
-    # first option: we select the top n most present soils in the grid cell
-    if   (method == 'topn'):
-        subset_list   = sorted_soils[0:n]
-    # second option: we select a random set of n soils within the grid cell
-    elif (method == 'randomn'):
-        try: # try to sample n random soil types:
-            subset_list   = random_sample(sorted_soils,n)
-        except: # if an error is raised ie. sample size bigger than population do
-            subset_list   = sorted_soils
-    # last option: we select all available soils in the grid cell
-    else:
-        subset_list   = sorted_soils
-    
-    return subset_list
 
 #===============================================================================
 if __name__=='__main__':

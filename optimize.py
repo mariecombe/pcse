@@ -13,7 +13,9 @@ from cPickle import load as pickle_load # pickle_load is used in almost all my
 def main():
 #===============================================================================
     from maries_toolbox import open_csv_EUROSTAT, detrend_obs, get_crop_name,\
-                               define_opti_years, retrieve_crop_DM_content
+                               define_opti_years, retrieve_crop_DM_content,\
+                               select_cells, select_soils,\
+                               fetch_EUROSTAT_NUTS_name
 #-------------------------------------------------------------------------------
     global currentdir, EUROSTATdir, folderpickle, pcseoutput, detrend
 #-------------------------------------------------------------------------------
@@ -21,21 +23,20 @@ def main():
  
     # NUTS region and crop:
     NUTS_no       = 'ES43'
-    NUTS_name     = 'Extremadura' #'Noord-Holland'
     crop_no       = 3        # CGMS crop number
 
     # yield gap factor optimization:
-    optimization  = False     # if False: we assign a YLDGAPF = 1.
+    optimization  = True     # if False: we assign a YLDGAPF = 1.
                              # if True: we optimize YLDGAPF
     opti_year     = 2006     # the year we want to match the yield obs. for
     selec_method  = 'topn'   # can be 'topn' or 'randomn' or 'all'
-    ncells        = 1        # number of selected grid cells within a region
-    nsoils        = 1        # number of selected soil types within a grid cell
+    ncells        = 10        # number of selected grid cells within a region
+    nsoils        = 10        # number of selected soil types within a grid cell
 
     # forward crop growth simulations:
     forward_sims  = True
-    start_year    = 2000     # start_year and end_year define the period of time
-    end_year      = 2014     # for which we do forward simulations
+    start_year    = 2006     # start_year and end_year define the period of time
+    end_year      = 2006     # for which we do forward simulations
 
 #-------------------------------------------------------------------------------
 # Calculate key variables from the user input
@@ -44,13 +45,8 @@ def main():
     nb_years      = int(end_year - start_year + 1.)
     campaign_years = np.linspace(int(start_year),int(end_year),nb_years)
 
-    # YET TO BE CODED:
-    # we fetch the EUROSTAT region name corresponding to the NUTS_no
-    # NUTS_name = fetch_EUROSTAT_NUTS_name(NUTS_no)
-    #NUTS_ids  = open_csv_EUROSTAT(EUROSTATdir, ['NUTS_codes_2013.csv'],
-    #                              convert_to_float=False)
-    #NUTS_ids['codes']   = NUTS_ids['NUTS_codes_2013.csv']
-    #del NUTS_ids['NUTS_codes_2013.csv']
+    #we fetch the EUROSTAT region name corresponding to the NUTS_no
+    NUTS_name = fetch_EUROSTAT_NUTS_name(NUTS_no, EUROSTATdir)
 
     # we fetch the EUROSTAT crop name corresponding to the CGMS crop_no
     # 1-we retrieve both the CGMS and EUROSTAT names of a list of crops
@@ -122,39 +118,17 @@ def main():
 #-------------------------------------------------------------------------------
 # Select the grid cells to loop over for the optimization
 
-        # we first read the list of all 'whole' grid cells of that region
-        # NB: grid_list_tuples[0] is a list of (grid_cell_id, arable_land_area)
-        # tuples, which are already sorted by decreasing amount of arable land
-        filename = folderpickle+'gridlistobject_all_r%s.pickle'%NUTS_no
-        grid_list_tuples = pickle_load(open(filename,'rb'))
- 
-        # we select a subset of grid cells to loop over
-        selected_grid_cells = select_grid_cells(grid_list_tuples[0], 
-                                                method=selec_method, n=ncells)
-        print '\nWe have selected', len(selected_grid_cells),'grid cells:',\
-              [g for g,a in selected_grid_cells]
+        # we select a subset of grid cells from the NUTS region
+        selected_grid_cells = select_cells(NUTS_no, folderpickle, 
+                              method=selec_method, n=ncells)
 
 #-------------------------------------------------------------------------------
 # Select the soil types to loop over for the optimization
 
-        # we first read the list of suitable soil types for our chosen crop 
-        filename = folderpickle+'suitablesoilsobject_c%d.pickle'%crop_no
-        suit_soils = pickle_load(open(filename,'rb')) 
- 
-        selected_soil_types = {}
- 
-        for grid in [g for g,a in selected_grid_cells]:
- 
-            # we read the list of soil types contained within the grid cell
-            filename = folderpickle+'soilobject_g%d.pickle'%grid
-            soils = pickle_load(open(filename,'rb'))
- 
-            # We select a subset of soil types to loop over
-            selected_soil_types[grid] = select_soils(grid, soils, suit_soils, 
-                                                 method=selec_method, n=nsoils)
-            print 'We have selected',len(selected_soil_types[grid]),\
-                  'soil types:', [stu for smu, stu, w, data in \
-                   selected_soil_types[grid]],'for grid', grid
+        # We select a subset of soil types per selected grid cell
+        selected_soil_types = select_soils(crop_no, selected_grid_cells,
+                              folderpickle, method=selec_method, n=nsoils)
+
 
 #-------------------------------------------------------------------------------
 # Count the area used to calculate the harvest
@@ -193,41 +167,15 @@ def main():
 #-------------------------------------------------------------------------------
 # Select all available grid cells to loop over for the forward simulations
 
-		# we first read the list of all 'whole' grid cells contained in that
-		# region NB: grid_list_tuples[0] is a list of (grid_cell_id,
-		# arable_land_area) tuples, which are already sorted by decreasing
-		# amount of arable land
-        filename = folderpickle+'gridlistobject_all_r%s.pickle'%NUTS_no
-        grid_list_tuples = pickle_load(open(filename,'rb'))
-
-        # we select all grid cells
-        selected_grid_cells = grid_list_tuples[0]
-        print '\nWe have selected all', len(selected_grid_cells),'grid cells:',\
-                  [g for g,a in selected_grid_cells]
+        # we select a subset of grid cells from the NUTS region
+        selected_grid_cells = select_cells(NUTS_no, folderpickle, method='all')
 
 #-------------------------------------------------------------------------------
 # Select all the available soil types to loop over for the forward runs
 
-        # we first read the list of suitable soil types for our chosen crop 
-        filename   = folderpickle+'suitablesoilsobject_c%d.pickle'%crop_no
-        suit_soils = pickle_load(open(filename,'rb')) 
-
-        selected_soil_types = {}
-
-        for grid in [g for g,a in selected_grid_cells]:
-
-            # we read the entire list of soil types contained within the grid
-            # cell
-            filename = folderpickle+'soilobject_g%d.pickle'%grid
-            soils    = pickle_load(open(filename,'rb'))
-
-            # We select all of them
-            selected_soil_types[grid] = select_soils(grid, soils, suit_soils, 
-                                                     method='all', n=nsoils)
-            print 'We have selected all', len(selected_soil_types[grid]),\
-                  'soil types:',\
-                  [stu for smu, stu, w, data in selected_soil_types[grid]],\
-                  'for grid', grid
+        # We select a subset of soil types per selected grid cell
+        selected_soil_types = select_soils(crop_no, selected_grid_cells,
+                              folderpickle, method='all')
 
 #-------------------------------------------------------------------------------
 # Define the name of the file where we will store the results of the forward
@@ -934,63 +882,6 @@ def calc_cultivated_area_of_crop(selected_grid_cells_, selected_soil_types_):
 
     # 10- we return the land areas
     return total_grid, total_arable, total_soils
-
-#===============================================================================
-# Function to select a subset of soil types within a grid cell
-def select_soils(grid_cell_id, soil_iterator_, suitable_soils, method='topn', n=3):
-#===============================================================================
-
-    from random import sample as random_sample
-    from operator import itemgetter as operator_itemgetter
-
-    # Rank soils by decreasing area
-    sorted_soils = []
-    for smu_no, area_smu, stu_no, percentage_stu, soildata in soil_iterator_:
-        if stu_no not in suitable_soils: continue
-        weight_factor = area_smu * percentage_stu/100.
-        sorted_soils = sorted_soils + [(smu_no, stu_no, weight_factor, soildata)]
-    sorted_soils = sorted(sorted_soils, key=operator_itemgetter(2), reverse=True)
-   
-    # select a subset of soil types to loop over 
-    # first option: we select the top n most present soils in the grid cell
-    if   (method == 'topn'):
-        subset_list   = sorted_soils[0:n]
-    # second option: we select a random set of n soils within the grid cell
-    elif (method == 'randomn'):
-        try: # try to sample n random soil types:
-            subset_list   = random_sample(sorted_soils,n)
-        except: # if an error is raised ie. sample size bigger than population do
-            subset_list   = sorted_soils
-    # last option: we select all available soils in the grid cell
-    else:
-        subset_list   = sorted_soils
-    
-    return subset_list
-
-#===============================================================================
-# Function to select a subset of grid cells within a NUTS region
-def select_grid_cells(list_of_tuples, method='topn', n=3):
-#===============================================================================
-
-    from random import sample as random_sample
-
-	# NB: list_of_tuples is a list of (grid_cell_id, arable_land_area) tuples,
-	# which are already sorted by decreasing amount of arable land
-    
-    # first option: we select the top n grid cells in terms of arable land area
-    if (method == 'topn'):
-        subset_list   = list_of_tuples[0:n]
-    # second option: we select a random set of n grid cells
-    elif (method == 'randomn'):
-        try: # try to sample n random soil types:
-            subset_list   = random_sample(list_of_tuples,n)
-        except: # if an error is raised ie. sample size bigger than population do
-            subset_list   = list_of_tuples
-    # last option: we select all available grid cells of the region
-    else:
-        subset_list   = list_of_tuples
-
-    return subset_list
 
 #===============================================================================
 if __name__=='__main__':
