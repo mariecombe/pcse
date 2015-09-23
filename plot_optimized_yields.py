@@ -26,15 +26,16 @@ def main():
                     # yield from the observed yield
 
     # figures for the forward simulations:
-    figure_4 = True # figure showing a time series of opt vs. obs yields
-    figure_5 = True # figure showing a map of yield over a region
+    figure_4 = False # figure showing a time series of opt vs. obs yields
+    figure_5 = False # figure showing a map of yield over a region
+    figure_6 = True # comparison with fluxnet data
 
 #-------------------------------------------------------------------------------
 # Define general working directories
     currentdir = os.getcwd()
 	# directories on my local MacBook:
-    EUROSTATdir   = '/Users/mariecombe/Documents/Work/Research_project_3/'\
-				   +'EUROSTAT_data'
+    EUROSTATdir   = '../EUROSTAT_data'
+    FLUXNETdir    = '../FluxNet_data'
     # directories on capegrim:
     #EUROSTATdir   = "/Users/mariecombe/Cbalance/EUROSTAT_data"
 #-------------------------------------------------------------------------------
@@ -54,7 +55,7 @@ def main():
                             # find the results files of the sensitivity analysis
     labels    = ['all', 'top 10', 'top 5', 'top 3'] 
     colors    = ['k','r','b','g']#,'cyan','orange','yellow']
-    RMSEdir   = os.path.join(currentdir, 'output_data') # directory where the
+    RMSEdir   = os.path.join(currentdir, 'pcse_summary_output') # directory where the
                             # sensitivity analysis results files are located
 
     # open the results from the sensitivity analysis
@@ -92,7 +93,7 @@ def main():
     start_year  = 2000     # start_year and end_year define the period of time
     end_year    = 2014     # for which we did our forward simulations
     opti_year   = 2006       # nb of years for which we optimized the YLDGAPF
-    ForwardSimdir = os.path.join (currentdir, 'output_data') # directory where
+    ForwardSimdir = os.path.join (currentdir, 'pcse_summary_output') # directory where
                              # the results files of the forward simulations are
                              # located
 
@@ -145,7 +146,102 @@ def main():
 #-------------------------------------------------------------------------------
 # Plot the figure showing a map of yield over a region
 
-#    if (figure_5 == True):
+    if (figure_5 == True):
+        from mpl_toolkits.basemap import Basemap
+        from matplotlib.patches import Polygon
+        from matplotlib.collections import PatchCollection
+        from matplotlib.patches import PathPatch
+        from osgeo import ogr # to add data to a shapefile
+
+# Define the shapefile path and filename:
+
+        path = '../EUROSTAT_data/EUROSTAT_website_2010_shapefiles/'
+        #filename = 'NUTS_BN_03M_2010'# NUTS regions 
+        filename = 'NUTS_RG_03M_2010_copy'# NUTS regions 
+
+# first add an attribute to the shapefile (make a function for that)
+# this attribute will be the yield data! observed, simulated, anomaly, etc...
+
+        # open a shapefile and get field names
+        source = ogr.Open(os.path.join(path + filename), 1) # 1 is read/write
+        layer = source.GetLayer()
+        layer_defn = layer.GetLayerDefn()
+        field_names = [layer_defn.GetFieldDefn(i).GetName() for i in 
+                       range(layer_defn.GetFieldCount())]
+        print 'nb of fields:', len(field_names), 'yield' in field_names
+        # add a new field
+        new_field = ogr.FieldDefn('yield', ogr.OFTReal) # could be OFTInteger or 
+                                                        # OFTString, depending on
+                                                        # desired data type
+        layer.CreateField(new_field)
+        field_names = [layer_defn.GetFieldDefn(i).GetName() for i in
+                       range(layer_defn.GetFieldCount())]
+        print 'nb of fields:', len(field_names), 'yield' in field_names
+        # close the shapefile
+        source = None
+        sys.exit(2)
+
+# create a map of Europe with coast lines
+
+        fig, ax = plt.subplots(nrows = 1, ncols = 1, figsize=(7,7))
+        map = Basemap(projection='laea', lat_0=48, lon_0=16, llcrnrlat=30, 
+                      llcrnrlon=-10, urcrnrlat=65, urcrnrlon=45)
+        map.drawcoastlines()
+
+# plot specific scatter points (e.g. FluxNet data sites)
+
+        lons = [-5, 0]
+        lats = [40, 48]
+        x, y = map(lons,lats)
+        map.scatter(x, y, marker='D', color='m')
+
+# Read a shapefile and its metadata
+
+        name = 'NUTS'
+        # read the shapefile data WITHOUT plotting its shapes
+        NUTS_info = map.readshapefile(path + filename, name, drawbounds=False) 
+
+# Plot polygons and the attached data:
+
+        # retrieve the list of patches to fill and its data to plot
+        patches    = []
+        yield_data = []
+        for info, shape in zip(map.NUTS_info, map.NUTS):
+            if info['STAT_LEVL_'] == 2: # for NUTS 2 regions only
+                patches.append( Polygon(np.array(shape), True) )
+                yield_data.append( float(info['SHAPE_Area']) )
+
+        # create a color scale that fits the data
+        cmap = plt.get_cmap('RdYlBu')
+        colors = cmap(yield_data)
+
+        # add the patches on the map
+        collection = PatchCollection(patches, cmap = cmap, facecolors=colors, 
+                                     edgecolor='k', linewidths=1., zorder=2) 
+        #collection.set_array(np.array(colors))
+        #collection.set_clim(0.,5.)
+        #plt.colorbar(collection)
+        ax.add_collection(collection)
+       
+        plt.show()
+#-------------------------------------------------------------------------------
+# Plot the FluxNet GPP, Reco from various sites
+
+    if (figure_6 == True):
+        sites = ['DE-Kli', 'ES-ES2']
+        years = [2006]
+        for site in sites:
+            listoffiles = [f for f in os.listdir(FLUXNETdir) if (site in f)]
+            filename = listoffiles[0]
+            FNdata = open_csv(FLUXNETdir, listoffiles)
+            fig = plt.subplots(ncols=1, nrows=1, figsize=(14,7))
+            for var in ["GPP_f","Reco","NEE_f"]:
+                plt.plot(FNdata[filename]['DoY'],FNdata[filename][var])
+            
+            plt.xlabel('Time (DOY)')
+            plt.ylabel('Carbon fluxes (gC m-2 d-1)')
+        #fig.suptitle(site)
+        plt.show()
         
 #===============================================================================
 def plot_precision_yldgapf(list_of_crops, list_of_regions, start_year_, 

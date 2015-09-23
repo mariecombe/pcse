@@ -22,8 +22,8 @@ def main():
 # Define the settings of the run:
  
     # NUTS region and crop:
-    NUTS_no       = 'ES43'
-    crop_no       = 3        # CGMS crop number
+    NUTS_no       = 'NL1'
+    crop_no       = 7        # CGMS crop number
 
     # yield gap factor optimization:
     optimization  = True     # if False: we assign a YLDGAPF = 1.
@@ -37,22 +37,6 @@ def main():
     forward_sims  = True
     start_year    = 2006     # start_year and end_year define the period of time
     end_year      = 2006     # for which we do forward simulations
-
-#-------------------------------------------------------------------------------
-# Calculate key variables from the user input
-
-    # we create an array containing the years for which we do forward runs:
-    nb_years      = int(end_year - start_year + 1.)
-    campaign_years = np.linspace(int(start_year),int(end_year),nb_years)
-
-    #we fetch the EUROSTAT region name corresponding to the NUTS_no
-    NUTS_name = fetch_EUROSTAT_NUTS_name(NUTS_no, EUROSTATdir)
-
-    # we fetch the EUROSTAT crop name corresponding to the CGMS crop_no
-    # 1-we retrieve both the CGMS and EUROSTAT names of a list of crops
-    crop_name  = get_crop_name([crop_no])
-    # 2-we select the EUROSTAT name of our specific crop 
-    crop_name  = crop_name[crop_no][1]
 
 #-------------------------------------------------------------------------------
 # Define working directories
@@ -71,6 +55,22 @@ def main():
     #EUROSTATdir   = "/Users/mariecombe/Cbalance/EUROSTAT_data"
     #folderpickle  = '/Storage/CO2/mariecombe/pickled_CGMS_input_data/'
     #pcseoutput    = '/Storage/CO2/mariecombe/pcse_individual_output/'
+
+#-------------------------------------------------------------------------------
+# Calculate key variables from the user input
+
+    # we create an array containing the years for which we do forward runs:
+    nb_years      = int(end_year - start_year + 1.)
+    campaign_years = np.linspace(int(start_year),int(end_year),nb_years)
+
+    #we fetch the EUROSTAT region name corresponding to the NUTS_no
+    NUTS_name = fetch_EUROSTAT_NUTS_name(NUTS_no, EUROSTATdir)
+
+    # we fetch the EUROSTAT crop name corresponding to the CGMS crop_no
+    # 1-we retrieve both the CGMS and EUROSTAT names of a list of crops
+    crop_name  = get_crop_name([crop_no])
+    # 2-we select the EUROSTAT name of our specific crop 
+    crop_name  = crop_name[crop_no][1]
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
@@ -326,6 +326,8 @@ def optimize_regional_yldgapf_dyn(crop_no_, frac_crop, selected_grid_cells_,
 
         # 5- we compute the (sim-obs) differences.
         DIFF = TSO_regional - OBS
+        assert (TSO_regional[-1] > OBS[-1]), "Observed yield too high! The DM '+\
+               'content is wrong. Check it again."
         
         # Writing more output
         print '\nIteration %i'%iter_no

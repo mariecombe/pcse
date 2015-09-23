@@ -22,11 +22,11 @@ def main():
     currentdir    = os.getcwd()
 	
 	# directories on my local MacBook:
-    #EUROSTATdir   = '/Users/mariecombe/Documents/Work/Research_project_3/'\
-	#			   +'EUROSTAT_data'
+    EUROSTATdir   = '/Users/mariecombe/Documents/Work/Research_project_3/'\
+				   +'EUROSTAT_data'
 
     # directories on capegrim:
-    EUROSTATdir   = "/Users/mariecombe/Cbalance/EUROSTAT_data"
+    #EUROSTATdir   = "/Users/mariecombe/Cbalance/EUROSTAT_data"
 
 
 #-------------------------------------------------------------------------------
@@ -82,7 +82,7 @@ def pickle_DM_standard():
     DM_standard[5] = 1. - 0.14 # ? spring wheat (0.14) or spring rape (0.09)...
     DM_standard[6] = 1. - 0.15 # Sugar beet: no idea, taking the only reported 
                                # DM ever (by France)
-    DM_standard[7] = 1. - 0.15 # Potato: no idea, taking the only reported
+    DM_standard[7] = 1. - 0.80 # Potato: no idea, taking the only reported
                                # DM ever (by France)
     DM_standard[8] = 1. - 0.14 # Field beans
     DM_standard[9] = 1. - 0.09 # ? spring wheat (0.14) or spring rape (0.09)...

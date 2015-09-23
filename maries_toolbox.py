@@ -48,6 +48,7 @@ def select_cells(NUTS_no, folder_pickle, method='topn', n=3):
     list_of_tuples = pickle_load(open(filename,'rb'))
     # we select the first item from the file, which is the actual list of tuples
     list_of_tuples = list_of_tuples[0]
+    print list_of_tuples
 
     # first option: we select the top n grid cells in terms of arable land area
     if (method == 'topn'):
@@ -295,16 +296,15 @@ def fetch_EUROSTAT_NUTS_name(NUTS_no, EUROSTATdir):
     # deleting rows that are not data
     del lines[0]
 
-    print lines[1]
-
     # we keep the string format, we just separate the string items
     dictnames = dict()
     for row in lines:
         dictnames[row[0]] = row[1]
 
 # we fetch the NUTS region name corresponding to the code
- 
-    return dictnames[NUTS_no]
+
+    print "EUROSTAT region name of %s:"%NUTS_no, dictnames[NUTS_no].lower()
+    return dictnames[NUTS_no].lower()
 
 #===============================================================================
 # Function to detrend the observed EUROSTAT yields or harvests
@@ -344,7 +344,7 @@ def detrend_obs( _start_year, _end_year, _NUTS_name, _crop_name,
     TARGET = np.array([0.]*nb_years)
     for j,year in enumerate(campaign_years):
         for i,region in enumerate(uncorrected_yields_dict['GEO']):
-            if region.startswith(_NUTS_name[0:12]):
+            if (region.lower()==_NUTS_name):
                 if uncorrected_yields_dict['CROP_PRO'][i]==_crop_name:
                     if (uncorrected_yields_dict['TIME'][i]==str(int(year))):
                         if (uncorrected_yields_dict['STRUCPRO'][i]==
@@ -464,8 +464,8 @@ def open_pcse_csv_output(inpath,filelist):
             datestr = split(line[0], '-')
             a = [date(int(datestr[0]),int(datestr[1]),int(datestr[2])), \
                  float(line[1]), float(line[2]), float(line[3]), float(line[4]), \
-                 float(line[5]), float(line[6]), float(line[7]), float(line[8])]#, \
-                 #float(line[9]), float(line[10]), float(line[11])]
+                 float(line[5]), float(line[6]), float(line[7]), float(line[8]), \
+                 float(line[9])]#, float(line[10]), float(line[11])]
             converted_data.append(a)
         data = np.array(converted_data)
 

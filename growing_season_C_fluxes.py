@@ -115,10 +115,10 @@ def main():
 
 
         if (prod_figure == True):
-            from matplotlib import pyplot
-            pyplot.close('all')
-            fig1 = pyplot.figure('GPP per stu',figsize=(14,6))
-            fig1.subplots_adjust(0.1,0.2,0.98,0.85,0.4,0.6)
+            from matplotlib import pyplot as plt
+            plt.close('all')
+            fig1, axes = plt.subplots(nrows=3, ncols=1, figsize=(14,10))
+            fig1.subplots_adjust(0.1,0.1,0.98,0.9,0.2,0.2)
 
 #-------------------------------------------------------------------------------
 #       WE NEED TO LOOP OVER THE SOIL TYPE
@@ -135,8 +135,10 @@ def main():
 # We apply the short wave radiation diurnal cycle on the GPP and R_auto
 
             # we create empty time series for this specific stu
-            gpp_stu_timeseries  = np.array([])
-            raut_stu_timeseries = np.array([])
+            gpp_cycle_timeseries   = np.array([])
+            raut_cycle_timeseries  = np.array([])
+            gpp_perday_timeseries  = np.array([])
+            raut_perday_timeseries = np.array([])
 
             # we compile the sum of the stu areas to do a weighted average of
             # GPP and Rauto later on
@@ -154,17 +156,19 @@ def main():
                 test_rip = (time - wofost_data[filelist]['day'][-1]).total_seconds() 
                 #print 'tests:', test_sow, test_rip
 
-                # if the day of the time series is before sowing date: npp=0
+                # if the day of the time series is before sowing date: plant 
+                # fluxes are set to zero
                 if test_sow < 0.: 
                     gpp_day  = 0.
                     raut_day = 0.
-                # if the day of the time series is after the harvest date: npp=0
+                # or if the day of the time series is after the harvest date: 
+                # plant fluxes are set to zero
                 elif test_rip > 0.: 
                     gpp_day  = 0.
                     raut_day = 0.
-                # else we get the daily total GPP and Raut in kgCH2O/ha/day from 
-                # wofost, and we weigh it with the stu area to later on calculate
-                # the weighted average GPP and Raut in the grid cell
+                # else we get the daily total GPP and Raut in kgCH2O/ha/day
+                # from wofost, and we weigh it with the stu area to later on 
+                # calculate the weighted average GPP and Raut in the grid cell
                 else: 
                     # index of the sowing date in the time_cell_timeseries:
                     if (test_sow == 0.): DOY_sowing  = DOY
@@ -175,53 +179,67 @@ def main():
                     #print 'index of day in wofost record:', index_day_w
 
                     # unit conversion: from kgCH2O/ha/day to gC/m2/day
-                    gpp_day   = - wofost_data[filelist]['GASS'][index_day_w] * \
-                                             stu_area * (mmC / mmCH2O) * 0.1
-                    raut_day  = wofost_data[filelist]['MRES'][index_day_w] * \
-                                             stu_area * (mmC / mmCH2O) * 0.1
+                    gpp_day    = - wofost_data[filelist]['GASS'][index_day_w] * \
+                                                            (mmC / mmCH2O) * 0.1
+                    maint_resp = wofost_data[filelist]['MRES'][index_day_w] * \
+                                                            (mmC / mmCH2O) * 0.1
+                    try: # if there are any available assimilates for growth
+                        growth_fac = (wofost_data[filelist]['DMI'][index_day_w]) / \
+                                 (wofost_data[filelist]['GASS'][index_day_w] - 
+                                  wofost_data[filelist]['MRES'][index_day_w])
+                        growth_resp = (1.-growth_fac)*(-gpp_day-maint_resp) 
+                    except ZeroDivisionError: # otherwise there is no crop growth
+                        growth_resp = 0.
+                    raut_day   = growth_resp + maint_resp
 
                 # we select the radiation diurnal cycle for that date
                 # NB: the last index is ignored in the selection, so we DO have
                 # 8 time steps selected only (it's a 3-hourly dataset)
-                rad_cycle   = rad[1][DOY*8:DOY*8+8] 
+                rad_cycle      = rad[1][DOY*8:DOY*8+8] 
 
                 # we apply the radiation cycle on the GPP and Rauto
                 # and we transform the daily integral into a rate
-                weights       = rad_cycle / sum(rad_cycle)
-                # average gpp and raut rates per second:
-                dt            = 3600. * 24.
-                ave_gpp_rate  = gpp_day   / dt
-                ave_raut_rate = raut_day  / dt 
-                # the day's time series of actual gpp and raut rates per second:
-                gpp_cycle     = weights * ave_gpp_rate
-                raut_cycle    = weights * ave_raut_rate
+                weights        = rad_cycle / sum(rad_cycle)
+                # the sum of the 8 rates is equal to total/dt:
+                dt             = 3600. * 3.
+                sum_gpp_rates  = gpp_day   / dt
+                sum_raut_rates = raut_day  / dt 
+                # the day's 8 values of actual gpp and raut rates per second:
+                gpp_cycle      = weights * sum_gpp_rates
+                raut_cycle     = weights * sum_raut_rates
                 # NB: we check if the applied diurnal cycle is correct
-                if (sum(gpp_cycle)*dt-gpp_day) > 0.01: 
-                    print 'wrong kernel applied on GPP', \
-                           sum(gpp_cycle)*dt- gpp_day, sum(weights), DOY
-                if (sum(raut_cycle)*dt-raut_day) > 0.01: 
-                    print 'wrong kernel applied on Rauto', \
-                           sum(raut_cycle)*dt-raut_day, sum(weights), DOY
-                gpp_stu_timeseries  = np.concatenate((gpp_stu_timeseries, 
-                                                      gpp_cycle), axis=0)
-                raut_stu_timeseries = np.concatenate((raut_stu_timeseries,
-                                                      raut_cycle), axis=0)
+                assert (sum(weights)-1. < 0.000001), "wrong radiation kernel"
+                assert (len(gpp_cycle)*int(dt) == 86400), "wrong dt in diurnal cycle"
+                assert ((sum(gpp_cycle)*dt-gpp_day) < 0.00001), "wrong diurnal cycle "+\
+                    "applied on GPP: residual=%.2f "%(sum(gpp_cycle)*dt-gpp_day) +\
+                    "on DOY %i"%DOY
+                assert ((sum(raut_cycle)*dt-raut_day) < 0.00001), "wrong diurnal cycle "+\
+                    "applied on Rauto: residual=%.2f "%(sum(raut_cycle)*dt-raut_day) +\
+                    "on DOY %i"%DOY
+
+                # if the applied diurnal cycle is ok, we append that day's cycle
+                # to the yearly record of the stu
+                gpp_cycle_timeseries  = np.concatenate((gpp_cycle_timeseries, 
+                                                       gpp_cycle), axis=0)
+                raut_cycle_timeseries = np.concatenate((raut_cycle_timeseries,
+                                                       raut_cycle), axis=0)
+                # we also store the carbon fluxes per day, for comparison with fluxnet
+                gpp_perday_timeseries = np.concatenate((gpp_perday_timeseries,
+                                                       [gpp_day]), axis=0) 
+                raut_perday_timeseries = np.concatenate((raut_perday_timeseries,
+                                                       [raut_day]), axis=0)
 
 
             if (prod_figure == True):
-                pyplot.plot(time_cell_timeseries/(3600.*24.),gpp_stu_timeseries*\
-                                          1000./stu_area, label='stu %i'%stu_no)
-        if (prod_figure == True):
-            pyplot.xlim([40.,170.])
-            pyplot.xlabel('time (DOY)')
-            pyplot.ylabel(r'carbon flux (mg$_{C}$ m$^{-2}$ s$^{-1}$)')
-            pyplot.legend(loc='best', ncol=2, fontsize=10)
-            pyplot.title('Carbon fluxes of %s over the  '%crop_name+\
-                         'cultivated area of grid cell %i (%s) in %i'%(grid_no,
-                                                            NUTS_no, opti_year))
-            figname = 'GPP_per_stu_c%s_%s_y%i_g%i.png'%(crop_no,NUTS_no,opti_year,\
-                                                                        grid_no)
-            #fig1.savefig(figname)
+                for ax, var, name, lims in zip(axes.flatten(), 
+                [gpp_perday_timeseries, raut_perday_timeseries, 
+                gpp_perday_timeseries + raut_perday_timeseries],
+                ['GPP', 'Rauto', 'NPP'], [[-20.,0.],[0.,10.],[-15.,0.]]):
+                    ax.plot(time_cell_timeseries[::8]/(3600.*24.), var, 
+                                                          label='stu %i'%stu_no)
+                    ax.set_xlim([40.,170.])
+                    ax.set_ylim(lims)
+                    ax.set_ylabel(name + r' (g$_{C}$ m$^{-2}$ d$^{-1}$)', fontsize=14)
 
 #-------------------------------------------------------------------------------
 # We add the gpp of all soil types in the grid cell. NB: different calendars
@@ -229,8 +247,19 @@ def main():
 # differ from stu to stu
 
             # sum the timeseries of GPP and Rauto for all soil types
-            gpp_cell_timeseries  = gpp_cell_timeseries  + gpp_stu_timeseries
-            raut_cell_timeseries = raut_cell_timeseries + raut_stu_timeseries
+            gpp_cell_timeseries  = gpp_cell_timeseries  + gpp_cycle_timeseries*stu_area
+            raut_cell_timeseries = raut_cell_timeseries + raut_cycle_timeseries*stu_area
+
+        # finish the figure of multiple stu carbon fluxes
+        if (prod_figure == True):
+            plt.xlabel('time (DOY)', fontsize=14)
+            plt.legend(loc='upper left', ncol=2, fontsize=10)
+            fig1.suptitle('Daily carbon fluxes of %s for all '%crop_name+\
+                         'soil types of grid cell %i (%s) in %i'%(grid_no,
+                                                 NUTS_no, opti_year), fontsize=18)
+            figname = 'GPP_perday_c%s_%s_y%i_g%i.png'%(crop_no,NUTS_no,opti_year,\
+                                                                        grid_no)
+            fig1.savefig(figname)
 
         # for each grid cell, calculate the weighted average GPP and Rauto
         gpp_cell_timeseries  = gpp_cell_timeseries  / sum_stu_areas
@@ -262,28 +291,29 @@ def main():
 # if requested by the user, we produce one NEE figure per grid cell
  
         if (prod_figure == True):
-            from matplotlib import pyplot
-            fig2 = pyplot.figure(figsize=(14,3))
+            from matplotlib import pyplot as plt
+            fig2 = plt.figure(figsize=(14,6))
             fig2.subplots_adjust(0.1,0.2,0.98,0.85,0.4,0.6)
-            pyplot.plot(time_cell_timeseries/(3600.*24.),gpp_cell_timeseries*1000., 
-                                                             label='GPP', c='g')
-            pyplot.plot(time_cell_timeseries/(3600.*24.),raut_cell_timeseries*1000.,
+            plt.plot(time_cell_timeseries/(3600.*24.),gpp_cell_timeseries*1000., 
+                                                             label=r'$\mathrm{GPP}$', c='g')
+            plt.plot(time_cell_timeseries/(3600.*24.),raut_cell_timeseries*1000.,
                                                       label=r'$R_{aut}$', c='b')
-            pyplot.plot(time_cell_timeseries/(3600.*24.),rhet_cell_timeseries*1000.,
+            plt.plot(time_cell_timeseries/(3600.*24.),rhet_cell_timeseries*1000.,
                                                       label=r'$R_{het}$', c='r')
-            pyplot.plot(time_cell_timeseries/(3600.*24.),nee_cell_timeseries*1000., 
-                                                             label='NEE', c='k')
-            pyplot.xlim([40.,170.])
-            pyplot.xlabel('time (DOY)')
-            pyplot.ylabel(r'carbon flux (mg$_{C}$ m$^{-2}$ s$^{-1}$)')
-            pyplot.legend(loc='best', ncol=2, fontsize=10)
-            pyplot.title('Average carbon fluxes of %s over the  '%crop_name+\
+            plt.plot(time_cell_timeseries/(3600.*24.),nee_cell_timeseries*1000., 
+                                                             label=r'$\mathrm{NEE}$', c='k')
+            plt.xlim([0.,365.])
+            plt.ylim([-1.,1.])
+            plt.xlabel('time (DOY)')
+            plt.ylabel(r'carbon flux (mg$_{C}$ m$^{-2}$ s$^{-1}$)')
+            plt.legend(loc='best', ncol=2, fontsize=10)
+            plt.title('Average carbon fluxes of %s over the  '%crop_name+\
                          'cultivated area of grid cell %i (%s) in %i'%(grid_no,
                                                             NUTS_no, opti_year))
             figname = 'Cbalance_c%s_%s_y%i_g%i.png'%(crop_no,NUTS_no,opti_year,\
                                                                         grid_no)
             fig2.savefig(figname)
-            pyplot.show()
+            #plt.show()
 
 #-------------------------------------------------------------------------------
         # until the whole code has been validated, we stop the script after
