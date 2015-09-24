@@ -48,7 +48,6 @@ def select_cells(NUTS_no, folder_pickle, method='topn', n=3):
     list_of_tuples = pickle_load(open(filename,'rb'))
     # we select the first item from the file, which is the actual list of tuples
     list_of_tuples = list_of_tuples[0]
-    print list_of_tuples
 
     # first option: we select the top n grid cells in terms of arable land area
     if (method == 'topn'):
@@ -305,6 +304,50 @@ def fetch_EUROSTAT_NUTS_name(NUTS_no, EUROSTATdir):
 
     print "EUROSTAT region name of %s:"%NUTS_no, dictnames[NUTS_no].lower()
     return dictnames[NUTS_no].lower()
+
+#===============================================================================
+def get_country_name(NUTS_no):
+#===============================================================================
+
+    country_dict = {'AT': ['austria','#408040'], 		# 3 regions		
+                    'BE': ['belgium','#FFBA3F'],
+	                'BG': ['bulgaria','#FF0000'],
+	                'CH': ['switzerland','#00FF00'],
+	                'CY': ['cyprus','#000080'],
+	                'CZ': ['czech republic','#FFFF00'],
+	                'DE': ['germany','#FF4040'],
+	                'DK': ['danemark','#FF00FF'],
+	                'EE': ['estonia','#808080'],
+	                'EL': ['greece','#FF8080'],
+	                'ES': ['spain','#80FF80'],
+	                'FI': ['finland','#8080FF'],
+	                'FR': ['france','#8000FF'],		# 26 regions
+	                'HR': ['croatia','#800080'],
+	                'HU': ['hungaria','#804040'],
+	                'IE': ['ireland','#404040'],
+	                'IS': ['iceland','#FFFF80'],
+	                'IT': ['italy','#80FFFF'],
+	                'LI': ['liechtenstein','#FF80FF'],
+	                'LT': ['lithuania','#FF0080'],
+	                'LU': ['luxembourg','#80FF00'],
+	                'LV': ['latvia','#0080FF'],
+	                'ME': ['montenegro','#004040'],
+	                'MK': ['macedonia','#008080'], 
+	                'MT': ['malta','#FF8000'],
+	                'NL': ['netherlands','#00FFFF'],
+	                'NO': ['norway','#800000'],
+	                'PL': ['poland','#0000FF'],
+	                'PT': ['portugal','#808000'],
+	                'RO': ['romania','#008000'],
+	                'SE': ['sweden','#40FF40'],
+	                'SI': ['slovenia','#4040FF'],
+	                'SK': ['slovakia','#00FF80'],
+	                'TR': ['turkey','#7F00FF'],		# 19
+	                'UK': ['united kingdoms','#FF5FC0']}	# 106
+
+    country_name = country_dict[NUTS_no[0:2]][0]
+
+    return country_name
 
 #===============================================================================
 # Function to detrend the observed EUROSTAT yields or harvests
