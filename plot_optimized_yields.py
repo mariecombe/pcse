@@ -27,8 +27,8 @@ def main():
 
     # figures for the forward simulations:
     figure_4 = False # figure showing a time series of opt vs. obs yields
-    figure_5 = False # figure showing a map of yield over a region
-    figure_6 = True # comparison with fluxnet data
+    figure_5 = True # figure showing a map of yield over a region
+    figure_6 = False # comparison with fluxnet data
 
 #-------------------------------------------------------------------------------
 # Define general working directories
@@ -132,7 +132,7 @@ def main():
                           # located
 
     if (figure_4 == True):
-        print '\n============================== tackling figure 4 =============================='
+        print '\n========================== tackling figure 4 =========================='
         # retrieve the observed and simulated yields and aggregate into regional 
         # values
         Regional_values = compute_regional_yield(crops, regions, start_year,
@@ -147,6 +147,7 @@ def main():
 # Plot the figure showing a map of yield over a region
 
     if (figure_5 == True):
+        print '\n========================== tackling figure 5 =========================='
         from mpl_toolkits.basemap import Basemap
         from matplotlib.patches import Polygon
         from matplotlib.collections import PatchCollection
