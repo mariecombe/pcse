@@ -9,13 +9,17 @@ import numpy as np
 # database and transfers it to capegrim
 def main():
 #===============================================================================
+    import subprocess
     import cx_Oracle
+    import sqlalchemy as sa
     from cPickle import dump as pickle_dump
+    from cPickle import load as pickle_load
     from datetime import datetime
     from maries_toolbox import open_csv
     from pcse.db.cgms11 import TimerDataProvider, SoilDataIterator, \
                                CropDataProvider, STU_Suitability, \
-                               SiteDataProvider
+                               SiteDataProvider, WeatherObsGridDataProvider
+    from pcse.exceptions import PCSEError 
 #-------------------------------------------------------------------------------
     global currentdir, EUROSTATdir, folder_local, folder_cape
 #-------------------------------------------------------------------------------
@@ -67,18 +71,22 @@ def main():
 #-------------------------------------------------------------------------------
 # we test the connection to the remote Oracle database
     
+    # define the settings of the Oracle database connection
     user = "cgms12eu_select"
     password = "OnlySelect"
     tns = "EURDAS.WORLD"
     dsn = "oracle+cx_oracle://{user}:{pw}@{tns}".format(user=user, pw=password, 
                                                                         tns=tns)
+    engine = sa.create_engine(dsn)
+    print engine
+
+    # test the connection:
     try:
-        engine = sa.create_engine(dsn)
-        print engine
-    except RuntimeError:
-        print 'BEWARE!! You are not using a computer within the WU network,'
-        print 'this is why you cannot access the Oracle CGMS database.'
-        print 'Fix this before trying again!'
+        connection = cx_Oracle.connect("cgms12eu_select/OnlySelect@eurdas.world")
+    except cx_Oracle.DatabaseError:
+        print '\nBEWARE!! The Oracle database is not responding. Probably, you are'
+        print 'not using a computer wired within the Wageningen University network.'
+        print '--> Get connected with ethernet cable before trying again!'
         sys.exit(2)
 
 #-------------------------------------------------------------------------------
@@ -90,24 +98,54 @@ def main():
 # we read the list of CGMS grid cells from file
 
     all_CGMS_grid_cells = open_csv(EUROSTATdir, ['CGMS_grid_list.csv'])
+    all_grids           = all_CGMS_grid_cells['CGMS_grid_list.csv']['GRID_NO']
+    lon                 = all_CGMS_grid_cells['CGMS_grid_list.csv']['LONGITUDE']
+    lat                 = all_CGMS_grid_cells['CGMS_grid_list.csv']['LATITUDE']
 
 #-------------------------------------------------------------------------------
 # we get the list of European grid cells that contain arable land
 
-    connection = cx_Oracle.connect("cgms12eu_select/OnlySelect@eurdas.world")
-    europ = np.array([]) # empty array
+    europ        = np.array([]) # empty array
+    europ_arable = np.array([]) # empty array
 
     # for each grid cell of the CGMS database:
-    for i,grid_no in enumerate(all_CGMS_grid_cells):
+    for i,grid_no in enumerate(all_grids):
 
         # if the grid cell is located in Europe:
         if ((-13.<= lon[i] <= 70.) and (34 <= lat[i] <= 71)):
 
             # we append the grid cell no to the list of European grid cells:
-            europ.append(grid_no)
+            europ = np.append(europ,grid_no)
 
-    # we get the list of European grid cells that contains arable land:
-    europ_arable = find_grids_with_arable_land(connection, europ)
+    # now we want to get the list of European grid cells that contains arable land:
+    # NB: SQL can only access the info of 1000 grids at a time. We got about
+    # 20000 cells to loop over, so we do 20 times the query to get their arable land
+
+    bounds = np.arange(0,len(europ),1000) # bounds of grid cell ID
+    # in this 19 iteration, we do not explore ALL grid cells, we must do a last
+    # iteration manually (see below)
+    for i in range(len(bounds)-1):
+        subset = europ[bounds[i]:bounds[i+1]]
+        subset_arable = find_grids_with_arable_land(connection, subset)
+        # we want only the list of grid_no retrieved by the sql query:
+        subset_arable = [g for g,a in subset_arable]
+        # we remove grid_no duplicates:
+        subset_arable = list(set(subset_arable))
+        europ_arable = np.concatenate((europ_arable,subset_arable), axis=0) 
+
+    # we are still missing the last grid cells: do they have arable land?
+    subset = europ[bounds[-1]:len(europ)]
+    subset_arable = find_grids_with_arable_land(connection, subset)
+    # we want only the list of grid_no retrieved by the sql query:
+    subset_arable = [g for g,a in subset_arable]
+    # we remove grid_no duplicates:
+    subset_arable = list(set(subset_arable))
+    europ_arable = np.concatenate((europ_arable,subset_arable), axis=0) 
+
+    assert (len(europ) >= len(europ_arable)), 'increased the nb of grid cells???'
+    print '\nWe retrieved %i grid cell ids with arable '%len(europ_arable)+\
+          'land in Europe.\n'
+
 
 #-------------------------------------------------------------------------------
 # We retrieve the list of suitable soil types for the selected crop species
@@ -115,99 +153,135 @@ def main():
     filename = folder_local + 'suitablesoilsobject_c%d.pickle'%crop_no
 
     if os.path.exists(filename):
-        print '%s exists!'%filename
+        #print '%s exists!'%filename
+        suitable_stu = pickle_load(open(filename,'rb'))
+        #print 'Reading data from pickle file %s'%filename
     else:
         suitable_stu = STU_Suitability(engine, crop_no)
         suitable_stu_list = []
         for item in suitable_stu:
             suitable_stu_list = suitable_stu_list + [item]
         suitable_stu = suitable_stu_list
-        print 'Writing data to pickle file %s'%filename
-        pickle.dump(suitable_stu,open(filename,'wb'))       
+        #print 'Writing data to pickle file %s'%filename
+        pickle_dump(suitable_stu,open(filename,'wb'))       
 
 #-------------------------------------------------------------------------------
-#   WE LOOP OVER ALL EUROPEAN GRID CELLS
-    for grid in [grid_no for grid_no,area in europ_arable]:
-	    print 'grid cell no %i'%grid
+# We are gonna create a crop MASK dictionary: collect the grid cell ids where
+# the crop was grown on that year
+
+    crop_mask = {}
+
+#-------------------------------------------------------------------------------
+#   WE LOOP OVER ALL YEARS:
+    for y, year in enumerate(campaign_years): 
+        print '######################## Year %i ########################\n'%year
+        europ_cultivated = np.array([])
+#-------------------------------------------------------------------------------
+#       WE LOOP OVER ALL EUROPEAN GRID CELLS THAT CONTAIN ARABLE LAND
+        for grid in europ_arable:
+            print '    - grid cell no %i'%grid
 #-------------------------------------------------------------------------------
 # If required by the user, we retrieve the weather data (1 file per grid cell):
 
-        if retrieve_weather == True: 
-            filename = folderpickle+'weatherobject_g%d.pickle'%grid
-
-            if os.path.exists(filename):
-                print '%s exists!'%filename
-            else:
-                weatherdata = WeatherObsGridDataProvider(engine, grid)
-                print 'Writing data to pickle file %s'%filename
-                weatherdata._dump(filename)
+            if retrieve_weather == True: 
+                filename = folder_local + 'weatherobject_g%d.pickle'%grid
+         
+                if os.path.exists(filename):
+                    #print '%s exists!'%filename
+                    pass
+                else:
+                    weatherdata = WeatherObsGridDataProvider(engine, grid)
+                    #print 'Writing data to pickle file %s'%filename
+                    weatherdata._dump(filename)
 
 #-------------------------------------------------------------------------------
 # We retrieve the soil data (1 file per grid cell):
  
-        filename = folderpickle+'soilobject_g%d.pickle'%grid
-
-        if os.path.exists(filename):
-            print '%s exists!'%filename
-        else:
-            soil_iterator = SoilDataIterator(engine, grid)
-            print 'Writing data to pickle file %s'%filename
-            pickle.dump(soil_iterator,open(filename,'wb'))       
-
-#-------------------------------------------------------------------------------
-#       WE LOOP OVER ALL SOIL TYPES LOCATED IN THE GRID CELL:
-        for smu_no, area_smu, stu_no, percentage, soildata in soil_iterator:
-#-------------------------------------------------------------------------------
-
-            # NB: we remove all unsuitable soils from the iteration
-            if (stu_no not in suitable_stu):
-                continue
+            filename = folder_local + 'soilobject_g%d.pickle'%grid
+         
+            if os.path.exists(filename):
+                #print '%s exists!'%filename
+                soil_iterator = pickle_load(open(filename,'rb'))
             else:
-                print 'soil type no %i'%stu_no
+                soil_iterator = SoilDataIterator(engine, grid)
+                #print 'Writing data to pickle file %s'%filename
+                pickle_dump(soil_iterator,open(filename,'wb'))       
 
 #-------------------------------------------------------------------------------
-#               WE LOOP OVER ALL YEARS:
-                for y, year in enumerate(campaign_years): 
-#-------------------------------------------------------------------------------
-# We retrieve the timer data
+# We retrieve the timer data (crop calendar)
 
-                    filename = folder_local + \
-                            'timerobject_g%d_c%d_y%d.pickle'%(grid,crop_no,year)
+            filename = folder_local + \
+                       'timerobject_g%d_c%d_y%d.pickle'%(grid,crop_no,year)
 
-                    if os.path.exists(filename):
-                        print '%s exists!!'%filename
-                    else:
-                        timerdata = TimerDataProvider(engine, grid, crop_no, year)
-                        print 'Writing data to pickle file %s'%filename
-                        pickle.dump(timerdata,open(filename,'wb'))       
+            # if the retrieval does not raise an error, the crop was thus
+            # cultivated that year
+            try:
+                if os.path.exists(filename):
+                    #print '%s exists!!'%filename
+                    pass
+                else:
+                    timerdata = TimerDataProvider(engine, grid, crop_no, year)
+                    #print 'Writing data to pickle file %s'%filename
+                    pickle_dump(timerdata,open(filename,'wb'))    
+   
+                europ_cultivated = np.append(europ_cultivated,grid)
+
+            # if an error is raised, the crop was not grown that year
+            except PCSEError:
+                print '        the crop was not grown that year in that grid cell'
+                continue # we go to the next grid cell
     
 #-------------------------------------------------------------------------------
-# We retrieve the crop data
+# We retrieve the crop data (crop management)
 
-                    filename = folder_local + \
-                             'cropobject_g%d_c%d_y%d.pickle'%(grid,crop_no,year)
+            filename = folder_local + \
+                       'cropobject_g%d_c%d_y%d.pickle'%(grid,crop_no,year)
 
-                    if os.path.exists(filename):
-                        print '%s exists!!'%filename
-                    else:
-                        cropdata = CropDataProvider(engine, grid, crop_no, year)
-                        print 'Writing data to pickle file %s'%filename
-                        pickle.dump(cropdata,open(filename,'wb'))     
+            if os.path.exists(filename):
+                #print '%s exists!!'%filename
+                pass
+            else:
+                cropdata = CropDataProvider(engine, grid, crop_no, year)
+                #print 'Writing data to pickle file %s'%filename
+                pickle_dump(cropdata,open(filename,'wb'))     
 
 #-------------------------------------------------------------------------------
-# We retrieve the site data
+#           WE LOOP OVER ALL SOIL TYPES LOCATED IN THE GRID CELL:
+            for smu_no, area_smu, stu_no, percentage, soildata in soil_iterator:
+#-------------------------------------------------------------------------------
+
+                # NB: we remove all unsuitable soils from the iteration
+                if (stu_no not in suitable_stu):
+                    pass
+                else:
+                    print '        soil type no %i'%stu_no
+
+#-------------------------------------------------------------------------------
+# We retrieve the site data (site management)
 
                     filename = folder_local + \
-                             'siteobject_g%d_c%d_y%d_s%d.pickle'%(grid,crop_no,
-                                                                  year,stu_no)
+                               'siteobject_g%d_c%d_y%d_s%d.pickle'%(grid,crop_no,
+                                                                    year,stu_no)
 
                     if os.path.exists(filename):
-                        print '%s exists!!'%filename
+                        #print '%s exists!!'%filename
+                        pass
                     else:
-                        sitedata = SiteDataProvider(engine, grid, crop_no, year, 
-                                                                         stu_no)
-                        print 'Writing data to pickle file %s'%filename
-                        pickle.dump(sitedata,open(filename,'wb'))     
+                        sitedata = SiteDataProvider(engine, grid, crop_no, 
+                                                               year, stu_no)
+                        #print 'Writing data to pickle file %s'%filename
+                        pickle_dump(sitedata,open(filename,'wb'))     
+
+#-------------------------------------------------------------------------------
+# We finalize the crop MASK dictionary
+
+        # at the end of each year's retrieval, we store the array of cultivated
+        # grid cells:
+        crop_mask[year] = europ_cultivated
+
+    # now we are out of the year loop, we pickle the crop mask dictionary
+    filename = 'cropmask_c%d_y%d.pickle'%(crop_no,year)
+    pickle_dump(crop_mask,open(filename,'wb'))
 
 #-------------------------------------------------------------------------------
 # We add a timestamp at end of the retrieval, to time the process
@@ -218,7 +292,11 @@ def main():
 #-------------------------------------------------------------------------------
 # We sync the local folder containing the pickle files with the capegrim folder
 
-
+    subprocess.call(["rsync","-auEv","-e",
+                     "'ssh -l mariecombe -i /Users/mariecombe/.shh/id_dsa'",
+                     "--delete",
+                     "/Users/mariecombe/Documents/Work/Research_project_3/pcse/pickled_CGMS_input_data/",
+                     "mariecombe@capegrim.wur.nl:~/mnt/promise/CO2/marie/pickled_CGMS_input_data/"])
 
 #===============================================================================
 def find_grids_with_arable_land(connection, grids, threshold=None, largest_n=None):
