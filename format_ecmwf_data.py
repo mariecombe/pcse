@@ -19,17 +19,22 @@ def main():
     created.
 
     User input is the list of years for which we want to create weather files.
+    You can also switch on parallelization (recommended).
     Created files will be stored in folder:
     /Users/mariecombe/mnt/promise/CO2/marie/CABO_weather_ECMWF/
     """
 #-------------------------------------------------------------------------------
     from maries_toolbox import open_csv, get_list_CGMS_cells_in_Europe_arable
+    from datetime import datetime
+    from cPickle import load as pickle_load
 #-------------------------------------------------------------------------------
-    global dir_sfc, dir_tropo
+    global dir_sfc, dir_tropo, year, all_grids, lons, lats, weatherdir
 #-------------------------------------------------------------------------------
 # USER INPUT - only this part should be modified by the user!!
 
-    years = [2006] # list of years we want to retrieve data for
+    years    = [2006]      # list of years we want to retrieve data for
+    process  = 'parallel'  # multiprocessing option: can be 'serial' or 'parallel'
+    nb_cores = 10          # number of cores used in case of a parallelization
 
 #-------------------------------------------------------------------------------
 # Calculate key variables from the user input:
@@ -50,63 +55,53 @@ def main():
     # capegrim directory where the formated weather file will be written
     weatherdir  = '/Users/mariecombe/mnt/promise/CO2/marie/CABO_weather_ECMWF/'
 
-#-------------------------------------------------------------------------------
-# We add a timestamp at start of the script
-    start_timestamp = datetime.utcnow()
+    # capegrim directory where the formated weather file will be written
+    pickledir   = '/Users/mariecombe/mnt/promise/CO2/marie/pickled_CGMS_input_data/'
+
 #-------------------------------------------------------------------------------
 # we read the CGMS grid cells coordinates from file
 
-#    CGMS_cells = open_csv(EUROSTATdir, ['CGMS_grid_list.csv'])
-#    all_grids  = CGMS_cells['CGMS_grid_list.csv']['GRID_NO']
-#    lons       = CGMS_cells['CGMS_grid_list.csv']['LONGITUDE']
-#    lats       = CGMS_cells['CGMS_grid_list.csv']['LATITUDE']
+    CGMS_cells = open_csv(EUROSTATdir, ['CGMS_grid_list.csv'])
+    all_grids  = CGMS_cells['CGMS_grid_list.csv']['GRID_NO']
+    lons       = CGMS_cells['CGMS_grid_list.csv']['LONGITUDE']
+    lats       = CGMS_cells['CGMS_grid_list.csv']['LATITUDE']
 
 #-------------------------------------------------------------------------------
 # From this list, we select the subset of grid cells located in Europe that
 # contain arable land (no need to create weather data where there are no crops!)
 
-    filename = folder_cape + 'europe_arable_CGMS_cellids.pickle'
+    filename = pickledir + 'europe_arable_CGMS_cellids.pickle'
     europ_arable = pickle_load(open(filename,'rb'))    
+    europ_arable = sorted(europ_arable)
+
+#-------------------------------------------------------------------------------
+# We add a timestamp at start of the script
+    start_timestamp = datetime.utcnow()
 
 #-------------------------------------------------------------------------------
 #   WE LOOP OVER ALL YEARS:
     for y, year in enumerate(campaign_years): 
         print '######################## Year %i ########################\n'%year
         europ_cultivated = np.array([])
-#-------------------------------------------------------------------------------
-#       WE LOOP OVER ALL EUROPEAN GRID CELLS THAT CONTAIN ARABLE LAND
-        for grid in europ_arable:
-            print '    - grid cell no %i'%grid
-#-------------------------------------------------------------------------------
-# We open the weather data and compile daily information about the ECMWF grid
-# point closest to the provided coordinates
-
-            # incoming shortwave radiation from W.m-2 to kJ.m-2.d-1
-            rad = retrieve_ecmwf_sfc_data('ssrd', year, lon, lat, ope='integral')
-            rad = (rad[0], [x/1000. for x in rad[1]])
-  
-            # maximum and minimum 2-m temperature from K to degree C
-            tmin = retrieve_ecmwf_sfc_data('t2m', year, lon, lat, ope='min')
-            tmax = retrieve_ecmwf_sfc_data('t2m', year, lon, lat, ope='max')
-            tmin = (tmin[0], [x - 273.15 for x in tmin[1]])
-            tmax = (tmax[0], [x - 273.15 for x in tmax[1]])
-  
-            # daily precipitation from m.s-1 to mm.d-1
-            lsp  = retrieve_ecmwf_sfc_data('lsp', year, lon, lat, ope='integral')
-            cp   = retrieve_ecmwf_sfc_data('cp' , year, lon, lat, ope='integral')
-            precip =  cp[1] + lsp[1]
-            precip = (lsp[0], [x*1000. for x in precip])
-  
-            # diurnal mean wind speed in m.s-1
-            m10m = retrieve_U_V_calculate_m10m(year, lon, lat)
-  
-            # 2-m vapor pressure
-            VP = retrieve_q_calculate_VP(year, lon, lat)
 
 #-------------------------------------------------------------------------------
-# We write a formatted output file
-            w = write_CABO_weather_file(grid_no,lon,lat,year,rad[1],tmin[1],
-                                     tmax[1],VP[1],m10m[1],precip[1],weatherdir)
+# START OF PARALLELIZATION HERE !!!!!!!
+#-------------------------------------------------------------------------------
+# if we do a serial iteration, we loop over the grid cells that contain arable 
+# land
+        if (process == 'serial'):
+            for grid in europ_arable:
+                format_weather(grid)
+
+#-------------------------------------------------------------------------------
+# if we do a parallelization, we use the multiprocessor module to provide series
+# of cells to the function
+
+        if (process == 'parallel'):
+            import multiprocessing
+            p = multiprocessing.Pool(nb_cores)
+            parallel = p.map(format_weather, europ_arable)
+            p.close()
 
 #-------------------------------------------------------------------------------
 # We add a timestamp at end of the retrieval, to time the process
@@ -115,6 +110,56 @@ def main():
 
 
 ### END OF THE MAIN CODE ###
+
+#===============================================================================
+# function that will format ECMWF weather data into CABO format
+def format_weather(grid_id):
+#===============================================================================
+# if the file already exists, we do nothing
+    filename = '%i.%s'%(grid_id,str(year)[1:4])
+    if os.path.exists(os.path.join(weatherdir,filename)):
+        print 'File already exists! %s\n'%filename
+        pass
+#-------------------------------------------------------------------------------
+    else:
+# we get the lon and lat of the grid cell:
+        i   = np.argmin(np.absolute(all_grids - grid_id))
+        lon = lons[i]
+        lat = lats[i]
+        print '- grid cell no %i: lon = %.2f , lat = %.2f'%(grid_id,lon,lat)
+
+#-------------------------------------------------------------------------------
+# We open the weather data and compile daily information about the ECMWF grid
+# point closest to the provided coordinates
+
+        # incoming shortwave radiation from W.m-2 to kJ.m-2.d-1
+        rad = retrieve_ecmwf_sfc_data('ssrd', year, lon, lat, ope='integral')
+        rad = (rad[0], [x/1000. for x in rad[1]])
+ 
+        # maximum and minimum 2-m temperature from K to degree C
+        tmin = retrieve_ecmwf_sfc_data('t2m', year, lon, lat, ope='min')
+        tmax = retrieve_ecmwf_sfc_data('t2m', year, lon, lat, ope='max')
+        tmin = (tmin[0], [x - 273.15 for x in tmin[1]])
+        tmax = (tmax[0], [x - 273.15 for x in tmax[1]])
+ 
+        # daily precipitation from m.s-1 to mm.d-1
+        lsp  = retrieve_ecmwf_sfc_data('lsp', year, lon, lat, ope='integral')
+        cp   = retrieve_ecmwf_sfc_data('cp' , year, lon, lat, ope='integral')
+        precip =  cp[1] + lsp[1]
+        precip = (lsp[0], [x*1000. for x in precip])
+ 
+        # diurnal mean wind speed in m.s-1
+        m10m = retrieve_U_V_calculate_m10m(year, lon, lat)
+ 
+        # 2-m vapor pressure
+        VP = retrieve_q_calculate_VP(year, lon, lat)
+
+#-------------------------------------------------------------------------------
+# We write a formatted output file
+        w = write_CABO_weather_file(grid_id,lon,lat,year,rad[1],tmin[1],
+                                    tmax[1],VP[1],m10m[1],precip[1],weatherdir)
+
+    return None
 
 #===============================================================================
 def write_CABO_weather_file(grid_no,lon,lat,year,rad,tmin,tmax,vp,ws,prec,dir_):
