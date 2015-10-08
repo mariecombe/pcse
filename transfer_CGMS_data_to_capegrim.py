@@ -97,10 +97,10 @@ def main():
 #-------------------------------------------------------------------------------
 # we read the list of CGMS grid cells from file
 
-    all_CGMS_grid_cells = open_csv(EUROSTATdir, ['CGMS_grid_list.csv'])
-    all_grids           = all_CGMS_grid_cells['CGMS_grid_list.csv']['GRID_NO']
-    lon                 = all_CGMS_grid_cells['CGMS_grid_list.csv']['LONGITUDE']
-    lat                 = all_CGMS_grid_cells['CGMS_grid_list.csv']['LATITUDE']
+    CGMS_cells = open_csv(EUROSTATdir, ['CGMS_grid_list.csv'])
+    all_grids  = CGMS_cells['CGMS_grid_list.csv']['GRID_NO']
+    lons       = CGMS_cells['CGMS_grid_list.csv']['LONGITUDE']
+    lats       = CGMS_cells['CGMS_grid_list.csv']['LATITUDE']
 
 #-------------------------------------------------------------------------------
 # From this list, we select the subset of grid cells located in Europe that

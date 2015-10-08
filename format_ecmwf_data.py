@@ -56,16 +56,17 @@ def main():
 #-------------------------------------------------------------------------------
 # we read the CGMS grid cells coordinates from file
 
-    CGMS_cells = open_csv(EUROSTATdir, ['CGMS_grid_list.csv'])
-    all_grids  = CGMS_cells['CGMS_grid_list.csv']['GRID_NO']
-    lons       = CGMS_cells['CGMS_grid_list.csv']['LONGITUDE']
-    lats       = CGMS_cells['CGMS_grid_list.csv']['LATITUDE']
+#    CGMS_cells = open_csv(EUROSTATdir, ['CGMS_grid_list.csv'])
+#    all_grids  = CGMS_cells['CGMS_grid_list.csv']['GRID_NO']
+#    lons       = CGMS_cells['CGMS_grid_list.csv']['LONGITUDE']
+#    lats       = CGMS_cells['CGMS_grid_list.csv']['LATITUDE']
 
 #-------------------------------------------------------------------------------
 # From this list, we select the subset of grid cells located in Europe that
 # contain arable land (no need to create weather data where there are no crops!)
 
-    europ_arable = get_list_CGMS_cells_in_Europe_arable(all_grids, lons, lats)
+    filename = folder_cape + 'europe_arable_CGMS_cellids.pickle'
+    europ_arable = pickle_load(open(filename,'rb'))    
 
 #-------------------------------------------------------------------------------
 #   WE LOOP OVER ALL YEARS:
