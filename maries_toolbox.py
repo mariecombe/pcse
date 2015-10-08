@@ -5,7 +5,150 @@ import numpy as np
 
 # This script gathers a few useful general functions used by several scripts
 
+#===============================================================================
+def get_list_CGMS_cells_in_Europe_arable(gridcells, lons, lats):
+#===============================================================================
+    """
+    This function returns the list of CGMS European grid cells that contain 
+    an amount of arable land > 0. It checks the arable land data in the CGMS
+    Oracle database.
 
+    Function arguments:
+    ------------------
+    all_grids    list of integers, contains CGMS grid cell ID numbers for which
+                 we want to check if they contain any arable land
+    lons         list of floats, contains the longitudes of the grid cells
+    lats         list of floats, contains the latitudes of the grid cells
+
+    NB: this function needs to connect to the CGMS Oracle database, hence an 
+    ethernet connection within the Wageningen University network is required!
+
+    """
+    import cx_Oracle
+
+    # test the connection:
+    try:
+        connection = cx_Oracle.connect("cgms12eu_select/OnlySelect@eurdas.world")
+    except cx_Oracle.DatabaseError:
+        print '\nBEWARE!! The Oracle database is not responding. Probably, you are'
+        print 'not using a computer wired within the Wageningen University network.'
+        print '--> Get connected with ethernet cable before trying again!'
+        sys.exit(2)
+
+    # initialize lists of grid cells
+    europ        = np.array([]) # empty array
+    europ_arable = np.array([]) # empty array
+
+    # for each grid cell of the CGMS database:
+    for i,grid_no in enumerate(gridcells):
+
+        # if the grid cell is located in Europe:
+        if ((-13.<= lons[i] <= 70.) and (34 <= lats[i] <= 71)):
+
+            # we append the grid cell no to the list of European grid cells:
+            europ = np.append(europ,grid_no)
+
+    # now we want to get the list of European grid cells that contains arable land:
+    # NB: SQL can only access the info of 1000 grids at a time. We got about
+    # 20000 cells to loop over, so we do 20 times the query to get their arable land
+
+    bounds = np.arange(0,len(europ),1000) # bounds of grid cell ID
+    # in this 19 iteration, we do not explore ALL grid cells, we must do a last
+    # iteration manually (see below)
+    for i in range(len(bounds)-1):
+        subset = europ[bounds[i]:bounds[i+1]]
+        subset_arable = find_grids_with_arable_land(connection, subset)
+        # we want only the list of grid_no retrieved by the sql query:
+        subset_arable = [g for g,a in subset_arable]
+        # we remove grid_no duplicates:
+        subset_arable = list(set(subset_arable))
+        europ_arable = np.concatenate((europ_arable,subset_arable), axis=0) 
+
+    # we are still missing the last grid cells: do they have arable land?
+    subset = europ[bounds[-1]:len(europ)]
+    subset_arable = find_grids_with_arable_land(connection, subset)
+    # we want only the list of grid_no retrieved by the sql query:
+    subset_arable = [g for g,a in subset_arable]
+    # we remove grid_no duplicates:
+    subset_arable = list(set(subset_arable))
+    europ_arable = np.concatenate((europ_arable,subset_arable), axis=0) 
+
+    assert (len(europ) >= len(europ_arable)), 'increased the nb of grid cells???'
+    print '\nWe retrieved %i grid cell ids with arable '%len(europ_arable)+\
+          'land in Europe.\n'
+
+    return europ_arable
+
+#===============================================================================
+def find_grids_with_arable_land(connection, grids, threshold=None, largest_n=None):
+#===============================================================================
+    """
+    Find the grids with either
+    1) an amount of arable land defined by threshold in m2
+       (max for a 25km grid cell is 625000000 m2)
+    2) the largest_n number of cells with largest share of arable land
+    3) just all grids with the amount of arable land
+
+    returns a list of [(grid_no1, area), (grid_no2, area), ...]
+    """
+
+    landcover = 101 # see below for other options from CROP_LANDCOVER table
+    # 101	Arable Land	0	0	0
+    # 102	Non-irrigated arable land	0	0	0
+    # 103	Agricultural areas	0	0	0
+    # 104	Pasture	0	0	0
+    # 105	Temporary forage	0	0	0
+    # 106	Rice	0	0	0
+    # 100	Any land cover class	0	0	0
+
+    cursor = connection.cursor()
+    gridlist = str(tuple(grids))
+    if threshold is not None:
+        thr = float(threshold)
+        sql = """
+            select
+                grid_no, area
+            from
+                link_region_grid_landcover
+            where
+                area > {threshold}f and
+                landcover_id = {lc} and
+                grid_no in {gridl}
+            order by area desc
+        """.format(gridl=gridlist, threshold=thr, lc=landcover)
+        cursor.execute(sql)
+        rows = cursor.fetchall()
+        return rows
+    elif largest_n is not None:
+        ln = int(largest_n)
+        sql = """
+            select
+                grid_no, area
+            from
+                link_region_grid_landcover
+            where
+                landcover_id = {lc} and
+                grid_no in {grids}
+            order by area desc
+        """.format(grids=gridlist, nrows=ln, lc=landcover)
+        cursor.execute(sql)
+        rows = cursor.fetchall()
+        return rows[0:ln]
+    else:
+        sql = """
+            select
+                grid_no, area
+            from
+                link_region_grid_landcover
+            where
+                landcover_id = {lc} and
+                grid_no in {grids}
+            order by area desc
+        """.format(grids=gridlist, lc=landcover)
+        cursor.execute(sql)
+        rows = cursor.fetchall()
+        return rows
+    
 #===============================================================================
 # Function to select a subset of grid cells within a NUTS region
 def select_cells(NUTS_no, folder_pickle, method='topn', n=3):

@@ -7,79 +7,122 @@ import numpy as np
 # This script formats ECMWF weather data stored on capegrim 
 def main():
 #===============================================================================
-    global dir_sfc, dir_tropo, EUROSTATdir
+    """
+    This script uses the ECMWF weather data stored on capegrim to create weather
+    files on the finer CGMS grid scale. We format the weather files with the CABO
+    format, i.e. the standard Wageningen crop model weather file format.
+    --> the generated weather files can be used with most Wageningen crop models
+        like SUCROS, WOFOST, GECROS...
+
+    NB: only European CGMS grid cells containing arable land will be looped over
+    to create the weather files. Like this it reduces the number of files being
+    created.
+
+    User input is the list of years for which we want to create weather files.
+    Created files will be stored in folder:
+    /Users/mariecombe/mnt/promise/CO2/marie/CABO_weather_ECMWF/
+    """
 #-------------------------------------------------------------------------------
-# User-defined:
+    from maries_toolbox import open_csv, get_list_CGMS_cells_in_Europe_arable
+#-------------------------------------------------------------------------------
+    global dir_sfc, dir_tropo
+#-------------------------------------------------------------------------------
+# USER INPUT - only this part should be modified by the user!!
 
-    NUTS_no = 'ES43'
-    grid_no = 54069 # example grid cell
-    year = 2006
+    years = [2006] # list of years we want to retrieve data for
 
 #-------------------------------------------------------------------------------
-# variables deduced from user input:
+# Calculate key variables from the user input:
 
-    # NB: I need to read the grid cell coordinates from a file instead of 
-    # hardcoding them
-    lat = 42. # degrees N of the CGMS grid cell
-    lon = -4. # degrees E of the CGMS grid cell
+    campaign_years = np.linspace(int(years[0]),int(years[-1]),len(years))
 
 #-------------------------------------------------------------------------------
-# We define the directories where the variables are stored
+# Define working directories
 
     # capegrim directories where the ECMWF weather data is stored
-    dir_sfc    = '/Storage/TM5/METEO/tm5-nc/ec/ei/fc012up2tr3/sfc/glb100x100/'
-    dir_tropo  = '/Storage/TM5/METEO/tm5-nc/ec/ei/fc012up2tr3/tropo25/'+\
-                'eur100x100/'
-    # capegrim directory where the NUTS code nomenclature file is stored
-    EUROSTATdir   = "/Users/mariecombe/Cbalance/EUROSTAT_data"
-    # capegrim directories where the formated weather file will be written
-    weatherdir = '/Storage/marie/ECMWF_4_WOFOST'
+    dir_sfc     = '/Storage/TM5/METEO/tm5-nc/ec/ei/fc012up2tr3/sfc/glb100x100/'
+    dir_tropo   = '/Storage/TM5/METEO/tm5-nc/ec/ei/fc012up2tr3/tropo25/'+\
+                  'eur100x100/'
 
+    # capegrim directory where the list of CGMS grid cell coordinates is stored
+    EUROSTATdir = "/Users/mariecombe/Cbalance/EUROSTAT_data"
+
+    # capegrim directory where the formated weather file will be written
+    weatherdir  = '/Users/mariecombe/mnt/promise/CO2/marie/CABO_weather_ECMWF/'
+
+#-------------------------------------------------------------------------------
+# We add a timestamp at start of the script
+    start_timestamp = datetime.utcnow()
+#-------------------------------------------------------------------------------
+# we read the CGMS grid cells coordinates from file
+
+    CGMS_cells = open_csv(EUROSTATdir, ['CGMS_grid_list.csv'])
+    all_grids  = CGMS_cells['CGMS_grid_list.csv']['GRID_NO']
+    lons       = CGMS_cells['CGMS_grid_list.csv']['LONGITUDE']
+    lats       = CGMS_cells['CGMS_grid_list.csv']['LATITUDE']
+
+#-------------------------------------------------------------------------------
+# From this list, we select the subset of grid cells located in Europe that
+# contain arable land (no need to create weather data where there are no crops!)
+
+    europ_arable = get_list_CGMS_cells_in_Europe_arable(all_grids, lons, lats)
+
+#-------------------------------------------------------------------------------
+#   WE LOOP OVER ALL YEARS:
+    for y, year in enumerate(campaign_years): 
+        print '######################## Year %i ########################\n'%year
+        europ_cultivated = np.array([])
+#-------------------------------------------------------------------------------
+#       WE LOOP OVER ALL EUROPEAN GRID CELLS THAT CONTAIN ARABLE LAND
+        for grid in europ_arable:
+            print '    - grid cell no %i'%grid
 #-------------------------------------------------------------------------------
 # We open the weather data and compile daily information about the ECMWF grid
 # point closest to the provided coordinates
 
-    # incoming shortwave radiation from W.m-2 to kJ.m-2.d-1
-    rad = retrieve_ecmwf_sfc_data('ssrd', year, lon, lat, ope='integral')
-    rad = (rad[0], [x/1000. for x in rad[1]])
-
-    # maximum and minimum 2-m temperature from K to degree C
-    tmin = retrieve_ecmwf_sfc_data('t2m', year, lon, lat, ope='min')
-    tmax = retrieve_ecmwf_sfc_data('t2m', year, lon, lat, ope='max')
-    tmin = (tmin[0], [x - 273.15 for x in tmin[1]])
-    tmax = (tmax[0], [x - 273.15 for x in tmax[1]])
-
-    # daily precipitation from m.s-1 to mm.d-1
-    lsp  = retrieve_ecmwf_sfc_data('lsp', year, lon, lat, ope='integral')
-    cp   = retrieve_ecmwf_sfc_data('cp' , year, lon, lat, ope='integral')
-    precip =  cp[1] + lsp[1]
-    precip = (lsp[0], [x*1000. for x in precip])
-
-    # diurnal mean wind speed in m.s-1
-    m10m = retrieve_U_V_calculate_m10m(year, lon, lat)
-
-    # 2-m vapor pressure
-    VP = retrieve_q_calculate_VP(year, lon, lat)
+            # incoming shortwave radiation from W.m-2 to kJ.m-2.d-1
+            rad = retrieve_ecmwf_sfc_data('ssrd', year, lon, lat, ope='integral')
+            rad = (rad[0], [x/1000. for x in rad[1]])
+  
+            # maximum and minimum 2-m temperature from K to degree C
+            tmin = retrieve_ecmwf_sfc_data('t2m', year, lon, lat, ope='min')
+            tmax = retrieve_ecmwf_sfc_data('t2m', year, lon, lat, ope='max')
+            tmin = (tmin[0], [x - 273.15 for x in tmin[1]])
+            tmax = (tmax[0], [x - 273.15 for x in tmax[1]])
+  
+            # daily precipitation from m.s-1 to mm.d-1
+            lsp  = retrieve_ecmwf_sfc_data('lsp', year, lon, lat, ope='integral')
+            cp   = retrieve_ecmwf_sfc_data('cp' , year, lon, lat, ope='integral')
+            precip =  cp[1] + lsp[1]
+            precip = (lsp[0], [x*1000. for x in precip])
+  
+            # diurnal mean wind speed in m.s-1
+            m10m = retrieve_U_V_calculate_m10m(year, lon, lat)
+  
+            # 2-m vapor pressure
+            VP = retrieve_q_calculate_VP(year, lon, lat)
 
 #-------------------------------------------------------------------------------
 # We write a formatted output file
+            w = write_CABO_weather_file(grid_no,lon,lat,year,rad[1],tmin[1],
+                                     tmax[1],VP[1],m10m[1],precip[1],weatherdir)
 
-    w = write_CABO_weather_file(NUTS_no,grid_no,lon,lat,year,rad[1],tmin[1],
-                                tmax[1],VP[1],m10m[1],precip[1],weatherdir)
+#-------------------------------------------------------------------------------
+# We add a timestamp at end of the retrieval, to time the process
+    end_timestamp = datetime.utcnow()
+    print '\nDuration of the weather formatting:', end_timestamp-start_timestamp
 
 
 ### END OF THE MAIN CODE ###
 
 #===============================================================================
-def write_CABO_weather_file(region_ID,grid_no,lon,lat,year,rad,tmin,tmax,vp,ws,
-                                                                     prec,dir_):
+def write_CABO_weather_file(grid_no,lon,lat,year,rad,tmin,tmax,vp,ws,prec,dir_):
 #===============================================================================
     '''
     this function writes a WOFOST formated weather file for one grid point.
 
     Arguments:
     ----------
-    region_ID string, it is the NUTS region no in which the grid cell is located
     grid_no   integer, it is the CGMS grid cell number
     lon       float, longitude of the grid cell center point
     lat       float, latitude of the grid cell center point
@@ -96,27 +139,21 @@ def write_CABO_weather_file(region_ID,grid_no,lon,lat,year,rad,tmin,tmax,vp,ws,
     dir_      string, is the directory where the output file should be saved
 
     '''
-    from maries_toolbox import fetch_EUROSTAT_NUTS_name, get_country_name
 
     # check your assumptions on the weather record being provided...
     assert len(rad)==len(tmin)==len(tmax)==len(vp)==len(ws)==len(prec),\
            'the weather variables have different dimensions! check your arrays'
     assert 365<=len(rad)<367, 'the weather variables do not contain 365 days'
 
-    # NB: I need to find a way of getting the elevation of the site and to
-    # calculate the Angstrom parameters...
+    # NB: I need to find a way of getting the elevation of the site
     elev = 0.
-
-    # fetch the NUTS region name from file
-    region_name = fetch_EUROSTAT_NUTS_name(region_ID, EUROSTATdir)
-    country_name = get_country_name(region_ID)
 
     # the formula to calculate the Angstrom parameters taken from WOFOST 6.0
     # user guide ()
     AngA = 0.4885 - 0.0052*lat #0.18 = indicative value for cold temperate region
     AngB = 0.1563 + 0.0074*lat #0.55 = indicative value for cold temperate region
 
-    filename = '%s%i.%s'%(region_ID[0:2],grid_no,str(year)[1:4])
+    filename = '%i.%s'%(grid_no,str(year)[1:4])
     filepath = os.path.join(dir_,filename)
     if os.path.exists(filepath):
         print '\nRemoving old file %s'%filepath
@@ -125,8 +162,6 @@ def write_CABO_weather_file(region_ID,grid_no,lon,lat,year,rad,tmin,tmax,vp,ws,
     output   = open(filepath,'w')
 
     output.write('*---------------------------------------------------------*\n')
-    output.write('*  Country   : %s                          \n'%country_name)
-    output.write('*  Region    : %s                          \n'%region_name)
     output.write('*  Longitude : %5.2f E                     \n'%lon)
     output.write('*  Latitude  : %5.2f N                     \n'%lat)
     output.write('*  Elevation : unknown                     \n')

@@ -4,23 +4,23 @@
 import sys, os
 import numpy as np
 
+import subprocess
+import cx_Oracle
+import sqlalchemy as sa
+from cPickle import dump as pickle_dump
+from cPickle import load as pickle_load
+from datetime import datetime
+from maries_toolbox import open_csv, get_list_CGMS_cells_in_Europe_arable
+from pcse.db.cgms11 import TimerDataProvider, SoilDataIterator, \
+                           CropDataProvider, STU_Suitability, \
+                           SiteDataProvider, WeatherObsGridDataProvider
+from pcse.exceptions import PCSEError 
+
 #===============================================================================
 # This script retrieves input data (soil, crop, timer and site) from the CGMS 
 # database and transfers it to capegrim
 def main():
 #===============================================================================
-    import subprocess
-    import cx_Oracle
-    import sqlalchemy as sa
-    from cPickle import dump as pickle_dump
-    from cPickle import load as pickle_load
-    from datetime import datetime
-    from maries_toolbox import open_csv
-    from pcse.db.cgms11 import TimerDataProvider, SoilDataIterator, \
-                               CropDataProvider, STU_Suitability, \
-                               SiteDataProvider, WeatherObsGridDataProvider
-    from pcse.exceptions import PCSEError 
-#-------------------------------------------------------------------------------
     global currentdir, EUROSTATdir, folder_local, folder_cape
 #-------------------------------------------------------------------------------
     """
@@ -103,49 +103,10 @@ def main():
     lat                 = all_CGMS_grid_cells['CGMS_grid_list.csv']['LATITUDE']
 
 #-------------------------------------------------------------------------------
-# we get the list of European grid cells that contain arable land
+# From this list, we select the subset of grid cells located in Europe that
+# contain arable land (no need to create weather data where there are no crops!)
 
-    europ        = np.array([]) # empty array
-    europ_arable = np.array([]) # empty array
-
-    # for each grid cell of the CGMS database:
-    for i,grid_no in enumerate(all_grids):
-
-        # if the grid cell is located in Europe:
-        if ((-13.<= lon[i] <= 70.) and (34 <= lat[i] <= 71)):
-
-            # we append the grid cell no to the list of European grid cells:
-            europ = np.append(europ,grid_no)
-
-    # now we want to get the list of European grid cells that contains arable land:
-    # NB: SQL can only access the info of 1000 grids at a time. We got about
-    # 20000 cells to loop over, so we do 20 times the query to get their arable land
-
-    bounds = np.arange(0,len(europ),1000) # bounds of grid cell ID
-    # in this 19 iteration, we do not explore ALL grid cells, we must do a last
-    # iteration manually (see below)
-    for i in range(len(bounds)-1):
-        subset = europ[bounds[i]:bounds[i+1]]
-        subset_arable = find_grids_with_arable_land(connection, subset)
-        # we want only the list of grid_no retrieved by the sql query:
-        subset_arable = [g for g,a in subset_arable]
-        # we remove grid_no duplicates:
-        subset_arable = list(set(subset_arable))
-        europ_arable = np.concatenate((europ_arable,subset_arable), axis=0) 
-
-    # we are still missing the last grid cells: do they have arable land?
-    subset = europ[bounds[-1]:len(europ)]
-    subset_arable = find_grids_with_arable_land(connection, subset)
-    # we want only the list of grid_no retrieved by the sql query:
-    subset_arable = [g for g,a in subset_arable]
-    # we remove grid_no duplicates:
-    subset_arable = list(set(subset_arable))
-    europ_arable = np.concatenate((europ_arable,subset_arable), axis=0) 
-
-    assert (len(europ) >= len(europ_arable)), 'increased the nb of grid cells???'
-    print '\nWe retrieved %i grid cell ids with arable '%len(europ_arable)+\
-          'land in Europe.\n'
-
+    europ_arable = get_list_CGMS_cells_in_Europe_arable(all_grids, lons, lats)
 
 #-------------------------------------------------------------------------------
 # We retrieve the list of suitable soil types for the selected crop species
@@ -232,7 +193,7 @@ def main():
                 continue # we go to the next grid cell
     
 #-------------------------------------------------------------------------------
-# We retrieve the crop data (crop management)
+# We retrieve the crop data (crop varieties)
 
             filename = folder_local + \
                        'cropobject_g%d_c%d_y%d.pickle'%(grid,crop_no,year)
@@ -298,76 +259,6 @@ def main():
                      "/Users/mariecombe/Documents/Work/Research_project_3/pcse/pickled_CGMS_input_data/",
                      "mariecombe@capegrim.wur.nl:~/mnt/promise/CO2/marie/pickled_CGMS_input_data/"])
 
-#===============================================================================
-def find_grids_with_arable_land(connection, grids, threshold=None, largest_n=None):
-#===============================================================================
-    """
-    Find the grids with either
-    1) an amount of arable land defined by threshold in m2
-       (max for a 25km grid cell is 625000000 m2)
-    2) the largest_n number of cells with largest share of arable land
-    3) just all grids with the amount of arable land
-
-    returns a list of [(grid_no1, area), (grid_no2, area), ...]
-    """
-
-    landcover = 101 # see below for other options from CROP_LANDCOVER table
-    # 101	Arable Land	0	0	0
-    # 102	Non-irrigated arable land	0	0	0
-    # 103	Agricultural areas	0	0	0
-    # 104	Pasture	0	0	0
-    # 105	Temporary forage	0	0	0
-    # 106	Rice	0	0	0
-    # 100	Any land cover class	0	0	0
-
-    cursor = connection.cursor()
-    gridlist = str(tuple(grids))
-    if threshold is not None:
-        thr = float(threshold)
-        sql = """
-            select
-                grid_no, area
-            from
-                link_region_grid_landcover
-            where
-                area > {threshold}f and
-                landcover_id = {lc} and
-                grid_no in {gridl}
-            order by area desc
-        """.format(gridl=gridlist, threshold=thr, lc=landcover)
-        cursor.execute(sql)
-        rows = cursor.fetchall()
-        return rows
-    elif largest_n is not None:
-        ln = int(largest_n)
-        sql = """
-            select
-                grid_no, area
-            from
-                link_region_grid_landcover
-            where
-                landcover_id = {lc} and
-                grid_no in {grids}
-            order by area desc
-        """.format(grids=gridlist, nrows=ln, lc=landcover)
-        cursor.execute(sql)
-        rows = cursor.fetchall()
-        return rows[0:ln]
-    else:
-        sql = """
-            select
-                grid_no, area
-            from
-                link_region_grid_landcover
-            where
-                landcover_id = {lc} and
-                grid_no in {grids}
-            order by area desc
-        """.format(grids=gridlist, lc=landcover)
-        cursor.execute(sql)
-        rows = cursor.fetchall()
-        return rows
-    
 #===============================================================================
 if __name__=='__main__':
     main()

@@ -37,6 +37,8 @@ def main():
     forward_sims  = True
     start_year    = 2006     # start_year and end_year define the period of time
     end_year      = 2006     # for which we do forward simulations
+    weather       = 'CGMS'   # weather data used for the forward simulations
+                             # can be 'CGMS' or 'ECMWF'
 
 #-------------------------------------------------------------------------------
 # Define working directories
@@ -48,12 +50,14 @@ def main():
 				   +'EUROSTAT_data'
     folderpickle  = '/Users/mariecombe/Documents/Work/Research_project_3/'\
                    +'pcse/pickled_CGMS_input_data/'
+    cabo_path     = ''
     pcseoutput    = '/Users/mariecombe/Documents/Work/Research_project_3/'\
                    +'pcse/pcse_individual_output/'
 
     # directories on capegrim:
     #EUROSTATdir   = "/Users/mariecombe/Cbalance/EUROSTAT_data"
-    #folderpickle  = '/Storage/CO2/mariecombe/pickled_CGMS_input_data/'
+    #folderpickle  = '/Users/mariecombe/mnt/promise/CO2/marie/pickled_CGMS_input_data/'
+    #cabo_path     = '/Users/mariecombe/mnt/promise/CO2/marie/CABO_weather_ECMWF/'
     #pcseoutput    = '/Storage/CO2/mariecombe/pcse_individual_output/'
 
 #-------------------------------------------------------------------------------
@@ -326,8 +330,8 @@ def optimize_regional_yldgapf_dyn(crop_no_, frac_crop, selected_grid_cells_,
 
         # 5- we compute the (sim-obs) differences.
         DIFF = TSO_regional - OBS
-        assert (TSO_regional[-1] > OBS[-1]), "Observed yield too high! The DM '+\
-               'content is wrong. Check it again."
+        assert (TSO_regional[-1] > OBS[-1]), 'Observed yield too high! The DM '+\
+               'content is wrong. Check it again.'
         
         # Writing more output
         print '\nIteration %i'%iter_no
@@ -754,6 +758,7 @@ def perform_yield_sims(selected_grid_cells_, selected_soil_types_,
     from datetime import datetime
     from pcse.models import Wofost71_WLP_FD
     from pcse.base_classes import WeatherDataProvider
+    from pcse.fileinput.cabo_weather import CABOWeatherDataProvider
 
     # 0- we open a file to write summary output in it
     if (os.path.isfile(os.path.join(currentdir, 'pcse_summary_output',   
@@ -772,16 +777,21 @@ def perform_yield_sims(selected_grid_cells_, selected_soil_types_,
     
     for grid, arable_area in selected_grid_cells_:
 
-        # Retrieve the weather data of one grid cell (all years are in one file) 
-        filename = folderpickle+'weatherobject_g%d.pickle'%grid
-        weatherdata = WeatherDataProvider()
-        weatherdata._load(filename)
+        if (weather == 'CGMS'):
+            # Retrieve the weather data of one grid cell (all years are in one file) 
+            filename = folderpickle+'weatherobject_g%d.pickle'%grid
+            weatherdata = WeatherDataProvider()
+            weatherdata._load(filename)
                     
         # Retrieve the soil data of one grid cell 
         filename = folderpickle+'soilobject_g%d.pickle'%grid
         soil_iterator = pickle_load(open(filename,'rb'))
 
         for y, year in enumerate(campaign_years_): 
+
+            #if (weather == 'ECMWF'):
+            #    weatherdata = CABOWeatherDataProvider('%i.%s'%(grid,str(year)[1:4]), 
+            #                                                     fpath=cabo_path)
 
             # Retrieve calendar data of one year for one grid cell
             filename = folderpickle+'timerobject_g%d_c%d_y%d.pickle'%(grid,
