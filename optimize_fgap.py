@@ -9,7 +9,7 @@ from cPickle import load as pickle_load # pickle_load is used in almost all my
                                         # before def main():
 
 #===============================================================================
-# This script executes WOFOST runs for one NUTS region and optimizes its YLDGAPF
+# This script optimizes the WOFOST fgap for a number of NUTS regions
 def main():
 #===============================================================================
     from maries_toolbox import open_csv_EUROSTAT, detrend_obs, get_crop_name,\

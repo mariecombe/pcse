@@ -82,7 +82,6 @@ def main():
 #   WE LOOP OVER ALL YEARS:
     for y, year in enumerate(campaign_years): 
         print '######################## Year %i ########################\n'%year
-        europ_cultivated = np.array([])
 
 #-------------------------------------------------------------------------------
 # START OF PARALLELIZATION HERE !!!!!!!
