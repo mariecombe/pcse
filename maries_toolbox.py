@@ -25,6 +25,7 @@ def get_list_CGMS_cells_in_Europe_arable(gridcells, lons, lats):
 
     """
     import cx_Oracle
+    from operator import itemgetter as operator_itemgetter
 
     # test the connection:
     try:
@@ -37,7 +38,8 @@ def get_list_CGMS_cells_in_Europe_arable(gridcells, lons, lats):
 
     # initialize lists of grid cells
     europ        = np.array([]) # empty array
-    europ_arable = np.array([]) # empty array
+    europ_arable = list() # empty array
+    #europ_arable = europ_arable.reshape(())
 
     # for each grid cell of the CGMS database:
     for i,grid_no in enumerate(gridcells):
@@ -58,20 +60,22 @@ def get_list_CGMS_cells_in_Europe_arable(gridcells, lons, lats):
     for i in range(len(bounds)-1):
         subset = europ[bounds[i]:bounds[i+1]]
         subset_arable = find_grids_with_arable_land(connection, subset)
-        # we want only the list of grid_no retrieved by the sql query:
-        subset_arable = [g for g,a in subset_arable]
-        # we remove grid_no duplicates:
-        subset_arable = list(set(subset_arable))
-        europ_arable = np.concatenate((europ_arable,subset_arable), axis=0) 
+        # we remove grid_no duplicates, but we conserve the tuple format:
+        subset_arable = dict((i[0],i) for i in subset_arable).values()
+        # we order the list by decreasing amount of arable land area
+        subset_arable = sorted(subset_arable,key=operator_itemgetter(1),reverse=True)
+        # we store the list of tuples:
+        europ_arable += subset_arable
 
     # we are still missing the last grid cells: do they have arable land?
     subset = europ[bounds[-1]:len(europ)]
     subset_arable = find_grids_with_arable_land(connection, subset)
-    # we want only the list of grid_no retrieved by the sql query:
-    subset_arable = [g for g,a in subset_arable]
-    # we remove grid_no duplicates:
-    subset_arable = list(set(subset_arable))
-    europ_arable = np.concatenate((europ_arable,subset_arable), axis=0) 
+    # we remove grid_no duplicates, but we conserve the tuple format:
+    subset_arable = dict((i[0],i) for i in subset_arable).values()
+    # we order the list by decreasing amount of arable land area
+    subset_arable = sorted(subset_arable,key=operator_itemgetter(1),reverse=True)
+    # we store the list of tuples:
+    europ_arable += subset_arable 
 
     assert (len(europ) >= len(europ_arable)), 'increased the nb of grid cells???'
     print '\nWe retrieved %i grid cell ids with arable '%len(europ_arable)+\
