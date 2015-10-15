@@ -292,12 +292,13 @@ class CABOWeatherDataProvider(WeatherDataProvider):
                  "LON": self.longitude, "ELEV": self.elevation}
             
             for obs, (name, cf, unit) in zip(rec, self.variables):
-                if name == "IRRAD" and self.has_sunshine is True:
-                    obs = angstrom(thisdate, self.latitude, obs, self.angstA, self.angstB)
-                    # angstrom routine returns in J/m2/day, no conversion factor needed
-                    t[name] = float(obs)
-                else:
-                    t[name] = float(obs)*cf
+                #if name == "IRRAD" and self.has_sunshine is True:
+                #    obs = angstrom(thisdate, self.latitude, obs, self.angstA, self.angstB)
+                #    # angstrom routine returns in J/m2/day, no conversion factor needed
+                #    t[name] = float(obs)
+                #else:
+                #    t[name] = float(obs)*cf
+                t[name] = float(obs)*cf
             
             # Reference evapotranspiration in mm/day
             try:
