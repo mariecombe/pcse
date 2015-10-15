@@ -9,8 +9,8 @@ import numpy as np
 # heterotrophic respiration
 def main():
 #===============================================================================
-    from maries_toolbox import open_pcse_csv_output, get_crop_name, \
-                               select_cells, select_soils
+    from maries_toolbox import open_pcse_csv_output, open_csv, get_crop_name, \
+                               select_soils
     from cPickle import load as pickle_load
     from cPickle import dump as pickle_dump
     import datetime
@@ -49,27 +49,31 @@ def main():
     ecmwfdir_ssrd = '/Storage/TM5/METEO/tm5-nc/ec/ei/fc012up2tr3/sfc/glb100x100/'
 
     # storage folder for individual PCSE runs:
-    #pcse_outputdir = '/Storage/CO2/mariecombe/pcse_individual_output/'
-    pcse_outputdir  = '/Users/mariecombe/Documents/Work/Research_project_3/'+\
-                      'pcse/pcse_individual_output/'
+    pcse_outputdir = '/Users/mariecombe/mnt/promise/CO2/marie/pcse_output/'
+    #pcse_outputdir  = '/Users/mariecombe/Documents/Work/Research_project_3/'+\
+    #                  'pcse/pcse_individual_output/'
     
     # storage folder for the CGMS input data files
-    #pickled_inputdir  = '/Storage/CO2/mariecombe/pickled_CGMS_input_data/'
-    pickled_inputdir  = '/Users/mariecombe/Documents/Work/Research_project_3/'+\
-                        'pcse/pickled_CGMS_input_data/'
+    pickled_inputdir  = '/Users/mariecombe/mnt/promise/CO2/marie/pickled_CGMS_input_data/'
+    #pickled_inputdir  = '/Users/mariecombe/Documents/Work/Research_project_3/'+\
+    #                    'pcse/pickled_CGMS_input_data/'
+
+    EUROSTATdir   = "/Users/mariecombe/Cbalance/EUROSTAT_data"
+#-------------------------------------------------------------------------------
+# we read the CGMS grid cells coordinates from file
+
+    CGMS_cells = open_csv(EUROSTATdir, ['CGMS_grid_list.csv'])
+    all_grids  = CGMS_cells['CGMS_grid_list.csv']['GRID_NO']
+    lons       = CGMS_cells['CGMS_grid_list.csv']['LONGITUDE']
+    lats       = CGMS_cells['CGMS_grid_list.csv']['LATITUDE']
 
 #-------------------------------------------------------------------------------
-# Select all grid cells of the NUTS region
+# From this list, we select the subset of grid cells located in Europe that
+# contain arable land (no need to create weather data where there are no crops!)
 
-    # we select all whole grid cells contained in the NUTS region
-    selected_grid_cells = select_cells(NUTS_no, pickled_inputdir, method='all')
-
-#-------------------------------------------------------------------------------
-# Select all soil types of the NUTS region
-
-    # We select all suitable soil types for each selected grid cell
-    selected_soil_types = select_soils(crop_no, selected_grid_cells,
-                          pickled_inputdir, method='all')
+    filename            = pickled_inputdir + 'europe_arable_CGMS_cellids.pickle'
+    europ_arable        = pickle_load(open(filename,'rb'))    
+    selected_grid_cells = sorted(europ_arable, key=operator_itemgetter(0))
 
 #-------------------------------------------------------------------------------
 #   WE NEED TO LOOP OVER THE GRID CELLS
@@ -77,31 +81,31 @@ def main():
 #-------------------------------------------------------------------------------
 # We retrieve the longitude and latitude of the CGMS grid cell
 
-        # TO BE CODED WITH ALLARD's GRID DICTIONNARY
-        # for now we assume one fixed coordinates to retrieve ssrd and tsurf
-        lat = 42. # degrees N of the CGMS grid cell
-        lon = -4. # degrees E of the CGMS grid cell
+        i   = np.argmin(np.absolute(all_grids - grid_no))
+        lon = lons[i]
+        lat = lats[i]
+        print '- grid cell no %i: lon = %.2f , lat = %.2f'%(grid_no,lon,lat)
 
 #-------------------------------------------------------------------------------
 # We open the incoming surface shortwave radiation [W.m-2] 
 
         filename_rad = 'rad_ecmwf_%i_lon%.2f_lat%.2f.pickle'%(opti_year,lon,lat)
-        if os.path.exists(filename_rad):
-            print
-            rad = pickle_load(open(filename_rad, 'rb'))
-        else:
-            rad = retrieve_ecmwf_ssrd(opti_year, lon, lat)
-            pickle_dump(rad,open(filename_rad, 'wb'))
+        #if os.path.exists(filename_rad):
+        #    print
+        #    rad = pickle_load(open(filename_rad, 'rb'))
+        #else:
+        rad = retrieve_ecmwf_ssrd(opti_year, lon, lat)
+        #    pickle_dump(rad,open(filename_rad, 'wb'))
 
 #-------------------------------------------------------------------------------
 # We open the surface temperature record
 
         filename_ts = 'ts_ecmwf_%i_lon%.2f_lat%.2f.pickle'%(opti_year,lon,lat)
-        if os.path.exists(filename_ts):
-            ts = pickle_load(open(filename_ts, 'rb'))
-        else:
-            ts = retrieve_ecmwf_tsurf(opti_year, lon, lat)
-            pickle_dump(ts,open(filename_ts, 'wb'))
+        #if os.path.exists(filename_ts):
+        #    ts = pickle_load(open(filename_ts, 'rb'))
+        #else:
+        ts = retrieve_ecmwf_tsurf(opti_year, lon, lat)
+        #    pickle_dump(ts,open(filename_ts, 'wb'))
 
 #-------------------------------------------------------------------------------
 # we initialize the timeseries of gpp and Resp for the grid cell
@@ -120,6 +124,10 @@ def main():
             fig1, axes = plt.subplots(nrows=3, ncols=1, figsize=(14,10))
             fig1.subplots_adjust(0.1,0.1,0.98,0.9,0.2,0.2)
 
+#-------------------------------------------------------------------------------
+        # Select soil types to loop over for the forward runs
+        selected_soil_types = select_soils(crop_no, [grid_no], pickledir, 
+                                           method=selec_method, n=nsoils)
 #-------------------------------------------------------------------------------
 #       WE NEED TO LOOP OVER THE SOIL TYPE
         for smu, stu_no, stu_area, soildata in selected_soil_types[grid_no]:
