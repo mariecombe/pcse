@@ -5,7 +5,8 @@ import numpy as np
 
 from maries_toolbox import get_crop_name, open_csv, open_csv_EUROSTAT,\
                            detrend_obs, define_opti_years,\
-                           retrieve_crop_DM_content, get_EUR_frac_crop
+                           retrieve_crop_DM_content, get_EUR_frac_crop,\
+                           open_pcse_csv_output
 from matplotlib import pyplot as plt
 
 #===============================================================================
@@ -29,15 +30,17 @@ def main():
     figure_4 = False # figure showing a time series of opt vs. obs yields
     figure_5 = True # figure showing a map of yield over a region
     figure_6 = False # comparison with fluxnet data
+    figure_7 = False
 
 #-------------------------------------------------------------------------------
 # Define general working directories
     currentdir = os.getcwd()
 	# directories on my local MacBook:
-    EUROSTATdir   = '../EUROSTAT_data'
-    FLUXNETdir    = '../FluxNet_data'
+    EUROSTATdir   = '../Cbalance/EUROSTAT_data'
+    FLUXNETdir    = '../Cbalance/FluxNet_data'
     # directories on capegrim:
     #EUROSTATdir   = "/Users/mariecombe/Cbalance/EUROSTAT_data"
+    pcseoutputdir = '/Users/mariecombe/mnt/promise/CO2/marie/pcse_output'
 #-------------------------------------------------------------------------------
 # Close all figures
     plt.close('all')
@@ -59,7 +62,7 @@ def main():
                             # sensitivity analysis results files are located
 
     # open the results from the sensitivity analysis
-    RMSE      = retrieve_RMSE_and_YLDGAPF(regions, cases)
+    #RMSE      = retrieve_RMSE_and_YLDGAPF(regions, cases)
 
     # calculate some other variables from the user input:
     crop_name = get_crop_name(crops)
@@ -156,31 +159,47 @@ def main():
 
 # Define the shapefile path and filename:
 
-        path = '../EUROSTAT_data/EUROSTAT_website_2010_shapefiles/'
-        #filename = 'NUTS_BN_03M_2010'# NUTS regions 
-        filename = 'NUTS_RG_03M_2010_copy'# NUTS regions 
+        path = '../Cbalance/EUROSTAT_data/EUROSTAT_website_2010_shapefiles/'
+        filename = 'NUTS_RG_03M_2010'# NUTS regions 
+        #filename = 'NUTS_RG_03M_2010_copy'# NUTS regions 
+
+# define the NUTS regions of interest:
+
+        lands_levels = {'AT':1,'BE':1,'BG':2,'CH':1,'CY':2,'CZ':1,'DE':1,'DK':2,
+                        'EE':2,'EL':2,'ES':2,'FI':2,'FR':2,'HR':2,'HU':2,'IE':2,
+                        'IS':2,'IT':2,'LI':1,'LT':2,'LU':1,'LV':2,'ME':1,'MK':2,
+                        'MT':1,'NL':1,'NO':2,'PL':2,'PT':2,'RO':2,'SE':2,'SI':2,
+                        'SK':2,'TR':2,'UK':1}
+
+        from cPickle import load as pickle_load
+        list_of_regions = pickle_load(open('list_of_NUTS_regions.pickle','rb'))
+
+        from random import random
+        pickled_yield_data = {}
+        for reg in list_of_regions:
+            pickled_yield_data[reg] = random()*1000.
 
 # first add an attribute to the shapefile (make a function for that)
 # this attribute will be the yield data! observed, simulated, anomaly, etc...
 
-        # open a shapefile and get field names
-        source = ogr.Open(os.path.join(path + filename), 1) # 1 is read/write
-        layer = source.GetLayer()
-        layer_defn = layer.GetLayerDefn()
-        field_names = [layer_defn.GetFieldDefn(i).GetName() for i in 
-                       range(layer_defn.GetFieldCount())]
-        print 'nb of fields:', len(field_names), 'yield' in field_names
-        # add a new field
-        new_field = ogr.FieldDefn('yield', ogr.OFTReal) # could be OFTInteger or 
-                                                        # OFTString, depending on
-                                                        # desired data type
-        layer.CreateField(new_field)
-        field_names = [layer_defn.GetFieldDefn(i).GetName() for i in
-                       range(layer_defn.GetFieldCount())]
-        print 'nb of fields:', len(field_names), 'yield' in field_names
-        # close the shapefile
-        source = None
-        sys.exit(2)
+#        # open a shapefile and get field names
+#        source = ogr.Open(os.path.join(path + filename), 1) # 1 is read/write
+#        layer = source.GetLayer()
+#        layer_defn = layer.GetLayerDefn()
+#        field_names = [layer_defn.GetFieldDefn(i).GetName() for i in 
+#                       range(layer_defn.GetFieldCount())]
+#        print 'nb of fields:', len(field_names), 'yield' in field_names
+#        # add a new field
+#        new_field = ogr.FieldDefn('yield', ogr.OFTReal) # could be OFTInteger or 
+#                                                        # OFTString, depending on
+#                                                        # desired data type
+#        layer.CreateField(new_field)
+#        field_names = [layer_defn.GetFieldDefn(i).GetName() for i in
+#                       range(layer_defn.GetFieldCount())]
+#        print 'nb of fields:', len(field_names), 'yield' in field_names
+#        # close the shapefile
+#        source = None
+#        sys.exit(2)
 
 # create a map of Europe with coast lines
 
@@ -194,7 +213,7 @@ def main():
         lons = [-5, 0]
         lats = [40, 48]
         x, y = map(lons,lats)
-        map.scatter(x, y, marker='D', color='m')
+        #map.scatter(x, y, marker='D', color='m')
 
 # Read a shapefile and its metadata
 
@@ -202,26 +221,43 @@ def main():
         # read the shapefile data WITHOUT plotting its shapes
         NUTS_info = map.readshapefile(path + filename, name, drawbounds=False) 
 
-# Plot polygons and the attached data:
+# Plot polygons and the corresponding pickled data:
 
         # retrieve the list of patches to fill and its data to plot
         patches    = []
         yield_data = []
+        pickle_dict = list()
+        # for each polygon of the shapefile
         for info, shape in zip(map.NUTS_info, map.NUTS):
-            if info['STAT_LEVL_'] == 2: # for NUTS 2 regions only
+            # we get the NUTS number of this polygon:
+            NUTS_no = info['NUTS_ID']
+            # if the NUTS level of the polygon corresponds to the desired one:
+            if (info['STAT_LEVL_'] == lands_levels[NUTS_no[0:2]]):
+                # we append the polygon to the patch collection
                 patches.append( Polygon(np.array(shape), True) )
-                yield_data.append( float(info['SHAPE_Area']) )
+                # and we associate a yield to it
+                yield_data.append( float(pickled_yield_data[NUTS_no]) )
+                       
+        ## following lines produce the pickled list of NUTS regions
+        #        if NUTS_no not in pickle_dict:
+        #            pickle_dict += [NUTS_no]
+        #from cPickle import dump as pickle_dump
+        #pickle_dump(pickle_dict, open('list_of_NUTS_regions.pickle','wb')) 
 
         # create a color scale that fits the data
+        # NB: the data supplied needs to be normalized (between 0. and 1.)
         cmap = plt.get_cmap('RdYlBu')
-        colors = cmap(yield_data)
+        colors = cmap(np.array(yield_data)/1000.)
 
         # add the patches on the map
         collection = PatchCollection(patches, cmap = cmap, facecolors=colors, 
                                      edgecolor='k', linewidths=1., zorder=2) 
-        #collection.set_array(np.array(colors))
-        #collection.set_clim(0.,5.)
-        #plt.colorbar(collection)
+        # so that the colorbar works, we specify which data array we use to
+        # construct it. Here the data should not be normalized.
+        # NB: this overrides the colors specified in the collection line
+        collection.set_array(np.array(yield_data))
+        collection.set_clim(min(yield_data),max(yield_data))
+        plt.colorbar(collection)
         ax.add_collection(collection)
        
         plt.show()
@@ -229,6 +265,7 @@ def main():
 # Plot the FluxNet GPP, Reco from various sites
 
     if (figure_6 == True):
+        print '\n========================== tackling figure 6 =========================='
         sites = ['DE-Kli', 'ES-ES2']
         years = [2006]
         for site in sites:
@@ -243,6 +280,88 @@ def main():
             plt.ylabel('Carbon fluxes (gC m-2 d-1)')
         #fig.suptitle(site)
         plt.show()
+
+#-------------------------------------------------------------------------------
+# Plot the FluxNet GPP, Reco from various sites
+
+    if (figure_7 == True):
+        from operator import itemgetter as operator_itemgetter
+        print '\n========================== tackling figure 7 =========================='
+        # open file with grid cell coordinates:
+        CGMS_cells = open_csv(EUROSTATdir, ['CGMS_grid_list.csv'])
+        all_grids  = CGMS_cells['CGMS_grid_list.csv']['GRID_NO']
+        lons       = CGMS_cells['CGMS_grid_list.csv']['LONGITUDE']
+        lats       = CGMS_cells['CGMS_grid_list.csv']['LATITUDE']
+
+        # construct a list of all available results (runs did not finish entirely)
+        listoffiles = [f for f in os.listdir(pcseoutputdir) if ('.csv' in f) and ('timeseries' in f)]
+        listoffiles = sorted(listoffiles)
+        list_of_gridcells = list()
+        list_of_results   = list()
+        for filename in listoffiles:
+            args    = filename.split('_')  
+            grid_no = float(args[4].replace('g',''))
+            #stu_no  = args[5].replace('.csv','').replace('s','')
+            # construct a 2-D array with the results
+            i   = np.argmin(np.absolute(all_grids - grid_no))
+            lon = lons[i]
+            lat = lats[i]
+            res = open_pcse_csv_output(pcseoutputdir, [filename])
+            TSO = res[1]
+            #  am going to quickly exclude repeated soils
+            if grid_no not in list_of_gridcells:
+                list_of_gridcells += [grid_no]
+                list_of_results   += [(grid_no, lon, lat, TSO)]
+        #list_of_results = sorted(list_of_results, key=operator_itemgetter(0))
+        from cPickle import dump as pickle_dump
+        pickle_dump(list_of_results,open('list_of_grid_lon_lat_yield.pickle','wb'))
+        print 'pickled results!'
+        sys.exit(2)
+        # set up the grid and create a 2D array with same dimension containing the results
+        lons = [lon for g,lon,lat,y in list_of_results]
+        lats = [lat for g,lon,lat,y in list_of_results]
+        #lons = np.array(sorted(list(set(lons))))
+        #lats = np.array(sorted(list(set(lats))))
+        #nx   = len(lons)
+        #ny   = len(lats)
+        #crop_yield = np.zeros((nx,ny))
+        #for g,lo,la,y in list_of_results:
+        #    print g,lo,la,y
+        #    for iy, lat in enumerate(lats):
+        #        for ix, lon in enumerate(lons):
+        #            if (lon==lo) and (lat==la):
+        #                crop_yield[ix,iy] = y
+        #print crop_yield, lons, lats, nx, ny
+        #'''crop_yield = np.zeros((180,360))
+        #lons = -179.5 + np.arange(360)
+        #lats = -89.5 + np.arange(180)
+        #nx   = 360
+        #ny   = 180
+        #crop_yield[:,182] = 1'''
+        # set up the map
+        from mpl_toolkits.basemap import Basemap
+        #m = Basemap(projection='laea', lat_0=48, lon_0=16, llcrnrlat=30, 
+        #              llcrnrlon=-10, urcrnrlat=65, urcrnrlon=45)
+        #m = Basemap(llcrnrlon=-180., llcrnrlat=-90., urcrnrlon=180., urcrnrlat=90.,
+        #            lon_0=0.0,lat_0 = 0.0,
+        #            rsphere=6371200., projection='cyl')
+        m = Basemap(llcrnrlon=-10., llcrnrlat=26., urcrnrlon=72., urcrnrlat=68.,
+                    lon_0=18.0,lat_0 = 40.0,
+                    rsphere=6371200., projection='aea')
+        # convert the data to map coordinates
+        print lons,lats
+        X, Y = m(lons, lats)
+        #yield_map = m.transform_scalar(crop_yield, lons, lats, nx, ny)
+        #print yield_map
+
+        # show the map
+        #pl = m.imshow(yield_map, cmap=plt.get_cmap('RdYlGn'))
+        pl = m.plot(X, Y, 'bo')
+        #plt.colorbar(pl)
+        m.drawcoastlines()
+        m.drawcountries()
+        plt.show()
+
         
 #===============================================================================
 def plot_precision_yldgapf(list_of_crops, list_of_regions, start_year_, 

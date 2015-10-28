@@ -6,6 +6,7 @@ import numpy as np
 
 from cPickle import load as pickle_load
 from cPickle import dump as pickle_dump
+from operator import itemgetter as operator_itemgetter
 from datetime import datetime
 from pcse.models import Wofost71_WLP_FD
 from maries_toolbox import select_soils
@@ -20,7 +21,7 @@ def main():
     from maries_toolbox import open_csv
 #-------------------------------------------------------------------------------
     global crop_no, year, selec_method, nsoils, weather, pickledir, caboecmwfdir,\
-           pcseoutputdir, currentdir
+           pcseoutputdir, currentdir, start_timestamp
 #-------------------------------------------------------------------------------
 # Define the settings of the run:
 
@@ -34,7 +35,7 @@ def main():
                              # can be 'CGMS' or 'ECMWF'
 
     process  = 'parallel'  # multiprocessing option: can be 'serial' or 'parallel'
-    nb_cores = 10          # number of cores used in case of a parallelization
+    nb_cores = 8          # number of cores used in case of a parallelization
 
 #-------------------------------------------------------------------------------
 # Calculate key variables from the user input:
@@ -66,7 +67,9 @@ def main():
 
     filename            = pickledir + 'europe_arable_CGMS_cellids.pickle'
     europ_arable        = pickle_load(open(filename,'rb'))    
-    selected_grid_cells = sorted(europ_arable)
+    selected_grid_cells = sorted(europ_arable, key=operator_itemgetter(0))
+    selected_grid_cells = np.array([g for g,a in europ_arable])
+    
 
 #-------------------------------------------------------------------------------
 # Perform the forward simulations:
@@ -81,7 +84,7 @@ def main():
         # if we do a serial iteration, we loop over the grid cells that 
         # contain arable land
         if (process == 'serial'):
-            for grid in europ_arable:
+            for grid in selected_grid_cells:
                 perform_yield_sim(grid)
 
         # if we do a parallelization, we use the multiprocessor module to 
@@ -89,7 +92,7 @@ def main():
         if (process == 'parallel'):
             import multiprocessing
             p = multiprocessing.Pool(nb_cores)
-            data = p.map(perform_yield_sim, europ_arable)
+            data = p.map(perform_yield_sim, selected_grid_cells)
             p.close()
 
         # we open a results file to write only summary output (for harvest maps)
@@ -185,10 +188,16 @@ def perform_yield_sim(grid_no):
                 os.remove(os.path.join(pcseoutputdir, filename))
             pickle_dump(output_string,open(os.path.join(pcseoutputdir,filename),'wb'))
 
-    # if an error is raised, there are missing input files, ie. the crop was not
-    # grown that year
+    # if there are missing input crop or calendar files, the crop was not grown that year
     except IOError:
         print 'The crop was not grown that year in grid cell no %i'%grid_no
+
+    # any other error:
+    except Exception as e:
+        print 'Unexpected error:', sys.exc_info()[0]
+        end_timestamp = datetime.utcnow()
+        print 'Duration of runs until Error:', end_timestamp-start_timestamp, '\n'
+        
 
     return None
 

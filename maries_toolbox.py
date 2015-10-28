@@ -260,7 +260,8 @@ def select_soils(crop_no, grid_cells, folder_pickle, method='topn', n=3):
  
     dict_soil_types = {}
  
-    for grid in [g for g,a in grid_cells]:
+    #for grid in [g for g,a in grid_cells]:
+    for grid in grid_cells:
  
         # we read the list of soil types contained within the grid cell
         filename = folder_pickle+'soilobject_g%d.pickle'%grid
@@ -645,6 +646,11 @@ def open_pcse_csv_output(inpath,filelist):
         # storing headers in list headerow
         headerow=lines[18]
 
+        # getting summary output
+        crop_yield = lines[13][0].split(':')
+        crop_yield = float(crop_yield[1])
+
+
         # deleting rows that are not data (first and last rows of the file)
         del lines[0:19]
 
@@ -667,7 +673,7 @@ def open_pcse_csv_output(inpath,filelist):
     
         print "Dictionary created!"
 
-    return Dict
+    return Dict, crop_yield
 
 #===============================================================================
 # Function to open normal csv files

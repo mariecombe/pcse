@@ -13,10 +13,11 @@ def main():
                                select_soils
     from cPickle import load as pickle_load
     from cPickle import dump as pickle_dump
+    from operator import itemgetter as operator_itemgetter
     import datetime
     import math
 #-------------------------------------------------------------------------------
-    global ecmwfdir_ssrd, ecmwfdir_tsurf, pickled_inputdir, pcse_ouputdir
+    global ecmwfdir_ssrd, ecmwfdir_tsurf, pickledir, pcse_ouputdir
 #-------------------------------------------------------------------------------
 # User-defined:
 
@@ -24,6 +25,9 @@ def main():
     crop_no = 3
     opti_year = 2006
     prod_figure = True
+
+    selec_method  = 'topn'   # can be 'topn' or 'randomn' or 'all'
+    nsoils        = 10       # number of selected soil types within a grid cell
 
 #-------------------------------------------------------------------------------
 # variables calculated from user input
@@ -54,8 +58,8 @@ def main():
     #                  'pcse/pcse_individual_output/'
     
     # storage folder for the CGMS input data files
-    pickled_inputdir  = '/Users/mariecombe/mnt/promise/CO2/marie/pickled_CGMS_input_data/'
-    #pickled_inputdir  = '/Users/mariecombe/Documents/Work/Research_project_3/'+\
+    pickledir  = '/Users/mariecombe/mnt/promise/CO2/marie/pickled_CGMS_input_data/'
+    #pickledir  = '/Users/mariecombe/Documents/Work/Research_project_3/'+\
     #                    'pcse/pickled_CGMS_input_data/'
 
     EUROSTATdir   = "/Users/mariecombe/Cbalance/EUROSTAT_data"
@@ -71,13 +75,14 @@ def main():
 # From this list, we select the subset of grid cells located in Europe that
 # contain arable land (no need to create weather data where there are no crops!)
 
-    filename            = pickled_inputdir + 'europe_arable_CGMS_cellids.pickle'
+    filename            = pickledir + 'europe_arable_CGMS_cellids.pickle'
     europ_arable        = pickle_load(open(filename,'rb'))    
     selected_grid_cells = sorted(europ_arable, key=operator_itemgetter(0))
+    print selected_grid_cells[0]
 
 #-------------------------------------------------------------------------------
-#   WE NEED TO LOOP OVER THE GRID CELLS
-    for grid_no, arable_land in selected_grid_cells:
+#   WE NEED TO LOOP OVER THE CULTIVATED GRID CELLS 
+    for grid_no, culti_land in [selected_grid_cells[0]]:
 #-------------------------------------------------------------------------------
 # We retrieve the longitude and latitude of the CGMS grid cell
 
@@ -126,8 +131,8 @@ def main():
 
 #-------------------------------------------------------------------------------
         # Select soil types to loop over for the forward runs
-        selected_soil_types = select_soils(crop_no, [grid_no], pickledir, 
-                                           method=selec_method, n=nsoils)
+        selected_soil_types = select_soils(crop_no, [(grid_no, culti_land)],
+                               pickledir, method=selec_method, n=nsoils)
 #-------------------------------------------------------------------------------
 #       WE NEED TO LOOP OVER THE SOIL TYPE
         for smu, stu_no, stu_area, soildata in selected_soil_types[grid_no]:
