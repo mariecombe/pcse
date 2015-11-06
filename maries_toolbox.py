@@ -262,6 +262,7 @@ def select_soils(crop_no, grid_cells, folder_pickle, method='topn', n=3):
  
     #for grid in [g for g,a in grid_cells]:
     for grid in grid_cells:
+        print grid
  
         # we read the list of soil types contained within the grid cell
         filename = folder_pickle+'soilobject_g%d.pickle'%grid

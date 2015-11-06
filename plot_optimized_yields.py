@@ -10,8 +10,7 @@ from maries_toolbox import get_crop_name, open_csv, open_csv_EUROSTAT,\
 from matplotlib import pyplot as plt
 
 #===============================================================================
-# This script plots optimum yields gap factors obtained with the sensitivity
-# analysis
+# This script plots various figures for my third project
 def main():
 #===============================================================================
     global currentdir, EUROSTATdir, RMSEdir, ForwardSimdir
@@ -155,32 +154,37 @@ def main():
         from matplotlib.patches import Polygon
         from matplotlib.collections import PatchCollection
         from matplotlib.patches import PathPatch
-        from osgeo import ogr # to add data to a shapefile
+        #from osgeo import ogr # to add data to a shapefile: not needed anymore
+        from cPickle import load as pickle_load
+        from random import random
 
 # Define the shapefile path and filename:
 
         path = '../Cbalance/EUROSTAT_data/EUROSTAT_website_2010_shapefiles/'
         filename = 'NUTS_RG_03M_2010'# NUTS regions 
-        #filename = 'NUTS_RG_03M_2010_copy'# NUTS regions 
 
 # define the NUTS regions of interest:
 
+        # for each country code, we say which NUTS region level we want to 
+        # consider (for some countries: level 1, for some others: level 2)
         lands_levels = {'AT':1,'BE':1,'BG':2,'CH':1,'CY':2,'CZ':1,'DE':1,'DK':2,
                         'EE':2,'EL':2,'ES':2,'FI':2,'FR':2,'HR':2,'HU':2,'IE':2,
                         'IS':2,'IT':2,'LI':1,'LT':2,'LU':1,'LV':2,'ME':1,'MK':2,
                         'MT':1,'NL':1,'NO':2,'PL':2,'PT':2,'RO':2,'SE':2,'SI':2,
                         'SK':2,'TR':2,'UK':1}
 
-        from cPickle import load as pickle_load
+        # we create the whole list of NUTS region ID number corresponding to the 
+        # levels above. NB: we created it once, and pickled it.
         list_of_regions = pickle_load(open('list_of_NUTS_regions.pickle','rb'))
 
-        from random import random
+        # we create a fake dictionary of yield data, with keys being NUTS IDs
         pickled_yield_data = {}
         for reg in list_of_regions:
             pickled_yield_data[reg] = random()*1000.
 
-# first add an attribute to the shapefile (make a function for that)
+# first add an attribute to the shapefile 
 # this attribute will be the yield data! observed, simulated, anomaly, etc...
+# NB: I managed to plot the yields without adding information to the shapefile
 
 #        # open a shapefile and get field names
 #        source = ogr.Open(os.path.join(path + filename), 1) # 1 is read/write
@@ -238,7 +242,7 @@ def main():
                 # and we associate a yield to it
                 yield_data.append( float(pickled_yield_data[NUTS_no]) )
                        
-        ## following lines produce the pickled list of NUTS regions
+        ## the following lines produce the pickled list of NUTS regions
         #        if NUTS_no not in pickle_dict:
         #            pickle_dict += [NUTS_no]
         #from cPickle import dump as pickle_dump
@@ -247,14 +251,16 @@ def main():
         # create a color scale that fits the data
         # NB: the data supplied needs to be normalized (between 0. and 1.)
         cmap = plt.get_cmap('RdYlBu')
-        colors = cmap(np.array(yield_data)/1000.)
+        norm_data = np.array(yield_data)/1000.
+        colors = cmap(norm_data)
 
-        # add the patches on the map
+        # add the polygons to the map
         collection = PatchCollection(patches, cmap = cmap, facecolors=colors, 
                                      edgecolor='k', linewidths=1., zorder=2) 
+				     
         # so that the colorbar works, we specify which data array we use to
         # construct it. Here the data should not be normalized.
-        # NB: this overrides the colors specified in the collection line
+        # NB: this overrides the colors specified in the collection line!
         collection.set_array(np.array(yield_data))
         collection.set_clim(min(yield_data),max(yield_data))
         plt.colorbar(collection)

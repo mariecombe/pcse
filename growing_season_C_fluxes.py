@@ -78,11 +78,11 @@ def main():
     filename            = pickledir + 'europe_arable_CGMS_cellids.pickle'
     europ_arable        = pickle_load(open(filename,'rb'))    
     selected_grid_cells = sorted(europ_arable, key=operator_itemgetter(0))
-    print selected_grid_cells[0]
+    print selected_grid_cells[3000]
 
 #-------------------------------------------------------------------------------
 #   WE NEED TO LOOP OVER THE CULTIVATED GRID CELLS 
-    for grid_no, culti_land in [selected_grid_cells[0]]:
+    for grid_no, culti_land in [selected_grid_cells[3000]]:
 #-------------------------------------------------------------------------------
 # We retrieve the longitude and latitude of the CGMS grid cell
 
@@ -131,7 +131,7 @@ def main():
 
 #-------------------------------------------------------------------------------
         # Select soil types to loop over for the forward runs
-        selected_soil_types = select_soils(crop_no, [(grid_no, culti_land)],
+        selected_soil_types = select_soils(crop_no, [grid_no],
                                pickledir, method=selec_method, n=nsoils)
 #-------------------------------------------------------------------------------
 #       WE NEED TO LOOP OVER THE SOIL TYPE
