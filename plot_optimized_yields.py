@@ -165,7 +165,7 @@ def main():
 
 # define the NUTS regions of interest:
 
-        # for each country code, we say which NUTS region level we want to 
+        #v for each country code, we say which NUTS region level we want to 
         # consider (for some countries: level 1, for some others: level 2)
         lands_levels = {'AT':1,'BE':1,'BG':2,'CH':1,'CY':2,'CZ':1,'DE':1,'DK':2,
                         'EE':2,'EL':2,'ES':2,'FI':2,'FR':2,'HR':2,'HU':2,'IE':2,

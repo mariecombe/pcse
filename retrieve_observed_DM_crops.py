@@ -23,10 +23,10 @@ def main():
 	
 	# directories on my local MacBook:
     EUROSTATdir   = '/Users/mariecombe/Documents/Work/Research_project_3/'\
-				   +'EUROSTAT_data'
+				   +'observations/EUROSTAT_data'
 
     # directories on capegrim:
-    #EUROSTATdir   = "/Users/mariecombe/Cbalance/EUROSTAT_data"
+    #EUROSTATdir   = "/Users/mariecombe/Cbalance/observations/EUROSTAT_data"
 
 
 #-------------------------------------------------------------------------------

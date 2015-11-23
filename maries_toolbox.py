@@ -39,7 +39,6 @@ def get_list_CGMS_cells_in_Europe_arable(gridcells, lons, lats):
     # initialize lists of grid cells
     europ        = np.array([]) # empty array
     europ_arable = list() # empty array
-    #europ_arable = europ_arable.reshape(())
 
     # for each grid cell of the CGMS database:
     for i,grid_no in enumerate(gridcells):
@@ -154,8 +153,118 @@ def find_grids_with_arable_land(connection, grids, threshold=None, largest_n=Non
         return rows
     
 #===============================================================================
+def querie_arable_cells_in_NUTS_region(NUTS_reg_code,_threshold=None,_largest_n=None):
+#===============================================================================
+    
+    import cx_Oracle
+
+    # test the connection:
+    try:
+        connection = cx_Oracle.connect("cgms12eu_select/OnlySelect@eurdas.world")
+    except cx_Oracle.DatabaseError:
+        print '\nBEWARE!! The Oracle database is not responding. Probably, you are'
+        print 'not using a computer wired within the Wageningen University network.'
+        print '--> Get connected with ethernet cable before trying again!'
+        sys.exit(2)
+
+    # 1- retrieve the NUTS 3 region ID forming the desired NUTS 2 region
+    regions = find_level3_regions(connection, NUTS_reg_code)
+    print regions
+
+    # 2- get the grid cells that are complete
+    complete_grids = find_complete_grid_cells_in_regions(connection, regions)
+
+    # 3- get the grid cells with arable land
+    if _threshold is not None:
+        r = find_grids_with_arable_land(connection, complete_grids, threshold=_threshold)
+        crit_grid_selec = 'above_%i'%_threshold
+        print 'we select cells with arable land > %i m2!'%_threshold
+    elif _largest_n is not None:
+        r = find_grids_with_arable_land(connection, complete_grids, largest_n=_largest_n)
+        crit_grid_selec = 'top_%i'%_largest_n
+        print 'we select %i top cells!'%_largest_n
+    else:
+        r = find_grids_with_arable_land(connection, complete_grids)
+        crit_grid_selec = 'all'
+	
+    return r,crit_grid_selec
+
+#===============================================================================
+def find_level3_regions(connection, reg_code):
+#===============================================================================
+    """Returns the level3 regions for given region code."""
+
+    cursor = connection.cursor()
+
+    sql = """SELECT reg_map_id, reg_level FROM region where reg_code = '%s'""" % reg_code
+    cursor.execute(sql)
+    row = cursor.fetchone()
+    if not row:
+        msg = "Failed to retrieved ID of region '%s'" % reg_code
+        raise RuntimeError(msg)
+    reg_map_id, reg_level = row
+
+    sql = """
+        select
+          reg.level_3_reg_map_id
+        from
+            (select level_0.reg_map_id as level_0_reg_map_id,
+                    level_1.reg_map_id as level_1_reg_map_id,
+                    level_2.reg_map_id as level_2_reg_map_id,
+                    level_3.reg_map_id as level_3_reg_map_id
+             from
+                    (select reg_map_id, reg_map_id_bt, reg_name from region where reg_level = 0) level_0
+                inner join
+                    (select reg_map_id, reg_map_id_bt, reg_name from region where reg_level = 1) level_1
+                  on level_0.reg_map_id = level_1.reg_map_id_bt
+                inner join
+                    (select reg_map_id, reg_map_id_bt, reg_name from region where reg_level = 2) level_2
+                  on level_1.reg_map_id = level_2.reg_map_id_bt
+                inner join
+                    (select reg_map_id, reg_map_id_bt, reg_name from region where reg_level = 3) level_3
+                  on level_2.reg_map_id = level_3.reg_map_id_bt) reg
+        where
+          reg.level_%1i_reg_map_id = %i
+        """ % (reg_level, reg_map_id)
+
+    cursor.execute(sql)
+    rows = cursor.fetchall()
+    l3_regions = [row[0] for row in rows]
+
+    return l3_regions
+
+#===============================================================================
+def find_complete_grid_cells_in_regions(connection, regions):
+#===============================================================================
+    """Return the list of grid that are fully contained with the list of regions
+    """
+    cursor = connection.cursor()
+
+    sql_regions = str(tuple(regions))
+    sql = """
+        select
+          s.grid_no
+        from
+          (select
+                 t1.grid_no, sum(t1.area) as sum_area
+               from
+                 link_emu_region t1
+          where
+            t1.reg_map_id in %s
+          group by
+            t1.grid_no) s
+        where
+          s.sum_area > 624999990
+    """ % sql_regions
+    cursor.execute(sql)
+    rows = cursor.fetchall()
+    grids = [row[0] for row in rows]
+    return grids
+
+#===============================================================================
 # Function to select a subset of grid cells within a NUTS region
-def select_cells(NUTS_no, folder_pickle, method='topn', n=3):
+def select_cells(NUTS_no, crop_no, year, folder_pickle, method='topn', n=3, 
+                                                          select_from='arable'):
 #===============================================================================
     '''
     This function selects a subset of grid cells contained in a NUTS region
@@ -167,7 +276,7 @@ def select_cells(NUTS_no, folder_pickle, method='topn', n=3):
 
     Function arguments:
     ------------------
-    NUTS_no        is a string and is the NUTS region abbreviation
+    NUTS_no        is a string and is the NUTS region code number
 
     folder_pickle  is a string and is the path to the folder where the CGMS 
                    input pickle files are located (the pickled lists of 
@@ -186,13 +295,38 @@ def select_cells(NUTS_no, folder_pickle, method='topn', n=3):
 
     '''
     from cPickle import load as pickle_load
+    from cPickle import dump as pickle_dump
     from random import sample as random_sample
-    
-    # we first read the list of all 'whole' grid cells of that region
-    # NB: list_of_tuples is a list of (grid_cell_id, arable_land_area)
-    # tuples, which are already sorted by decreasing amount of arable land
-    filename = folder_pickle+'gridlistobject_all_r%s.pickle'%NUTS_no
-    list_of_tuples = pickle_load(open(filename,'rb'))
+
+    if (select_from == 'arable'):    
+        # we first read the list of all 'whole' grid cells of that region
+        # NB: list_of_tuples is a list of (grid_cell_id, arable_land_area)
+        # tuples, which are already sorted by decreasing amount of arable land
+        filename = folder_pickle+'gridlistobject_all_r%s.pickle'%NUTS_no
+        try:
+            list_of_tuples = pickle_load(open(filename, 'rb'))
+        except IOError:
+            list_of_tuples = querie_arable_cells_in_NUTS_region(NUTS_no)
+            pickle_dump(list_of_tuples, open(os.path.join(filename), 'wb'))
+
+    elif (select_from == 'cultivated'):
+        # first get the arable cells contained in NUTS region
+        filename = folder_pickle+'gridlistobject_all_r%s.pickle'%NUTS_no
+        try:
+            NUTS_arable = pickle_load(open(filename, 'rb'))
+        except IOError:
+            NUTS_arable = querie_arable_cells_in_NUTS_region(NUTS_no)
+            pickle_dump(list_of_tuples, open(os.path.join(filename), 'wb'))
+        # then read the European cultivated cells for that year and crop
+        filename = folder_pickle+'cropmask_c%i.pickle'%crop_no
+        culti_cells = pickle_load(open(filename,'rb'))
+        # get only the intersection, i.e. the cultivated cells in NUTS region:
+        list_of_tuples = list()
+        for cell in NUTS_arable:
+            if cell[0] in [c for c,a in culti_cells[year]]:
+                list_of_tuples += [cell]
+        print list_of_tuples
+
     # we select the first item from the file, which is the actual list of tuples
     list_of_tuples = list_of_tuples[0]
 
@@ -262,7 +396,6 @@ def select_soils(crop_no, grid_cells, folder_pickle, method='topn', n=3):
  
     #for grid in [g for g,a in grid_cells]:
     for grid in grid_cells:
-        print grid
  
         # we read the list of soil types contained within the grid cell
         filename = folder_pickle+'soilobject_g%d.pickle'%grid
@@ -310,16 +443,16 @@ def get_EUR_frac_crop(crop_name, NUTS_name, EUROSTATdir_, prod_fig=False):
     name1       = 'agri_croparea_NUTS1-2-3_1975-2014.csv'
     name2       = 'agri_landuse_NUTS1-2-3_2000-2013.csv'
     NUTS_data   =  open_csv_EUROSTAT(EUROSTATdir_, [name1, name2],
-                                     convert_to_float=True)
+                                     convert_to_float=True, verbose=False)
     # retrieve the region's crop area and arable area for the years 2000-2013
     # NB: by specifying obs_type='area', we do not remove a long term trend in
     # the observations 
     crop_area   = detrend_obs(2000, 2013, NUTS_name, crop_name,
                               NUTS_data[name1], 1., 2000, obs_type='area',
-                              prod_fig=False)
+                              prod_fig=False, verbose=False)
     arable_area = detrend_obs(2000, 2013, NUTS_name, 'Arable land', 
                               NUTS_data[name2], 1., 2000, obs_type='area',
-                              prod_fig=False)
+                              prod_fig=False, verbose=False)
     # we calculate frac_crop for the years where we both have observations of 
     # arable land AND crop area
     frac_crop = np.array([])
@@ -447,15 +580,17 @@ def fetch_EUROSTAT_NUTS_name(NUTS_no, EUROSTATdir):
     # we keep the string format, we just separate the string items
     dictnames = dict()
     for row in lines:
+        #dictnames[row[2]] = row[3]
         dictnames[row[0]] = row[1]
 
 # we fetch the NUTS region name corresponding to the code
 
-    print "EUROSTAT region name of %s:"%NUTS_no, dictnames[NUTS_no].lower()
-    return dictnames[NUTS_no].lower()
+    #print "EUROSTAT region name of %s:"%NUTS_no, dictnames[NUTS_no]
+    
+    return dictnames
 
 #===============================================================================
-def get_country_name(NUTS_no):
+def get_country_dict():
 #===============================================================================
 
     country_dict = {'AT': ['austria','#408040'], 		# 3 regions		
@@ -494,15 +629,15 @@ def get_country_name(NUTS_no):
 	                'TR': ['turkey','#7F00FF'],		# 19
 	                'UK': ['united kingdoms','#FF5FC0']}	# 106
 
-    country_name = country_dict[NUTS_no[0:2]][0]
+    #country_name = country_dict[NUTS_no[0:2]][0]
 
-    return country_name
+    return country_dict
 
 #===============================================================================
 # Function to detrend the observed EUROSTAT yields or harvests
 def detrend_obs( _start_year, _end_year, _NUTS_name, _crop_name, 
                 uncorrected_yields_dict, _DM_content, base_year,
-                obs_type='yield', prod_fig=False):
+                obs_type='yield', detrend=True, prod_fig=False, verbose=True):
 #===============================================================================
 
     from matplotlib import pyplot as plt
@@ -530,36 +665,48 @@ def detrend_obs( _start_year, _end_year, _NUTS_name, _crop_name,
         header_to_search = 'Area (1 000 ha)'
         conversion_factor = 1.
         obs_unit = '1000 ha'
-    
+    elif (obs_type == 'area_bis'):
+        header_to_search = 'Total'
+        conversion_factor = 1./1000.
+        obs_unit = '1000 ha'
+   
     # select yields for the required region, crop and period of time
     # and convert them from kg_humid_matter/ha to kg_dry_matter/ha 
-    TARGET = np.array([0.]*nb_years)
+    TARGET = np.array([-9999.]*nb_years)
+    if (verbose==True): print 'searching for:', _NUTS_name
     for j,year in enumerate(campaign_years):
         for i,region in enumerate(uncorrected_yields_dict['GEO']):
-            if (region.lower()==_NUTS_name):
+            if (region.lower()==_NUTS_name.lower()):
                 if uncorrected_yields_dict['CROP_PRO'][i]==_crop_name:
                     if (uncorrected_yields_dict['TIME'][i]==str(int(year))):
                         if (uncorrected_yields_dict['STRUCPRO'][i]==
                                                       header_to_search):
+                            if (verbose==True): 
+                                print year, _NUTS_name, uncorrected_yields_dict['Value'][i]
                             TARGET[j] = float(uncorrected_yields_dict['Value'][i])\
                                               *conversion_factor
-    #print 'observed dry matter yields:', TARGET
 
-    # fit a linear trend line in the record of observed yields
-    mask = ~np.isnan(TARGET)
-    z = np.polyfit(campaign_years[mask], TARGET[mask], 1)
-    p = np.poly1d(z)
-    OBS['ORIGINAL'] = TARGET[mask]
-    TREND['ORIGINAL'] = p(campaign_years)
-    
-    # calculate the anomalies to the trend line
-    ANOM = TARGET - (z[0]*campaign_years + z[1])
-    
-    # Detrend the observed yield data
-    OBS['DETRENDED'] = ANOM[mask] + p(base_year)
-    z2 = np.polyfit(campaign_years[mask], OBS['DETRENDED'], 1)
-    p2 = np.poly1d(z2)
-    TREND['DETRENDED'] = p2(campaign_years)
+    if (detrend==True):
+        # fit a linear trend line in the record of observed yields
+        mask = ~np.isnan(TARGET)
+        z = np.polyfit(campaign_years[mask], TARGET[mask], 1)
+        p = np.poly1d(z)
+        OBS['ORIGINAL'] = TARGET[mask]
+        TREND['ORIGINAL'] = p(campaign_years)
+        
+        # calculate the anomalies to the trend line
+        ANOM = TARGET - (z[0]*campaign_years + z[1])
+        
+        # Detrend the observed yield data
+        OBS['DETRENDED'] = ANOM[mask] + p(base_year)
+        z2 = np.polyfit(campaign_years[mask], OBS['DETRENDED'], 1)
+        p2 = np.poly1d(z2)
+        TREND['DETRENDED'] = p2(campaign_years)
+    else:
+        # no detrending, but we apply a mask still?
+        mask = ~np.isnan(TARGET)
+        OBS['ORIGINAL'] = TARGET[mask]
+        
     
     # if needed plot a figure showing the yields before and after de-trending
     if prod_fig==True:
@@ -575,31 +722,22 @@ def detrend_obs( _start_year, _end_year, _NUTS_name, _crop_name,
         print 'the trend line is y=%.6fx+(%.6f)'%(z[0],z[1])
         plt.show()
     
-    if ((obs_type == 'yield') or (obs_type == 'harvest')):
-        print '\nsuccesfully detrended the dry matter %ss!'%obs_type
-    elif (obs_type == 'area'): 
-        print '\nno %ss to detrend! returning the original obs'%obs_type
-   
-    if ((obs_type == 'yield') or (obs_type == 'harvest')):
+    if (detrend==True):
         obstoreturn = OBS['DETRENDED']
-    elif (obs_type == 'area'): 
+        if (verbose==True): print '\nsuccesfully detrended the %ss!'%obs_type, obstoreturn
+    else: 
         obstoreturn = OBS['ORIGINAL']
+        print '\nno detrending! returning the original %s'%obs_type, obstoreturn
 
     return obstoreturn, campaign_years[mask]
 
 #===============================================================================
 # Function to retrieve the dry matter content of a given crop in a given
 # country (this is based on EUROSTAT crop humidity data)
-def retrieve_crop_DM_content(crop_no_, NUTS_no_):
+def retrieve_crop_DM_content(crop_no_, NUTS_no_, EUROSTATdir):
 #===============================================================================
 
     from cPickle import load as pickle_load
-
-	# directories on my local MacBook:
-    EUROSTATdir   = '/Users/mariecombe/Documents/Work/Research_project_3/'\
-				   +'EUROSTAT_data'
-    # directories on capegrim:
-    #EUROSTATdir   = "/Users/mariecombe/Cbalance/EUROSTAT_data"
 
     # we retrieve the dry matter of a specific crop and country, over the 
     # years 1955-2015
@@ -722,7 +860,7 @@ def open_csv(inpath,filelist,convert_to_float=False):
 
 #===============================================================================
 # Function to open EUROSTAT csv files
-def open_csv_EUROSTAT(inpath,filelist,convert_to_float=False):
+def open_csv_EUROSTAT(inpath,filelist,convert_to_float=False,verbose=True):
 #===============================================================================
 
     from csv import reader as csv_reader
@@ -732,7 +870,7 @@ def open_csv_EUROSTAT(inpath,filelist,convert_to_float=False):
 
     for i,namefile in enumerate(filelist):
          
-        print "\nOpening %s......"%(namefile)
+        if (verbose == True): print "\nOpening %s......"%(namefile)
 
         # open file, read all lines
         inputpath = os.path.join(inpath,namefile)
@@ -776,7 +914,7 @@ def open_csv_EUROSTAT(inpath,filelist,convert_to_float=False):
             dictnamelist[varname]=data[:,j]
         Dict[namefile] = dictnamelist
     
-        print "Dictionary created!"
+        if (verbose == True): print "Dictionary created!"
 
     return Dict
 

@@ -46,8 +46,8 @@ def main():
     years            = [2006] # list of years we want to retrieve data for
     retrieve_weather = False  # if True, we retrive the CGMS weather input files
                               # Beware!! these files are huge!!!
-    process  = 'parallel'  # multiprocessing option: can be 'serial' or 'parallel'
-    nb_cores = 8           # number of cores used in case of a parallelization
+    process  = 'serial'  # multiprocessing option: can be 'serial' or 'parallel'
+    nb_cores = 2           # number of cores used in case of a parallelization
 
     # flags to execute parts of the script only:
     CGMS_input_retrieval = False
@@ -75,14 +75,15 @@ def main():
 	
 	# folder to store the input data, on my local Macbook:
     folder_local  = '/Users/mariecombe/Documents/Work/Research_project_3/'\
-                   +'pcse/pickled_CGMS_input_data/'
+                   +'model_input_data/CGMS/'
 
     # folder to sync the local folder with:
-    folder_cape   = '/Users/mariecombe/mnt/promise/CO2/pickled_CGMS_input_data/'
+    folder_cape   = '/Users/mariecombe/mnt/promise/CO2/marie/'\
+                    +'pickled_CGMS_input_data/'
 
     # folder on my local macbook where the CGMS_grid_list.csv file is located:
     EUROSTATdir   = '/Users/mariecombe/Documents/Work/Research_project_3/'\
-				   +'EUROSTAT_data'
+				   +'observations/EUROSTAT_data/'
 
 #-------------------------------------------------------------------------------
 # we test the connection to the remote Oracle database
@@ -106,19 +107,22 @@ def main():
         sys.exit(2)
 
 #-------------------------------------------------------------------------------
-# we read the list of CGMS grid cells from file
+# We only select grid cells located in Europe that contain arable land (no need 
+# to retrieve data where there are no crops!)
 
-    CGMS_cells = open_csv(EUROSTATdir, ['CGMS_grid_list.csv'])
-    all_grids  = CGMS_cells['CGMS_grid_list.csv']['GRID_NO']
-    lons       = CGMS_cells['CGMS_grid_list.csv']['LONGITUDE']
-    lats       = CGMS_cells['CGMS_grid_list.csv']['LATITUDE']
+    try:
+        europ_arable = pickle_load(open('../model_input_data/'\
+                                     +'europe_arable_CGMS_cellids.pickle','rb'))
+    except IOError:
+        # we read the list of CGMS grid cells from file
+        CGMS_cells = open_csv(EUROSTATdir, ['CGMS_grid_list.csv'])
+        all_grids  = CGMS_cells['CGMS_grid_list.csv']['GRID_NO']
+        lons       = CGMS_cells['CGMS_grid_list.csv']['LONGITUDE']
+        lats       = CGMS_cells['CGMS_grid_list.csv']['LATITUDE']
 
-#-------------------------------------------------------------------------------
-# From this list, we select the subset of grid cells located in Europe that
-# contain arable land (no need to create weather data where there are no crops!)
-
-    europ_arable = get_list_CGMS_cells_in_Europe_arable(all_grids, lons, lats)
-    europ_arable = sorted(europ_arable)
+        # we select the grid cells with arable land from file
+        europ_arable = get_list_CGMS_cells_in_Europe_arable(all_grids, lons, lats)
+        europ_arable = sorted(europ_arable)
 
 #-------------------------------------------------------------------------------
     if CGMS_input_retrieval == True:
@@ -147,7 +151,7 @@ def main():
             # if we do a serial iteration, we loop over the grid cells that 
             # contain arable land
             if (process == 'serial'):
-                for grid in europ_arable:
+                for grid in [g for g,a in europ_arable]:
                     retrieve_CGMS_input(grid)
 
             # if we do a parallelization, we use the multiprocessor module to 
@@ -155,7 +159,7 @@ def main():
             if (process == 'parallel'):
                 import multiprocessing
                 p = multiprocessing.Pool(nb_cores)
-                parallel = p.map(retrieve_CGMS_input, europ_arable)
+                parallel = p.map(retrieve_CGMS_input, [g for g,a in europ_arable])
                 p.close()
 
         # We add a timestamp at end of the retrieval, to time the process
@@ -168,7 +172,7 @@ def main():
 # We are gonna create a crop MASK dictionary: collect the grid cell ids where
 # the crop was grown on that year
 
-        crop_mask = {}
+        crop_mask = dict()
 
         # We add a timestamp at start of the crop mask creation
         start_timestamp = datetime.utcnow()
@@ -177,13 +181,15 @@ def main():
         for y, year in enumerate(campaign_years): 
             print '######################## Year %i ########################\n'%year
 
+            culti_list = list()
+
             # We retrieve the grid cell ids of those where the crop has been
             # sown that year
 
             europ_culti = list()
             if (process == 'serial'):
-                for grid in europ_arable:
-                    europ_culti.append(get_id_if_cultivated(grid))
+                for grid in [g for g,a in europ_arable]:
+                    europ_culti += get_id_if_cultivated(grid)
  
             if (process == 'parallel'):
                 import multiprocessing
@@ -191,14 +197,22 @@ def main():
                 europ_culti = p.map(get_id_if_cultivated, europ_arable)
                 p.close()
             europ_culti = np.array(europ_culti)
-                
+            print 'europ_culti', europ_culti
+           
+			# we have created a list of grid cell ids, but we need their arable
+			# land area as well. We do one more loop to retrieve that
+			# information from europ_arable
+            for cell in europ_arable:
+                if cell[0] in europ_culti:
+                    culti_list += [cell]
+            print 'culti list:', culti_list
             # at the end of each year's retrieval, we store the array of
             # cultivated grid cells:
-            crop_mask[year] = europ_culti
+            crop_mask[int(year)] = culti_list
  
         # now we are out of the year loop, we pickle the crop mask dictionary
         filename = 'cropmask_c%d_y%d.pickle'%(crop_no,year)
-        pickle_dump(crop_mask,open(filename,'wb'))
+        pickle_dump(crop_mask,open('../model_input_data/'+filename,'wb'))
 
         # We add a timestamp at end of the retrieval, to time the process
         end_timestamp = datetime.utcnow()
@@ -254,6 +268,7 @@ def retrieve_CGMS_input(grid):
         filename = folder_local + 'soilobject_g%d.pickle'%grid
         if os.path.exists(filename):
             soil_iterator = pickle_load(open(filename,'rb'))
+            print 'it exists!'
         else:
             soil_iterator = SoilDataIterator(engine, grid)
             pickle_dump(soil_iterator,open(filename,'wb'))       
