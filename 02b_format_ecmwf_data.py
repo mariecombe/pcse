@@ -22,80 +22,74 @@ def main():
     You can also switch on parallelization (recommended).
     Created files will be stored in folder:
     /Users/mariecombe/mnt/promise/CO2/marie/CABO_weather_ECMWF/
+
     """
 #-------------------------------------------------------------------------------
-    from maries_toolbox import open_csv, get_list_CGMS_cells_in_Europe_arable
+    from maries_toolbox import open_csv
     from datetime import datetime
     from cPickle import load as pickle_load
 #-------------------------------------------------------------------------------
     global dir_sfc, dir_tropo, year, all_grids, lons, lats, weatherdir
 #-------------------------------------------------------------------------------
-# USER INPUT - only this part should be modified by the user!!
+# ================================= USER INPUT =================================
 
-    years    = [2006]      # list of years we want to retrieve data for
     process  = 'parallel'  # multiprocessing option: can be 'serial' or 'parallel'
     nb_cores = 10          # number of cores used in case of a parallelization
 
+# ==============================================================================
 #-------------------------------------------------------------------------------
-# Calculate key variables from the user input:
-
-    campaign_years = np.linspace(int(years[0]),int(years[-1]),len(years))
-
-#-------------------------------------------------------------------------------
-# Define working directories
-
-    # capegrim directories where the ECMWF weather data is stored
+# Define general working directories
     dir_sfc     = '/Storage/TM5/METEO/tm5-nc/ec/ei/fc012up2tr3/sfc/glb100x100/'
     dir_tropo   = '/Storage/TM5/METEO/tm5-nc/ec/ei/fc012up2tr3/tropo25/'+\
                   'eur100x100/'
-
-    # capegrim directory where the list of CGMS grid cell coordinates is stored
-    EUROSTATdir = "/Users/mariecombe/Cbalance/EUROSTAT_data"
-
-    # capegrim directory where the formated weather file will be written
+    EUROSTATdir = '../observations/EUROSTAT_data/'
     weatherdir  = '/Users/mariecombe/mnt/promise/CO2/marie/CABO_weather_ECMWF/'
-
-    # capegrim directory where the formated weather file will be written
-    pickledir   = '/Users/mariecombe/mnt/promise/CO2/marie/pickled_CGMS_input_data/'
-
+#-------------------------------------------------------------------------------
+# we retrieve the years to loop over:
+    try:
+        years     = pickle_load(open('selected_years.pickle','rb'))
+    except IOError:
+        print '\nYou have not yet selected a shortlist of years to loop over'
+        print 'Run the script 01_select_crops_n_regions.py first!\n'
+        sys.exit() 
 #-------------------------------------------------------------------------------
 # we read the CGMS grid cells coordinates from file
-
     CGMS_cells = open_csv(EUROSTATdir, ['CGMS_grid_list.csv'])
     all_grids  = CGMS_cells['CGMS_grid_list.csv']['GRID_NO']
     lons       = CGMS_cells['CGMS_grid_list.csv']['LONGITUDE']
     lats       = CGMS_cells['CGMS_grid_list.csv']['LATITUDE']
-
 #-------------------------------------------------------------------------------
-# From this list, we select the subset of grid cells located in Europe that
-# contain arable land (no need to create weather data where there are no crops!)
+# we select the subset of grid cells located in Europe that contain arable land
+# (no need to create weather data where there are no crops!)
 
-    filename = pickledir + 'europe_arable_CGMS_cellids.pickle'
-    europ_arable = pickle_load(open(filename,'rb'))    
-    europ_arable = sorted(europ_arable)
+    pathname = os.path.join('../model_input_data/europe_arable_CGMS_cellids.pickle')
+    try:
+        europ_arable = pickle_load(open(pathname,'rb'))
+    except IOError:
+        from maries_toolbox import get_list_CGMS_cells_in_Europe_arable
+        # we select the grid cells with arable land from file
+        europ_arable = get_list_CGMS_cells_in_Europe_arable(all_grids, lons, lats)
+        europ_arable = sorted(europ_arable)
+        # we pickle it for future use
+        pickle_dump(europ_arable, open(pathname,'wb'))
 
 #-------------------------------------------------------------------------------
 # We add a timestamp at start of the script
     start_timestamp = datetime.utcnow()
-
 #-------------------------------------------------------------------------------
-#   WE LOOP OVER ALL YEARS:
-    for y, year in enumerate(campaign_years): 
+# WE LOOP OVER ALL YEARS:
+#-------------------------------------------------------------------------------
+    for y, year in enumerate(years): 
         print '######################## Year %i ########################\n'%year
 
-#-------------------------------------------------------------------------------
-# START OF PARALLELIZATION HERE !!!!!!!
-#-------------------------------------------------------------------------------
-# if we do a serial iteration, we loop over the grid cells that contain arable 
-# land
+		# if we do a serial iteration, we loop over the grid cells that contain
+		# arable land
         if (process == 'serial'):
             for grid in europ_arable:
                 format_weather(grid)
 
-#-------------------------------------------------------------------------------
-# if we do a parallelization, we use the multiprocessor module to provide series
-# of cells to the function
-
+		# if we do a parallelization, we use the multiprocessor module to
+		# provide series of cells to the function
         if (process == 'parallel'):
             import multiprocessing
             p = multiprocessing.Pool(nb_cores)
@@ -106,6 +100,7 @@ def main():
 # We add a timestamp at end of the retrieval, to time the process
     end_timestamp = datetime.utcnow()
     print '\nDuration of the weather formatting:', end_timestamp-start_timestamp
+#-------------------------------------------------------------------------------
 
 
 ### END OF THE MAIN CODE ###

@@ -1,32 +1,21 @@
 #!/usr/bin/env python
 
-# import modules needed in all the methods of this script:
 import sys, os
 import numpy as np
-
-import subprocess
-import cx_Oracle
-import sqlalchemy as sa
-from cPickle import dump as pickle_dump
-from cPickle import load as pickle_load
-from datetime import datetime
-from maries_toolbox import open_csv, get_list_CGMS_cells_in_Europe_arable
+from pcse.exceptions import PCSEError 
 from pcse.db.cgms11 import TimerDataProvider, SoilDataIterator, \
                            CropDataProvider, STU_Suitability, \
                            SiteDataProvider, WeatherObsGridDataProvider
-from pcse.exceptions import PCSEError 
+
+# This script retrieves input data (soil, crop, timer and site) from the CGMS 
+# database
 
 #===============================================================================
-# This script retrieves input data (soil, crop, timer and site) from the CGMS 
-# database and transfers it to capegrim
 def main():
 #===============================================================================
-    global currentdir, EUROSTATdir, folder_local, folder_cape,\
-           crop_no, suitable_stu, year, engine, retrieve_weather
-#-------------------------------------------------------------------------------
     """
-    This script retrieves CGMS input data for all CGMS European grid cells that
-    contain arable land, then syncs it on capegrim in folder:
+    This script tries to retrieve CGMS input data for all CGMS European grid 
+    cells that contain arable land, then syncs it on capegrim in folder:
     /Users/mariecombe/mnt/promise/CO2/pickled_CGMS_input_data/
 
     BEWARE!! To be granted access the Oracle database, you need to be connected 
@@ -38,62 +27,64 @@ def main():
     - crop data  (1 pickle file per grid cell, crop, year)
     - timer data (1 pickle file per grid cell, crop, year)
     - site data  (1 pickle file per grid cell, crop, year, stu)
+
     """
 #-------------------------------------------------------------------------------
-# USER INPUT - only this part should be modified by the user!!
+    import subprocess
+    import cx_Oracle
+    import sqlalchemy as sa
+    from cPickle import dump as pickle_dump
+    from cPickle import load as pickle_load
+    from datetime import datetime
+#-------------------------------------------------------------------------------
+    global currentdir, EUROSTATdir, folder_local,\
+           crop_no, suitable_stu, year, engine, retrieve_weather
+#-------------------------------------------------------------------------------
+# ================================= USER INPUT =================================
  
-    crop_no          = 7      # CGMS crop species ID number
-    years            = [2006] # list of years we want to retrieve data for
-    retrieve_weather = False  # if True, we retrive the CGMS weather input files
-                              # Beware!! these files are huge!!!
-    process  = 'serial'  # multiprocessing option: can be 'serial' or 'parallel'
-    nb_cores = 2           # number of cores used in case of a parallelization
+    # multiprocessing options:
+    process  = 'serial'  # can be 'serial' or 'parallel'
+    nb_cores = 2         # number of cores used in case of a parallelization
 
     # flags to execute parts of the script only:
     CGMS_input_retrieval = False
+    retrieve_weather     = False  # if True, we retrive the CGMS weather input files
+                              # Beware!! these files are huge!!!
     crop_mask_creation   = True
     sync_to_capegrim     = False
 
+# ==============================================================================
 #-------------------------------------------------------------------------------
-# Calculate key variables from the user input:
-
-    # we create an array of integers for the years
-    campaign_years = np.linspace(int(years[0]),int(years[-1]),len(years))
-
-    # we remind the user that if all 3 flags are False, nothing will happen...
+# Define general working directories
+    currentdir    = os.getcwd()
+    folder_local  = '../model_input_data/CGMS/'
+    folder_cape   = '/Users/mariecombe/mnt/promise/CO2/marie/pickled_CGMS_input_data/'
+    EUROSTATdir   = '../observations/EUROSTAT_data/'
+#-------------------------------------------------------------------------------
+# we remind the user that if all 3 flags are False, nothing will happen...
     if ( (CGMS_input_retrieval == False) 
         and (crop_mask_creation == False) 
         and (sync_to_capegrim == False) ):
         print 'You have set the script to do no calculations...'
         print 'Please set a flag to True in the user settings!'
         sys.exit(2)
-
 #-------------------------------------------------------------------------------
-# Define working directories
-
-    currentdir    = os.getcwd()
-	
-	# folder to store the input data, on my local Macbook:
-    folder_local  = '/Users/mariecombe/Documents/Work/Research_project_3/'\
-                   +'model_input_data/CGMS/'
-
-    # folder to sync the local folder with:
-    folder_cape   = '/Users/mariecombe/mnt/promise/CO2/marie/'\
-                    +'pickled_CGMS_input_data/'
-
-    # folder on my local macbook where the CGMS_grid_list.csv file is located:
-    EUROSTATdir   = '/Users/mariecombe/Documents/Work/Research_project_3/'\
-				   +'observations/EUROSTAT_data/'
-
+# we retrieve the crops and years to loop over:
+    try:
+        crop_dict = pickle_load(open('selected_crops.pickle','rb'))
+        years     = pickle_load(open('selected_years.pickle','rb'))
+    except IOError:
+        print '\nYou have not yet selected a shortlist of crops and years to loop over'
+        print 'Run the script 01_select_crops_n_regions.py first!\n'
+        sys.exit() 
 #-------------------------------------------------------------------------------
 # we test the connection to the remote Oracle database
     
-    # define the settings of the Oracle database connection
+    # settings of the connection
     user = "cgms12eu_select"
     password = "OnlySelect"
     tns = "EURDAS.WORLD"
-    dsn = "oracle+cx_oracle://{user}:{pw}@{tns}".format(user=user, pw=password, 
-                                                                        tns=tns)
+    dsn = "oracle+cx_oracle://{user}:{pw}@{tns}".format(user=user,pw=password,tns=tns)
     engine = sa.create_engine(dsn)
     print engine
 
@@ -104,131 +95,137 @@ def main():
         print '\nBEWARE!! The Oracle database is not responding. Probably, you are'
         print 'not using a computer wired within the Wageningen University network.'
         print '--> Get connected with ethernet cable before trying again!'
-        sys.exit(2)
+        sys.exit()
 
 #-------------------------------------------------------------------------------
 # We only select grid cells located in Europe that contain arable land (no need 
 # to retrieve data where there are no crops!)
 
+    pathname = os.path.join('../model_input_data/europe_arable_CGMS_cellids.pickle')
     try:
-        europ_arable = pickle_load(open('../model_input_data/'\
-                                     +'europe_arable_CGMS_cellids.pickle','rb'))
+        europ_arable = pickle_load(open(pathname,'rb'))
     except IOError:
+        from maries_toolbox import open_csv, get_list_CGMS_cells_in_Europe_arable
         # we read the list of CGMS grid cells from file
         CGMS_cells = open_csv(EUROSTATdir, ['CGMS_grid_list.csv'])
         all_grids  = CGMS_cells['CGMS_grid_list.csv']['GRID_NO']
         lons       = CGMS_cells['CGMS_grid_list.csv']['LONGITUDE']
         lats       = CGMS_cells['CGMS_grid_list.csv']['LATITUDE']
-
         # we select the grid cells with arable land from file
         europ_arable = get_list_CGMS_cells_in_Europe_arable(all_grids, lons, lats)
         europ_arable = sorted(europ_arable)
+        # we pickle it for future use
+        pickle_dump(europ_arable, open(pathname,'wb'))
 
 #-------------------------------------------------------------------------------
-    if CGMS_input_retrieval == True:
+# LOOP OVER SELECTED CROPS:
 #-------------------------------------------------------------------------------
-# We are gonna retrieve input data from the CGMS database
-
-        # We add a timestamp at start of the retrieval
-        start_timestamp = datetime.utcnow()
-
-        # We retrieve the list of suitable soil types for the selected crop species
-        filename = folder_local + 'suitablesoilsobject_c%d.pickle'%crop_no
-        if os.path.exists(filename):
-            suitable_stu = pickle_load(open(filename,'rb'))
-        else:
-            suitable_stu = STU_Suitability(engine, crop_no)
-            suitable_stu_list = []
-            for item in suitable_stu:
-                suitable_stu_list = suitable_stu_list + [item]
-            suitable_stu = suitable_stu_list
-            pickle_dump(suitable_stu,open(filename,'wb'))       
-
-        # WE LOOP OVER ALL YEARS:
-        for y, year in enumerate(campaign_years): 
-            print '######################## Year %i ########################\n'%year
-
-            # if we do a serial iteration, we loop over the grid cells that 
-            # contain arable land
-            if (process == 'serial'):
-                for grid in [g for g,a in europ_arable]:
-                    retrieve_CGMS_input(grid)
-
-            # if we do a parallelization, we use the multiprocessor module to 
-            # provide series of cells to the function
-            if (process == 'parallel'):
-                import multiprocessing
-                p = multiprocessing.Pool(nb_cores)
-                parallel = p.map(retrieve_CGMS_input, [g for g,a in europ_arable])
-                p.close()
-
-        # We add a timestamp at end of the retrieval, to time the process
-        end_timestamp = datetime.utcnow()
-        print '\nDuration of the retrieval:', end_timestamp-start_timestamp
-
+    for crop_key in sorted(crop_dict.keys()):
+        crop_no = int(crop_dict[crop_key][0])
 #-------------------------------------------------------------------------------
-    if crop_mask_creation == True:
+# 1- WE RETRIEVE CGMS INPUT DATA:
 #-------------------------------------------------------------------------------
-# We are gonna create a crop MASK dictionary: collect the grid cell ids where
-# the crop was grown on that year
-
-        crop_mask = dict()
-
-        # We add a timestamp at start of the crop mask creation
-        start_timestamp = datetime.utcnow()
-
-        # WE LOOP OVER ALL YEARS:
-        for y, year in enumerate(campaign_years): 
-            print '######################## Year %i ########################\n'%year
-
-            culti_list = list()
-
-            # We retrieve the grid cell ids of those where the crop has been
-            # sown that year
-
-            europ_culti = list()
-            if (process == 'serial'):
-                for grid in [g for g,a in europ_arable]:
-                    europ_culti += get_id_if_cultivated(grid)
- 
-            if (process == 'parallel'):
-                import multiprocessing
-                p = multiprocessing.Pool(nb_cores)
-                europ_culti = p.map(get_id_if_cultivated, europ_arable)
-                p.close()
-            europ_culti = np.array(europ_culti)
-            print 'europ_culti', europ_culti
-           
-			# we have created a list of grid cell ids, but we need their arable
-			# land area as well. We do one more loop to retrieve that
-			# information from europ_arable
-            for cell in europ_arable:
-                if cell[0] in europ_culti:
-                    culti_list += [cell]
-            print 'culti list:', culti_list
-            # at the end of each year's retrieval, we store the array of
-            # cultivated grid cells:
-            crop_mask[int(year)] = culti_list
- 
-        # now we are out of the year loop, we pickle the crop mask dictionary
-        filename = 'cropmask_c%d_y%d.pickle'%(crop_no,year)
-        pickle_dump(crop_mask,open('../model_input_data/'+filename,'wb'))
-
-        # We add a timestamp at end of the retrieval, to time the process
-        end_timestamp = datetime.utcnow()
-        print '\nDuration of the crop mask creation:', end_timestamp - \
-                                                       start_timestamp
+        if CGMS_input_retrieval == True:
+#-------------------------------------------------------------------------------
+            # We add a timestamp at start of the retrieval
+            start_timestamp = datetime.utcnow()
+         
+            # We retrieve the list of suitable soil types for the selected crop species
+            filename = folder_local + 'suitablesoilsobject_c%d.pickle'%crop_no
+            if os.path.exists(filename):
+                suitable_stu = pickle_load(open(filename,'rb'))
+            else:
+                suitable_stu = STU_Suitability(engine, crop_no)
+                suitable_stu_list = []
+                for item in suitable_stu:
+                    suitable_stu_list = suitable_stu_list + [item]
+                suitable_stu = suitable_stu_list
+                pickle_dump(suitable_stu,open(filename,'wb'))       
+         
+            # WE LOOP OVER ALL YEARS:
+            for y, year in enumerate(years): 
+                print '######################## Year %i ########################\n'%year
+         
+                # if we do a serial iteration, we loop over the grid cells that 
+                # contain arable land
+                if (process == 'serial'):
+                    for grid in [g for g,a in europ_arable]:
+                        retrieve_CGMS_input(grid)
+         
+                # if we do a parallelization, we use the multiprocessor module to 
+                # provide series of cells to the function
+                if (process == 'parallel'):
+                    import multiprocessing
+                    p = multiprocessing.Pool(nb_cores)
+                    parallel = p.map(retrieve_CGMS_input, [g for g,a in europ_arable])
+                    p.close()
+         
+            # We add a timestamp at end of the retrieval, to time the process
+            end_timestamp = datetime.utcnow()
+            print '\nDuration of the retrieval:', end_timestamp-start_timestamp
 
 #-------------------------------------------------------------------------------
-    if sync_to_capegrim == True:
+# 2- WE RETRIEVE THE CULTIVATED GRID CELL IDS
 #-------------------------------------------------------------------------------
-# We sync the local folder containing the pickle files with the capegrim folder
+        if crop_mask_creation == True:
+#-------------------------------------------------------------------------------
 
-        subprocess.call(["rsync","-auEv","-e",
+            crop_mask = dict()
+         
+            # We add a timestamp at start of the crop mask creation
+            start_timestamp = datetime.utcnow()
+         
+            # WE LOOP OVER ALL YEARS:
+            for y, year in enumerate(years): 
+                print '######################## Year %i ########################\n'%year
+         
+                culti_list = list()
+         
+                # We retrieve the grid cell ids of those where the crop has been
+                # sown that year
+         
+                europ_culti = list()
+                if (process == 'serial'):
+                    for grid in [g for g,a in europ_arable]:
+                        europ_culti += get_id_if_cultivated(grid)
+         
+                if (process == 'parallel'):
+                    import multiprocessing
+                    p = multiprocessing.Pool(nb_cores)
+                    europ_culti = p.map(get_id_if_cultivated, europ_arable)
+                    p.close()
+                europ_culti = np.array(europ_culti)
+                print 'europ_culti', europ_culti
+               
+	 	   	# we have created a list of grid cell ids, but we need their arable
+	 	   	# land area as well. We do one more loop to retrieve that
+	 	   	# information from europ_arable
+                for cell in europ_arable:
+                    if cell[0] in europ_culti:
+                        culti_list += [cell]
+                print 'culti list:', culti_list
+                # at the end of each year's retrieval, we store the array of
+                # cultivated grid cells:
+                crop_mask[int(year)] = culti_list
+         
+            # now we are out of the year loop, we pickle the crop mask dictionary
+            filename = 'cropmask_c%d_y%d.pickle'%(crop_no,year)
+            pickle_dump(crop_mask,open('../model_input_data/'+filename,'wb'))
+         
+            # We add a timestamp at end of the retrieval, to time the process
+            end_timestamp = datetime.utcnow()
+            print '\nDuration of the crop mask creation:', end_timestamp - \
+                                                           start_timestamp
+
+#-------------------------------------------------------------------------------
+# 3- WE SYNC THE LOCAL FOLDER WITH THE REMOTE CAPEGRIM FOLDER
+#-------------------------------------------------------------------------------
+        if sync_to_capegrim == True:
+#-------------------------------------------------------------------------------
+
+            subprocess.call(["rsync","-auEv","-e",
                      "'ssh -l mariecombe -i /Users/mariecombe/.shh/id_dsa'",
-                     "--delete",
-                     "/Users/mariecombe/Documents/Work/Research_project_3/pcse/pickled_CGMS_input_data/",
-                     "mariecombe@capegrim.wur.nl:~/mnt/promise/CO2/marie/pickled_CGMS_input_data/"])
+             "--delete",folder_local,"mariecombe@capegrim.wur.nl:"+folder_cape])
 
 
 ### END OF THE MAIN CODE ###

@@ -9,8 +9,9 @@ import numpy as np
 def main():
 #===============================================================================
     """
-	This scripts constructs a dictionary of NUTS_ids <--> NUTS names and of
-    crop_ids <--> crop names in the EUROSTAT records.
+	This scripts constructs a dictionary of NUTS_ids <--> NUTS names, of
+    crop_ids <--> crop names, and a list of years, which are all short-selected 
+    by the user, and stores them in pickle files in the current directory.
 
     SELECTION OF NUTS REGIONS:
     --------------------------
@@ -28,20 +29,27 @@ def main():
     SELECTION OF CROPS:
     -------------------
 
-    3: we simply manually create a EUROSTAT crop name to each crop code
+    3: we simply manually map the EUROSTAT crop names to each crop code
+
+    SELECTION OF YEARS:
+    -------------------
+
+    4: we create a list of (integer) years
 
     STORING IN MEMORY:
     ------------------
 
-    4: we pickle the produced dictionaries and store them in the 
-       ../model_input_data/ folder
+    4: we pickle the produced dictionaries/lists and store them in the 
+       current directory
 
     """
 #-------------------------------------------------------------------------------
     from cPickle import load as pickle_load
     from cPickle import dump as pickle_dump
 #-------------------------------------------------------------------------------
-# USER INPUT:
+    global EUROSTATdir
+#-------------------------------------------------------------------------------
+# ================================= USER INPUT =================================
 
     # for each country code, we say which NUTS region level we want to 
     # consider (for some countries: level 1, for some others: level 2)
@@ -51,39 +59,33 @@ def main():
                     'MT':1,'NL':1,'NO':2,'PL':2,'PT':2,'RO':2,'SE':2,'SI':2,
                     'SK':2,'TR':2,'UK':1}
 
-    # selected crops of interest:
-    crops = ['Spring wheat','Winter wheat','Grain maize','Fodder maize',
-             'Spring barley','Winter barley','Spring rapeseed','Winter rapeseed',
-             'Rye','Potato','Sugar beet','Sunflower','Field beans']
+    # list of selected crops of interest:
+    crops = ['Spring wheat','Winter wheat']#,'Grain maize','Fodder maize',
+            # 'Spring barley','Winter barley','Spring rapeseed','Winter rapeseed',
+            # 'Rye','Potato','Sugar beet','Sunflower','Field beans']
 
+    # list of selected years to simulate the c cycle for:
+    years = [2006]
+
+# ==============================================================================
 #-------------------------------------------------------------------------------
 # Define general working directories
+    currentdir    = os.getcwd()
     EUROSTATdir   = '../observations/EUROSTAT_data/'
     inputdir      = '../model_input_data/'
 #-------------------------------------------------------------------------------
 # 1- WE CREATE A DICTIONARY OF REGIONS IDS AND NAMES TO LOOP OVER
 #-------------------------------------------------------------------------------
-# Select the regions ID in which we are interested in (pickle file)
-
-    # we try to read a pickle file, or we pickle it if it doesn't exist
-#    filename = 'list_of_NUTS_regions.pickle'
-#    try:
-#        NUTS_regions = pickle_load(open(inputdir + filename,'rb'))
-#    except IOError:
+# Select the regions ID in which we are interested in
     NUTS_regions = make_NUTS_composite(lands_levels)
-#        pickle_dump(NUTS_regions, open(inputdir + filename,'wb'))
-    print '\nWe select the following NUTS regions:\n', sorted(NUTS_regions)
-
 #-------------------------------------------------------------------------------
 # Create a dictionary of NUTS region names, corresponding to the selected NUTS id
     NUTS_names_dict = map_NUTS_id_to_NUTS_name(NUTS_regions)
 #-------------------------------------------------------------------------------
-# For information: we check if we match the EUROSTAT names properly
-    check_EUROSTAT_names_match(NUTS_names_dict)
-#-------------------------------------------------------------------------------
-# pickle the produced dictionary:
-    pickle_dump(NUTS_names_dict, open(inputdir\
-                                      +'selected_NUTS_regions.pickle','wb'))
+# pickle the produced dictionary in the current directory:
+    pathname = os.path.join(currentdir, 'selected_NUTS_regions.pickle')
+    if os.path.exists(pathname): os.remove(pathname)
+    pickle_dump(NUTS_names_dict, open(pathname,'wb'))
 
 #-------------------------------------------------------------------------------
 # 2- WE CREATE A DICTIONARY OF CROP IDS AND NAMES TO LOOP OVER
@@ -91,18 +93,24 @@ def main():
 # Create a dictionary of crop EUROSTAT names, corresponding to the selected crops
     crop_names_dict = map_crop_id_to_crop_name(crops)
 #-------------------------------------------------------------------------------
-# For information: we check if we match the EUROSTAT names properly
-    check_crop_names_match(crop_names_dict)
-#-------------------------------------------------------------------------------
 # pickle the produced dictionary:
-    print '\nWe select the following crops:\n', crops
-    pickle_dump(crop_names_dict, open(inputdir + 'selected_crops.pickle','wb'))
-
-    print '\nBoth selections now pickled in ../model_input_data/'
+    pathname = os.path.join(currentdir, 'selected_crops.pickle')
+    if os.path.exists(pathname): os.remove(pathname)
+    pickle_dump(crop_names_dict, open(pathname,'wb'))
 
 #-------------------------------------------------------------------------------
 # 3- WE CREATE A LIST OF YEARS TO LOOP OVER?
 #-------------------------------------------------------------------------------
+# pickle the produced dictionary:
+    print '\nWe select the following years:\n', years
+    pathname = os.path.join(currentdir, 'selected_years.pickle')
+    if os.path.exists(pathname): os.remove(pathname)
+    pickle_dump(years, open(pathname,'wb'))
+
+#-------------------------------------------------------------------------------
+# 4- FOR INFORMATION: WE CHECK IF WE MATCH THE EUROSTAT NAMES
+#-------------------------------------------------------------------------------
+    check_EUROSTAT_names_match(NUTS_names_dict, crop_names_dict)
 
 
 #===============================================================================
@@ -116,7 +124,7 @@ def map_crop_id_to_crop_name(crop_list):
             crop_names[nickname] = [1,'Common wheat and spelt',
                                       'Common winter wheat']
         if (nickname == 'Spring wheat'):
-            crop_names[nickname] = [np.nan,'Common wheat and spelt'
+            crop_names[nickname] = [np.nan,'Common wheat and spelt',
                                       'Common spring wheat']
         #if (nickname == 'durum wheat'):
         #    crop_names[nickname] = [np.nan,'Durum wheat',
@@ -159,6 +167,8 @@ def map_crop_id_to_crop_name(crop_list):
         if (nickname == 'Sunflower'):
             crop_names[nickname] = [11,'Sunflower seed',
                                       'Sunflower seed']
+
+    print '\nWe select the following crops:\n', sorted(crop_names.keys())
 
     return crop_names
 
@@ -472,7 +482,7 @@ def map_NUTS_id_to_NUTS_name(list_of_NUTS_ids):
                                                +"Hrvatska (former statistical "\
                                                +"region)"]
 
-    print 'NUTS regions for which we have a name:\n', sorted(dict_geo_units.keys())
+    print '\nWe select the following NUTS regions:\n', sorted(dict_geo_units.keys())
 
     return dict_geo_units
 
@@ -480,6 +490,10 @@ def map_NUTS_id_to_NUTS_name(list_of_NUTS_ids):
 def make_NUTS_composite(lands_levels):
 #===============================================================================
 
+    from mpl_toolkits.basemap import Basemap
+
+    map = Basemap(projection='laea', lat_0=48, lon_0=16, llcrnrlat=30, 
+                      llcrnrlon=-10, urcrnrlat=65, urcrnrlon=45)
     # Read a shapefile and its metadata
     # read the shapefile data WITHOUT plotting its shapes
 
@@ -496,13 +510,13 @@ def make_NUTS_composite(lands_levels):
         NUTS_no = info['NUTS_ID']
         # if the NUTS level of the polygon corresponds to the desired one:
         if (info['STAT_LEVL_'] == lands_levels[NUTS_no[0:2]]):
-            if NUTS_no not in pickle_dict:
+            if NUTS_no not in NUTS_ids_list:
                 NUTS_ids_list += [NUTS_no]
 
-   return NUTS_ids_list
+    return NUTS_ids_list
 
 #===============================================================================
-def check_EUROSTAT_names_match(NUTS_names_dict):
+def check_EUROSTAT_names_match(NUTS_names_dict, crop_names_dict):
 #===============================================================================
     from maries_toolbox import open_csv_EUROSTAT
 
@@ -511,30 +525,55 @@ def check_EUROSTAT_names_match(NUTS_names_dict):
     NUTS_filenames = ['agri_yields_NUTS1-2-3_1975-2014.csv',
                      'agri_croparea_NUTS1-2-3_1975-2014.csv',
                      'agri_landuse_NUTS1-2-3_2000-2013.csv',
-#                     'agri_prodhumid_NUTS1_1955-2015.csv',
+                     'agri_prodhumid_NUTS1_1955-2015.csv',
                      'agri_harvest_NUTS1-2-3_1975-2014.csv']
     NUTS_data = open_csv_EUROSTAT(EUROSTATdir, NUTS_filenames,
                                      convert_to_float=True, verbose=False)
 
     # read the NUTS region labels for each EUROSTAT csv file:
     geo_dict = dict()
+    crop_dict = dict()
     for record in NUTS_filenames:
-        geo_units = NUTS_data[record]['GEO']
-        geo_units = list(set(geo_units))
-        geo_dict[record] = [u.lower() for u in geo_units]
-    print geo_units, len (geo_units)
+        if (record != 'agri_prodhumid_NUTS1_1955-2015.csv'):
+            geo_units = NUTS_data[record]['GEO']
+            geo_units = list(set(geo_units))
+            geo_dict[record] = [u.lower() for u in geo_units]
+            #print geo_units, len (geo_units)
+        if (record != 'agri_landuse_NUTS1-2-3_2000-2013.csv'):
+            crop_names = NUTS_data[record]['CROP_PRO']
+            crop_names = list(set(crop_names))
+            crop_dict[record] = [u.lower() for u in crop_names]
+            #print record, crop_names, len (crop_names)
 
 	# Check if we match all EUROSTAT region names, in all the EUROSTAT
 	# observation files:
     for record in NUTS_filenames:
-        print 'Checking EUROSTAT file %s'%record
-        print '        NUTS ID,   Corrected name,   EUROSTAT name'
-        counter = 0
-        for key in NUTS_names_dict.keys():
-            if (NUTS_names_dict[key][1].lower() not in geo_dict[record]):
-                counter +=1
-                print 'NOT OK: %5s'%key, NUTS_names_dict[key]
-        print 'found %i unmatched region names in EUROSTAT file\n'%counter
+        print '\nChecking EUROSTAT file %s'%record
+        if (record != 'agri_prodhumid_NUTS1_1955-2015.csv'):
+            counter = 0
+            for key in NUTS_names_dict.keys():
+                if (NUTS_names_dict[key][1].lower() not in geo_dict[record]):
+                    counter +=1
+                    if counter ==1: print '        NUTS ID,   Corrected name,   EUROSTAT name'
+                    print 'NOT OK: %5s'%key, NUTS_names_dict[key]
+            print 'found %i unmatched region names in EUROSTAT file'%counter
+        if (record != 'agri_landuse_NUTS1-2-3_2000-2013.csv'):
+            if (record == 'agri_prodhumid_NUTS1_1955-2015.csv'):
+                counter = 0
+                for key in crop_names_dict.keys():
+                    if (crop_names_dict[key][2].lower() not in crop_dict[record]):
+                        counter +=1
+                        if counter ==1: print '        crop ID,   Corrected name,   EUROSTAT name'
+                        print 'NOT OK: %5s'%key, crop_names_dict[key]
+                print 'found %i unmatched crop names in EUROSTAT file'%counter
+            else:
+                counter = 0
+                for key in crop_names_dict.keys():
+                    if (crop_names_dict[key][1].lower() not in crop_dict[record]):
+                        counter +=1
+                        if counter ==1: print '        crop ID,   Corrected name,   EUROSTAT name'
+                        print 'NOT OK: %5s'%key, crop_names_dict[key]
+                print 'found %i unmatched crop names in EUROSTAT file'%counter
 
     return None
 
