@@ -2,6 +2,8 @@
 
 import sys, os
 import numpy as np
+from cPickle import dump as pickle_dump
+from cPickle import load as pickle_load
 from pcse.exceptions import PCSEError 
 from pcse.db.cgms11 import TimerDataProvider, SoilDataIterator, \
                            CropDataProvider, STU_Suitability, \
@@ -33,9 +35,8 @@ def main():
     import subprocess
     import cx_Oracle
     import sqlalchemy as sa
-    from cPickle import dump as pickle_dump
-    from cPickle import load as pickle_load
     from datetime import datetime
+    from operator import itemgetter as operator_itemgetter
 #-------------------------------------------------------------------------------
     global currentdir, EUROSTATdir, folder_local,\
            crop_no, suitable_stu, year, engine, retrieve_weather
@@ -47,10 +48,10 @@ def main():
     nb_cores = 2         # number of cores used in case of a parallelization
 
     # flags to execute parts of the script only:
-    CGMS_input_retrieval = False
+    CGMS_input_retrieval = True
     retrieve_weather     = False  # if True, we retrive the CGMS weather input files
                               # Beware!! these files are huge!!!
-    crop_mask_creation   = True
+    crop_mask_creation   = False
     sync_to_capegrim     = False
 
 # ==============================================================================
@@ -116,12 +117,18 @@ def main():
         europ_arable = sorted(europ_arable)
         # we pickle it for future use
         pickle_dump(europ_arable, open(pathname,'wb'))
+    europ_arable = sorted(europ_arable,key=operator_itemgetter(0),reverse=False) 
 
 #-------------------------------------------------------------------------------
 # LOOP OVER SELECTED CROPS:
 #-------------------------------------------------------------------------------
     for crop_key in sorted(crop_dict.keys()):
-        crop_no = int(crop_dict[crop_key][0])
+        try:
+            crop_no = int(crop_dict[crop_key][0])
+        except ValueError: # if we have a NaN as CGMS crop code
+            print '\nWARNING!! Skipping %s (reason: unkwown CGMS id)'%crop_key
+            continue
+        print '\nRetrieving input data for %s (CGMS id=%i)'%(crop_key,crop_no)
 #-------------------------------------------------------------------------------
 # 1- WE RETRIEVE CGMS INPUT DATA:
 #-------------------------------------------------------------------------------
@@ -144,7 +151,7 @@ def main():
          
             # WE LOOP OVER ALL YEARS:
             for y, year in enumerate(years): 
-                print '######################## Year %i ########################\n'%year
+                print '\n######################## Year %i ########################\n'%year
          
                 # if we do a serial iteration, we loop over the grid cells that 
                 # contain arable land
@@ -237,9 +244,7 @@ def retrieve_CGMS_input(grid):
 # if the retrieval does not raise an error, the crop was thus cultivated that year
     print '    - grid cell no %i'%grid
     try:
-
-# We retrieve the crop calendar (timerdata)
-
+        # We retrieve the crop calendar (timerdata)
         filename = folder_local + \
                    'timerobject_g%d_c%d_y%d.pickle'%(grid, crop_no, year)
         if os.path.exists(filename):
@@ -248,9 +253,7 @@ def retrieve_CGMS_input(grid):
             timerdata = TimerDataProvider(engine, grid, crop_no, year)
             pickle_dump(timerdata,open(filename,'wb'))    
 
-#-------------------------------------------------------------------------------
-# If required by the user, we retrieve the weather data
-
+        # If required by the user, we retrieve the weather data
         if retrieve_weather == True: 
             filename = folder_local + 'weatherobject_g%d.pickle'%grid
             if os.path.exists(filename):
@@ -259,20 +262,15 @@ def retrieve_CGMS_input(grid):
                 weatherdata = WeatherObsGridDataProvider(engine, grid)
                 weatherdata._dump(filename)
 
-#-------------------------------------------------------------------------------
-# We retrieve the soil data (soil_iterator)
- 
+        # We retrieve the soil data (soil_iterator)
         filename = folder_local + 'soilobject_g%d.pickle'%grid
         if os.path.exists(filename):
             soil_iterator = pickle_load(open(filename,'rb'))
-            print 'it exists!'
         else:
             soil_iterator = SoilDataIterator(engine, grid)
             pickle_dump(soil_iterator,open(filename,'wb'))       
 
-#-------------------------------------------------------------------------------
-# We retrieve the crop variety info (crop_data)
-
+        # We retrieve the crop variety info (crop_data)
         filename = folder_local + \
                    'cropobject_g%d_c%d_y%d.pickle'%(grid,crop_no,year)
         if os.path.exists(filename):
@@ -281,10 +279,8 @@ def retrieve_CGMS_input(grid):
             cropdata = CropDataProvider(engine, grid, crop_no, year)
             pickle_dump(cropdata,open(filename,'wb'))     
 
-#-------------------------------------------------------------------------------
-#       WE LOOP OVER ALL SOIL TYPES LOCATED IN THE GRID CELL:
+        # WE LOOP OVER ALL SOIL TYPES LOCATED IN THE GRID CELL:
         for smu_no, area_smu, stu_no, percentage, soildata in soil_iterator:
-#-------------------------------------------------------------------------------
 
             # NB: we remove all unsuitable soils from the iteration
             if (stu_no not in suitable_stu):
@@ -292,23 +288,23 @@ def retrieve_CGMS_input(grid):
             else:
                 print '        soil type no %i'%stu_no
 
-#-------------------------------------------------------------------------------
-# We retrieve the site data (site management)
-
+                # We retrieve the site data (site management)
                 filename = folder_local + \
                            'siteobject_g%d_c%d_y%d_s%d.pickle'%(grid, crop_no,
                                                                    year, stu_no)
                 if os.path.exists(filename):
                     pass
                 else:
-                    sitedata = SiteDataProvider(engine, grid, crop_no, year,
-                                                                         stu_no)
+                    sitedata = SiteDataProvider(engine,grid,crop_no,year,stu_no)
                     pickle_dump(sitedata,open(filename,'wb'))     
 
-#-------------------------------------------------------------------------------
     # if an error is raised, the crop was not grown that year
     except PCSEError:
         print '        the crop was not grown that year in that grid cell'
+    except Exception as e:
+        print '        Unexpected error', e#sys.exc_info()[0]
+    finally:
+        print '        Done for this grid cell.'
 
     return None
 

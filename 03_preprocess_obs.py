@@ -3,184 +3,211 @@
 import sys, os
 import numpy as np
 
-# This script scans through the EUROSTAT files to see the information coverage
+# This script preprocesses the EUROSTAT observations
 
 #===============================================================================
 def main():
 #===============================================================================
     """
-    This file does not  detrend observations, or convert humid matter to dry
-    matter for yields and harvests. It just extracts observations into a 
-    readable dictionary.
+    This script does not detrend observations, or convert humid matter to dry
+    matter for yields and harvests. It just extracts raw observations into a 
+    readable dictionary for future use.
+
+    IMPORTANT: This script does not depend on the selection of crop species
+    done by running 01_select_crops_n_regions.py!! We pre-process EUROSTAT data
+    for ALL crops here, once and for all.
+    NB: However, we do use the selection of NUTS regions defined by running
+    01_select_crops_n_regions.py!
+
+    To renew the preprocessed observations, delete the corresponding pickle files
+    located in the ../model_input_data/ directory, and then re-launch the pre-
+    processing.
 
     """
     from cPickle import load as pickle_load
 #-------------------------------------------------------------------------------
-    global currentdir, EUROSTATdir, folderpickle, lands_levels
+    global currentdir, EUROSTATdir, pickledir, crop_dict
 #-------------------------------------------------------------------------------
 # Define working directories
-
-    currentdir    = os.getcwd()
-	
-	# directories on my local MacBook:
-    EUROSTATdir   = '../observations/EUROSTAT_data/'
-    folderpickle  = '../model_input_data/'
-
+    currentdir   = os.getcwd()
+    EUROSTATdir  = '../observations/EUROSTAT_data/'
+    pickledir    = '../model_input_data/'
 #-------------------------------------------------------------------------------
-# Get the 2000-2013 EUROSTAT data per region and per crop:
-
-    #data_type = ['yield', 'harvest', 'arableland', 'cultiland']
-    data_type = ['cultiland']
+# NB: we will loop over ALL crops available, because we want to do the 
+# pre-processing once and for all!
+    crop_dict    = all_crop_names()
+#-------------------------------------------------------------------------------
+# 1- PRE-PROCESS EUROSTAT CSV FILES ON AREAS, YIELDS, HARVESTS:
+#-------------------------------------------------------------------------------
 
     try:
-        culti_areas  = pickle_load(open(folderpickle+'temp_cultivated_areas.pickle','rb'))
-        arable_areas = pickle_load(open(folderpickle+'saved_temp_arable_areas.pickle','rb'))
-        yields       = pickle_load(open(folderpickle+'saved_temp_yields.pickle','rb'))
-        harvests     = pickle_load(open(folderpickle+'saved_temp_harvests.pickle','rb'))
-        print '\nLoaded all pickle files!'
-    except:
+        culti_areas  = pickle_load(open(pickledir+'preprocessed_culti_areas.pickle','rb'))
+        arable_areas = pickle_load(open(pickledir+'preprocessed_arable_areas.pickle','rb'))
+        yields       = pickle_load(open(pickledir+'preprocessed_yields.pickle','rb'))
+        harvests     = pickle_load(open(pickledir+'preprocessed_harvests.pickle','rb'))
+        print '\nThe yield, harvest, area pickle files exist! Pre-processing aborted.'
+    except IOError: # if the files don't exist, we create them:
         print 'WARNING! You are launching the pre-processing of EUROSTAT data'
-        print 'this procedure can take up to 6 hours!!!'
+        print 'this procedure can take up to 20 hours!!!'
         preprocess_EUROSTAT_data()
-        print '\nThe pre-processing is over, re-launch scan_observations_coverage.py'
-        print 'to complete the analysis.'
-        sys.exit()
+    except Exception as e:
+        print 'Unexpected error:', e
 
 #-------------------------------------------------------------------------------
-# for each country code, we say which NUTS region level we want to 
-# consider (for some countries: level 1, for some others: level 2)
+# 2- PRE-PROCESS EUROSTAT CSV FILE ON DRY MATTER CONTENT:
+#-------------------------------------------------------------------------------
 
-    lands_levels = {'AT':1,'BE':1,'BG':2,'CH':1,'CY':2,'CZ':1,'DE':1,'DK':2,
-                    'EE':2,'EL':2,'ES':2,'FI':2,'FR':2,'HR':2,'HU':2,'IE':2,
-                    'IS':2,'IT':2,'LI':1,'LT':2,'LU':1,'LV':2,'ME':1,'MK':2,
-                    'MT':1,'NL':1,'NO':2,'PL':2,'PT':2,'RO':2,'SE':2,'SI':2,
-                    'SK':2,'TR':2,'UK':1}
+    try:
+        DM           = pickle_load(open(pickledir+'preprocessed_obs_DM.pickle','rb'))
+        DM_standard  = pickle_load(open(pickledir+'preprocessed_standard_DM.pickle','rb'))
+        print '\nThe crop humidity content files exist! Pre-processing aborted.'
+    except IOError: # if the files don't exist, we create them:
+        print '\nNow we launch the pre-processing of the dry matter content data.'
+        preprocess_EUROSTAT_DM()
+    except Exception as e:
+        print 'Unexpected error:', e
 
-# retrieve the regions of interest corresponding to these levels
+    print '\nThe pre-processing of EUROSTAT data is over.'
 
-    filename = folderpickle + 'EUROSTAT_regions_names.pickle'
-    NUTS_regions = pickle_load(open(filename,'rb'))
-    NUTS_regions_keys = sorted(NUTS_regions.keys())
+#===============================================================================
+def preprocess_EUROSTAT_DM(plot=False):
+#===============================================================================
+    from cPickle import load as pickle_load
+    from maries_toolbox import open_csv_EUROSTAT
+#-------------------------------------------------------------------------------
+# we retrieve the record of observed dry matter content
+
+    pathname = os.path.join(pickledir,'preprocessed_obs_DM.pickle')
+
+    if (os.path.exists(pathname)):
+        DM = pickle_load(open(pathname, 'rb'))
+    else:
+        NUTS_data = open_csv_EUROSTAT(EUROSTATdir,['agri_prodhumid_NUTS1_1955-2015.csv'],
+                             convert_to_float=True)
+        DM = pickle_DM(NUTS_data['agri_prodhumid_NUTS1_1955-2015.csv'], pathname)
 
 #-------------------------------------------------------------------------------
-# retrieve the list of crops
+# We retrieve the standard EUROSTAT dry matter information in case there are
+# gaps in the observations
 
-    crops = set_crop_standard_info()
-    crop_name_keys = sorted(crops.keys())
+    pathname = os.path.join(pickledir,'preprocessed_standard_DM.pickle')
 
-#-------------------------------------------------------------------------------
-# FOR OPTIMIZATION QUALITY CONTROL: PLOT MAPS OF DATA COVERAGE 
-
-# We look at the spatial and temporal data coverage of a number of variables:
-
-    for dtype in data_type: # data_type = yields, harvests, areas
-        if dtype=='yield': results_dict = yields
-        if dtype=='harvest': results_dict = harvests
-        if dtype=='arableland': results_dict = arable_areas
-        if dtype=='cultiland': results_dict = culti_areas
-
-# for each crop
-
-        for crop in crop_name_keys:
-            print crop
-            coverage = {}
-
-# we compute the data coverage % over the years 2000-2013
-
-            for NUTS_id in NUTS_regions_keys:
-                print NUTS_id, NUTS_regions[NUTS_id]
-                coverage[NUTS_id] = compute_european_data_coverage(results_dict, 
-                                                                  crop, NUTS_id)
-                print 'Coverage of %s in %s: %.2f'%(crop,NUTS_id,coverage[NUTS_id])
-
-# we create a map of EUROSTAT data coverage
-
-            fig = create_data_coverage_map(dtype,crop,coverage)
+    if (os.path.exists(pathname)):
+        DM_standard = pickle_load(open(pathname, 'rb'))
+    else:
+        DM_standard = pickle_DM_standard(pathname)
 
 #-------------------------------------------------------------------------------
-# TO MAKE A CHOICE ON THE NUMBER OF CROPS TO INCLUDE:
-# crop cultivated area: % of total arable area: bar plots over Europe, evolution over year?
-# crop harvest: % of total harvest in DM over Europe, evolutaion over years?
+# We can plot a time series of one crop x country DM combination if needed
 
+    if (plot==True):
+        list_of_years = np.linspace(1955,2015,61)
+        time_series = plot_DM_time_series(DM, list_of_years, 3, 'ES')
 
 
 #===============================================================================
-def create_data_coverage_map(dtype,crop,coverage):
+# Function to store EUROSTAT standard moisture contents in pickle file
+def pickle_DM_standard(picklepathname):
 #===============================================================================
+    from cPickle import dump as pickle_dump
 
+    DM_standard = dict()
+    DM_standard['Spring wheat']    = 1. - 0.14
+    DM_standard['Winter wheat']    = 1. - 0.14
+    DM_standard['Grain maize']     = 1. - 0.14
+    DM_standard['Fodder maize']    = 1. - 0.65 # Fodder maize: 50 to 80%, very variable
+    DM_standard['Spring barley']   = 1. - 0.14
+    DM_standard['Winter barley']   = 1. - 0.14
+    DM_standard['Rye']             = 1. - 0.14
+    DM_standard['Sugar beet']      = 1. - 0.80 # Sugar beet: no idea
+    DM_standard['Potato']          = 1. - 0.80 # Potato: no idea
+    DM_standard['Field beans']     = 1. - 0.14
+    DM_standard['Spring rapeseed'] = 1. - 0.09
+    DM_standard['Winter rapeseed'] = 1. - 0.09
+    DM_standard['Sunflower']       = 1. - 0.09
+
+    # we pickle the generated dictionnary containing the dry matter content
+    pickle_dump(DM_standard, open(picklepathname, 'wb'))
+
+    return DM_standard
+
+#===============================================================================
+# Function to retrieve EUROSTAT humidity content and to store it in pickle file
+def pickle_DM(obs_data, picklepathname):
+#===============================================================================
+    from cPickle import dump as pickle_dump
+    from datetime import datetime
+
+    # EUROSTAT lists of crop names and country names
+    list_of_crops_EUR     = sorted(set(obs_data['CROP_PRO']))
+    list_of_countries_EUR = sorted(set(obs_data['GEO']))
+    list_of_years         = sorted(set(obs_data['TIME']))
+
+    # CGMS list of crops was read from file at the beginning of the main() 
+    # method
+    list_of_crops_CGMS    = crop_dict.keys()
+
+    # we translate the EUROSTAT list of countries into official country codes
+    # European & ISO 3166 nomenclature + temporary country code for Kosovo XK
+    list_of_countries_CGMS = ['AL','AT','BE','BA','BG','HR','CY','CZ','DK',
+                              'EE','EU','FI','MK','FR','DE','EL','HU','IS',
+                              'IE','IT','XK','LV','LI','LT','LU','MT','ME',
+                              'NL','NO','PL','PT','RO','RS','SK','SI','ES',
+                              'SE','CH','TR','UK']
+
+    # we print out some info for the user
+    print '\nWe will loop over:\n'
+    print list_of_crops_CGMS
+    print list_of_countries_CGMS
+#-------------------------------------------------------------------------------
+    # We add a timestamp at start of the retrieval
+    start_timestamp = datetime.utcnow()
+#-------------------------------------------------------------------------------
+
+	# we build a dictionnary where we will store the dry matter content per
+	# crop and country CGMS ids
+
+    DM = dict()
+    for crop in crop_dict.keys():
+        DM[crop] = dict()
+        print crop
+        for k, idc in enumerate(list_of_countries_CGMS):
+            print '    ', idc
+            DM[crop][idc] = np.zeros(len(list_of_years))
+            # we look for the DM content of a specific crop-country combination
+            for y, year in enumerate(list_of_years):
+                for i,time in enumerate(obs_data['TIME']):
+                    if ((time == year)
+                    and (obs_data['GEO'][i] == list_of_countries_EUR[k])
+                    and (obs_data['CROP_PRO'][i] == crop_dict[crop][1])):
+                        DM[crop][idc][y] = 1.-float(obs_data['Value'][i])/100. 
+
+    # we pickle the generated dictionnary containing the dry matter content
+    pickle_dump(DM, open(picklepathname, 'wb'))
+
+#-------------------------------------------------------------------------------
+    # We add a timestamp at end of the retrieval, to time the process
+    end_timestamp = datetime.utcnow()
+    print '\nDuration of the retrieval:', end_timestamp-start_timestamp
+#-------------------------------------------------------------------------------
+
+    return DM
+
+#===============================================================================
+# Function to plot a time series of crop DM content
+def plot_DM_time_series(DM_dict, list_of_years_, crop, country):
+#===============================================================================
     from matplotlib import pyplot as plt
-    from mpl_toolkits.basemap import Basemap
-    from matplotlib.patches import Polygon
-    from matplotlib.collections import PatchCollection
-    from matplotlib.patches import PathPatch
-
-# Define the shapefile path and filename:
-
-    shape_path = '../observations/EUROSTAT_data/EUROSTAT_website_2010_shapefiles/'
-    shape_filename = 'NUTS_RG_03M_2010'# NUTS regions 
-
-# create a basic map with coastlines
-
-    fig, ax = plt.subplots(nrows = 1, ncols = 1, figsize=(7,7))
-    map = Basemap(projection='laea', lat_0=48, lon_0=16, llcrnrlat=30, 
-                  llcrnrlon=-10, urcrnrlat=65, urcrnrlon=70)
-    map.drawcoastlines()
-
-# Read a shapefile and its metadata
-
-    name = 'NUTS'
-    # read the shapefile data WITHOUT plotting its shapes
-    NUTS_info = map.readshapefile(shape_path + shape_filename, name, drawbounds=False) 
-           
-# Plot polygons and the corresponding pickled data:
-
-    # retrieve the list of patches to fill and its data to plot
-    patches    = []
-    yield_data = []
-    pickle_dict = list()
-    # for each polygon of the shapefile
-    for info, shape in zip(map.NUTS_info, map.NUTS):
-        # we get the NUTS number of this polygon:
-        NUTS_no = info['NUTS_ID']
-        # if the NUTS level of the polygon corresponds to the desired one:
-        if (info['STAT_LEVL_'] == lands_levels[NUTS_no[0:2]]):
-            # we append the polygon to the patch collection
-            patches.append( Polygon(np.array(shape), True) )
-            # and we associate a yield to it
-            try:
-                yield_data.append( float(coverage[NUTS_no]) )
-            except KeyError: #for CH0, LI0, HR04
-                if (NUTS_no == 'HR04'):
-                    HR01 = coverage['HR01']
-                    HR02 = coverage['HR02']
-                    yield_data.append(float(HR01)+float(HR02))
-                else:
-                    print "we don't have data for:", NUTS_no
-                    yield_data.append(float(np.nan))
- 
-    # create a color scale that fits the data
-    # NB: the data supplied needs to be normalized (between 0. and 1.)
-    cmap = plt.get_cmap('RdYlGn')
-    cmap.set_bad('w',1.)
-    norm_data = np.array(yield_data)/max(yield_data)
-    colors = cmap(norm_data)
- 
-    # add the polygons to the map
-    collection = PatchCollection(patches, cmap = cmap, facecolors=colors, 
-                                 edgecolor='k', linewidths=1., zorder=2) 
-   		     
-    # so that the colorbar works, we specify which data array we use to
-    # construct it. Here the data should not be normalized.
-    # NB: this overrides the colors specified in the collection line!
-    data = np.ma.array(yield_data, mask=np.isnan(yield_data))
-    collection.set_array(data) #data used for the colorbar
-    collection.set_clim(0.,1.) #limits of the colorbar
-    plt.colorbar(collection)
-    ax.add_collection(collection)
-    plt.title('%s %s\nFraction of years reported between 2000-2013'%(crop.upper(),
-                                                                  dtype.upper()))
-  
-    fig.savefig('../figures/coverage_%s_%s.png'%(dtype,crop.lower())) 
+    
+    plt.close('all')
+    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(6,3))
+    fig.subplots_adjust(0.15,0.2,0.95,0.9,0.4,0.)
+    ax.scatter(list_of_years_, DM_dict[crop][country], c='k')
+    ax.set_ylabel('Dry matter fraction (-)', fontsize=14)
+    ax.set_xlabel('time (year)', fontsize=14)
+    ax.set_xlim([1955.,2015.])
+    fig.savefig('DM_time_series_%s_%s.png'%(country,crop))
+    #plt.show()
 
     return None
 
@@ -204,129 +231,125 @@ def preprocess_EUROSTAT_data():
 
     NUTS_data   =  open_csv_EUROSTAT(EUROSTATdir,
             [fileyield, fileharvest, filecroparea, filelanduse, filelandusebis],
-             convert_to_float=True)
-    #print NUTS_data[yields]  # this is a dictionary
-
+             convert_to_float=True, verbose=False)
 #-------------------------------------------------------------------------------
-# retrieve the regions of interest
-
-    filename = folderpickle + 'EUROSTAT_regions_names.pickle'
-    NUTS_regions = pickle_load(open(filename,'rb'))
-    NUTS_regions_keys = sorted(NUTS_regions.keys())
-
+# we retrieve the crops and years to loop over:
+    try:
+        #crops        = pickle_load(open('selected_crops.pickle','rb'))
+        NUTS_regions = pickle_load(open('selected_NUTS_regions.pickle','rb'))
+    except IOError:
+        print '\nYou have not yet selected a shortlist of regions to loop over'
+        print 'Run the script 01_select_crops_n_regions.py first!\n'
+        sys.exit() 
 #-------------------------------------------------------------------------------
-    crops = set_crop_standard_info()
-    crop_name_keys = sorted(crops.keys())
-
+    # we print out some info for the user
+    print '\nWe will loop over:\n'
+    print sorted(crop_dict.keys())
+    print sorted(NUTS_regions.keys())
+#-------------------------------------------------------------------------------
     culti_dict = dict()
     arable_dict = dict()
     yield_dict = dict()
     harvest_dict = dict()
 #-------------------------------------------------------------------------------
-# retrieve data per crop
-    for crop in crop_name_keys:
-        EURO_name = crops[crop][0] 
-        print '\n%s'%EURO_name
+# LOOP OVER THE CROP NAME
+#-------------------------------------------------------------------------------
+    for crop in sorted(crop_dict.keys()):
+		# NB: we use the first EUROSTAT name for all csv file, except the
+		# prodhumid one!!
+        EURO_name = crop_dict[crop][0] 
+        print '\n%s'%crop
 
         culti_dict[crop]  = dict()
         arable_dict[crop] = dict()
         yield_dict[crop]  = dict()
         harvest_dict[crop] = dict()
 #-------------------------------------------------------------------------------
-# retrieve data per region
-        for NUTS_no in NUTS_regions_keys: 
+# LOOP OVER THE REGION NAME
 #-------------------------------------------------------------------------------
-# Retrieve the crop dry matter content
-            DM = crops[crop][1]
-
+        for NUTS_no in sorted(NUTS_regions.keys()): 
             print '    ',NUTS_no
-#-------------------------------------------------------------------------------
+
             # settings of the detrend_obs function:
             detr = False # do we detrend observations?
             verb = False # verbose
             fig  = False # production of a figure
 
-            # retrieve the region's crop area and arable area for the years 2000-2013
-            # NB: by specifying obs_type='area', we do not remove a long term trend in
-            # the observations 
+			# retrieve the region's crop area and arable area for the years
+			# 2000-2013. NB: by specifying obs_type='area', we do not remove a
+			# long term trend in the observations 
             culti_dict[crop][NUTS_no] = detrend_obs(2000, 2013, 
                                       NUTS_regions[NUTS_no][1], EURO_name,
-                                      NUTS_data[filecroparea], 1., 2000, obs_type='area',
-                                      detrend=False, prod_fig=fig, verbose=verb)
+                                      NUTS_data[filecroparea], 1., 2000, 
+                                      obs_type='area', detrend=detr, 
+                                      prod_fig=fig, verbose=verb)
             if ((NUTS_no == 'FI1B') or (NUTS_no == 'FI1C') or (NUTS_no == 'FI1D') or 
                 (NUTS_no == 'NO01') or (NUTS_no == 'NO02') or (NUTS_no == 'NO03') or 
                 (NUTS_no == 'NO04') or (NUTS_no == 'NO05') or (NUTS_no == 'NO06') or 
                 (NUTS_no == 'NO07')):
                 arable_dict[crop][NUTS_no] = detrend_obs(2000, 2013, 
                                       NUTS_regions[NUTS_no][1], 'ha: Arable land', 
-                                      NUTS_data[filelandusebis], 1., 2000, obs_type='area_bis',
-                                      detrend=detr, prod_fig=fig, verbose=verb)
+                                      NUTS_data[filelandusebis], 1., 2000, 
+                                      obs_type='area_bis', detrend=detr, 
+                                      prod_fig=fig, verbose=verb)
             else:
                 arable_dict[crop][NUTS_no] = detrend_obs(2000, 2013, 
                                       NUTS_regions[NUTS_no][1], 'Arable land', 
-                                      NUTS_data[filelanduse], 1., 2000, obs_type='area',
-                                      detrend=detr, prod_fig=fig, verbose=verb)
-                
-            # the following variables will be detrended:
+                                      NUTS_data[filelanduse], 1., 2000, 
+                                      obs_type='area', detrend=detr,
+                                      prod_fig=fig, verbose=verb)
             harvest_dict[crop][NUTS_no] = detrend_obs(2000, 2013, 
                                       NUTS_regions[NUTS_no][1], EURO_name, 
-                                      NUTS_data[fileharvest], DM, 2000, 
-                                      obs_type='harvest',
-                                      detrend=detr, prod_fig=fig, verbose=verb)
+                                      NUTS_data[fileharvest], 1., 2000, 
+                                      obs_type='harvest', detrend=detr, 
+                                      prod_fig=fig, verbose=verb)
             yield_dict[crop][NUTS_no] = detrend_obs(2000, 2013, 
                                       NUTS_regions[NUTS_no][1], EURO_name, 
-                                      NUTS_data[fileyield], DM, 2000, 
-                                      obs_type='yield',
-                                      detrend=detr, prod_fig=fig, verbose=verb)
+                                      NUTS_data[fileyield], 1., 2000, 
+                                      obs_type='yield', detrend=detr,
+                                      prod_fig=fig, verbose=verb)
 
-    pickle_dump(culti_dict,open(folderpickle+'temp_cultivated_areas.pickle','wb'))
-    #pickle_dump(arable_dict,open(folderpickle+'temp_arable_areas.pickle','wb'))
-    #pickle_dump(yield_dict,open(folderpickle+'temp_yields.pickle','wb'))
-    #pickle_dump(harvest_dict,open(folderpickle+'temp_harvests.pickle','wb'))
+    pickle_dump(culti_dict,  open(pickledir+'preprocessed_culti_areas.pickle','wb'))
+    pickle_dump(arable_dict, open(pickledir+'preprocessed_arable_areas.pickle','wb'))
+    pickle_dump(yield_dict,  open(pickledir+'preprocessed_yields.pickle','wb'))
+    pickle_dump(harvest_dict,open(pickledir+'preprocessed_harvests.pickle','wb'))
 
     # We add a timestamp at end of the retrieval, to time the process
     end_timestamp = datetime.utcnow()
     print '\nDuration of the retrieval:', end_timestamp-start_timestamp
 
 #===============================================================================
-def compute_european_data_coverage(results_dict, crop, NUTS_id):
+def all_crop_names():
 #===============================================================================
-    counter = 0
-    #if NUTS_id == 'CH0': return np.nan
+    """
+    This creates a dictionary of ALL crop names to read the EUROSTAT csv files:
+    crops[crop_short_name] = ['EUROSTAT_name_1', 'EUROSTAT_name_2']
 
-    print results_dict[crop][NUTS_id][0]
-    if len(results_dict[crop][NUTS_id][1])>0:#if the region was found in EUROSTAT
-        if (sum(results_dict[crop][NUTS_id][0]) == -139986.0):# if the EUROSTAT records were empty
-            coverage_frac = 0.
-        else:
-            coverage_frac = float(len(results_dict[crop][NUTS_id][0]))/\
-                                float(len(range(2000,2014)))
-    else:# if the region was absent from the EUROSTAT records
-        coverage_frac = np.nan
+    EUROSTAT_name_1 can be used to retrieve information in the yield, harvest and
+    area csv files. 
+    EUROSTAT_name_2 should be used in the crop humidity content file only.
 
-    return coverage_frac
-
-#===============================================================================
-def set_crop_standard_info():
-#===============================================================================
-# dictionary of crop information to read the EUROSTAT csv files:
-# crops[crop_short_name] = ['EUROSTAT_crop_name', DM_content_of_crop]
+    """
     crops = dict()
-    crops['soft wheat']  = ['Common wheat and spelt',1.]
-    crops['durum wheat'] = ['Durum wheat',1.]
-    crops['rye']         = ['Rye',1.]
-    crops['barley']      = ['Barley',1.]
-    crops['grain maize'] = ['Grain maize',1.]
-    crops['fodder maize']= ['Green maize',1.]
-    crops['rice']        = ['Rice',1.]
-    crops['peas and beans'] = ['Dried pulses and protein crops for the production '\
-                            + 'of grain (including seed and mixtures of cereals '\
-                            + 'and pulses)',1.]
-    crops['potatoes']    = ['Potatoes (including early potatoes and seed potatoes)',1.]
-    crops['sugar beet']  = ['Sugar beet (excluding seed)',1.]
-    crops['rape']        = ['Rape and turnip rape',1.]
-    crops['sunflower']   = ['Sunflower seed',1.]
-    crops['linseed']     = ['Linseed (oil flax)',1.]
+    crops['Winter wheat']    = ['Common wheat and spelt','Common winter wheat']
+    crops['Spring wheat']    = ['Common wheat and spelt','Common spring wheat']
+    #crops['Durum wheat']    = ['Durum wheat','Durum wheat']
+    crops['Grain maize']     = ['Grain maize','Grain maize and corn-cob-mix']
+    crops['Fodder maize']    = ['Green maize','Green maize']
+    crops['Spring barley']   = ['Barley','Barley']
+    crops['Winter barley']   = ['Barley','Winter barley']
+    crops['Rye']             = ['Rye','Rye']
+    #crops['Rice']           = ['Rice','Rice']
+    crops['Sugar beet']      = ['Sugar beet (excluding seed)','Sugar beet (excluding seed)']
+    crops['Potato']          = ['Potatoes (including early potatoes and seed potatoes)',
+                                'Potatoes (including early potatoes and seed potatoes)']
+    crops['Field beans']     = ['Dried pulses and protein crops for the production '\
+                              + 'of grain (including seed and mixtures of cereals '\
+                              + 'and pulses)',
+                                'Broad and field beans']
+    crops['Spring rapeseed'] = ['Rape and turnip rape','Spring rape']
+    crops['Winter rapeseed'] = ['Rape and turnip rape','Winter rape']
+    crops['Sunflower']       = ['Sunflower seed','Sunflower seed']
 
     return crops
 

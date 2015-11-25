@@ -140,7 +140,7 @@ def map_crop_id_to_crop_name(crop_list):
                                       'Barley']
         if (nickname == 'Winter barley'):
             crop_names[nickname] = [13,'Barley',
-                                      'Barley']
+                                      'Winter barley']
         if (nickname == 'Rye'):
             crop_names[nickname] = [4,'Rye',
                                       'Rye']
@@ -157,7 +157,7 @@ def map_crop_id_to_crop_name(crop_list):
             crop_names[nickname] = [8,'Dried pulses and protein crops for the production '\
                                     + 'of grain (including seed and mixtures of cereals '\
                                     + 'and pulses)',
-                                      'Beans']
+                                      'Broad and field beans']
         if (nickname == 'Spring rapeseed'):
             crop_names[nickname] = [np.nan,'Rape and turnip rape',
                                       'Spring rape']
