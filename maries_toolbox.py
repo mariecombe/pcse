@@ -304,10 +304,12 @@ def select_cells(NUTS_no, crop_no, year, folder_pickle, method='topn', n=3,
         # tuples, which are already sorted by decreasing amount of arable land
         filename = folder_pickle+'gridlistobject_all_r%s.pickle'%NUTS_no
         try:
-            list_of_tuples = pickle_load(open(filename, 'rb'))
+            NUTS_arable = pickle_load(open(filename, 'rb'))
         except IOError:
-            list_of_tuples = querie_arable_cells_in_NUTS_region(NUTS_no)
-            pickle_dump(list_of_tuples, open(os.path.join(filename), 'wb'))
+            NUTS_arable = querie_arable_cells_in_NUTS_region(NUTS_no)
+            pickle_dump(NUTS_arable, open(os.path.join(filename), 'wb'))
+        # we select the first item from the file, which is the actual list of tuples
+        list_of_tuples = NUTS_arable[0]
 
     elif (select_from == 'cultivated'):
         # first get the arable cells contained in NUTS region
@@ -316,19 +318,20 @@ def select_cells(NUTS_no, crop_no, year, folder_pickle, method='topn', n=3,
             NUTS_arable = pickle_load(open(filename, 'rb'))
         except IOError:
             NUTS_arable = querie_arable_cells_in_NUTS_region(NUTS_no)
-            pickle_dump(list_of_tuples, open(os.path.join(filename), 'wb'))
+            pickle_dump(NUTS_arable, open(os.path.join(filename), 'wb'))
         # then read the European cultivated cells for that year and crop
         filename = folder_pickle+'cropmask_c%i.pickle'%crop_no
         culti_cells = pickle_load(open(filename,'rb'))
         # get only the intersection, i.e. the cultivated cells in NUTS region:
         list_of_tuples = list()
-        for cell in NUTS_arable:
+        for cell in NUTS_arable[0]:
             if cell[0] in [c for c,a in culti_cells[year]]:
                 list_of_tuples += [cell]
-        print list_of_tuples
+        #list_of_tuples = list_of_tuples
+        print 'list of cultivated cells:', list_of_tuples, len(list_of_tuples)
 
-    # we select the first item from the file, which is the actual list of tuples
-    list_of_tuples = list_of_tuples[0]
+    if len(list_of_tuples)==0: 
+        return None
 
     # first option: we select the top n grid cells in terms of arable land area
     if (method == 'topn'):
@@ -491,7 +494,7 @@ def define_opti_years(opti_year_, obs_years):
     if opti_year_ in obs_years:
         # if the year is available in the record of observed yields, we
         # use that particular year to optimize the yldgapf
-        print '\nWe use the available yield observations from', opti_year_
+        print 'We optimize fgap on year', opti_year_
         opti_years = [opti_year_]
     else:
         # if we don't have yield observations for that year, we use the
@@ -499,7 +502,7 @@ def define_opti_years(opti_year_, obs_years):
         # yldgapf. The generated yldgapf will be used as proxy of the 
         # opti_year yldgapf
         opti_years = find_consecutive_years(obs_years, 3)
-        print '\nWe use', opti_years, 'as proxy for', opti_year
+        print 'We use', opti_years, 'as proxy for', opti_year
 
     return opti_years
 
@@ -917,4 +920,39 @@ def open_csv_EUROSTAT(inpath,filelist,convert_to_float=False,verbose=True):
         if (verbose == True): print "Dictionary created!"
 
     return Dict
+
+#===============================================================================
+def all_crop_names():
+#===============================================================================
+    """
+    This creates a dictionary of ALL crop names to read the EUROSTAT csv files:
+    crops[crop_short_name] = [DM_content, 'EUROSTAT_name_1', 'EUROSTAT_name_2']
+
+    EUROSTAT_name_1 can be used to retrieve information in the yield, harvest and
+    area csv files. 
+    EUROSTAT_name_2 should be used in the crop humidity content file only.
+
+    """
+    crops = dict()
+    crops['Winter wheat']    = [0.86,'Common wheat and spelt','Common winter wheat']
+    crops['Spring wheat']    = [0.86,'Common wheat and spelt','Common spring wheat']
+    #crops['Durum wheat']    = [0.86,'Durum wheat','Durum wheat']
+    crops['Grain maize']     = [0.86,'Grain maize','Grain maize and corn-cob-mix']
+    crops['Fodder maize']    = [0.35,'Green maize','Green maize']
+    crops['Spring barley']   = [0.86,'Barley','Barley']
+    crops['Winter barley']   = [0.86,'Barley','Winter barley']
+    crops['Rye']             = [0.86,'Rye','Rye']
+    #crops['Rice']           = [0.87,'Rice','Rice']
+    crops['Sugar beet']      = [0.20,'Sugar beet (excluding seed)','Sugar beet (excluding seed)']
+    crops['Potato']          = [0.20,'Potatoes (including early potatoes and seed potatoes)',
+                                'Potatoes (including early potatoes and seed potatoes)']
+    crops['Field beans']     = [0.86,'Dried pulses and protein crops for the production '\
+                              + 'of grain (including seed and mixtures of cereals '\
+                              + 'and pulses)',
+                                'Broad and field beans']
+    crops['Spring rapeseed'] = [0.91,'Rape and turnip rape','Spring rape']
+    crops['Winter rapeseed'] = [0.91,'Rape and turnip rape','Winter rape']
+    crops['Sunflower']       = [0.91,'Sunflower seed','Sunflower seed']
+
+    return crops
 

@@ -27,16 +27,17 @@ def main():
 
     # figures for the forward simulations:
     figure_4 = False # figure showing a time series of opt vs. obs yields
-    figure_5 = True # figure showing a map of yield over a region
+    figure_5 = False # figure showing a map of yield over a region
     figure_6 = False # comparison with fluxnet data
     figure_7 = False
+    figure_8 = True
 
 #-------------------------------------------------------------------------------
 # Define general working directories
     currentdir = os.getcwd()
 	# directories on my local MacBook:
-    EUROSTATdir   = '../Cbalance/EUROSTAT_data'
-    FLUXNETdir    = '../Cbalance/FluxNet_data'
+    EUROSTATdir   = '../observations/EUROSTAT_data'
+    FLUXNETdir    = '../observations/FluxNet_data'
     # directories on capegrim:
     #EUROSTATdir   = "/Users/mariecombe/Cbalance/EUROSTAT_data"
     pcseoutputdir = '/Users/mariecombe/mnt/promise/CO2/marie/pcse_output'
@@ -288,7 +289,7 @@ def main():
         plt.show()
 
 #-------------------------------------------------------------------------------
-# Plot the FluxNet GPP, Reco from various sites
+# Plot the gridded yield as dots
 
     if (figure_7 == True):
         from operator import itemgetter as operator_itemgetter
@@ -319,10 +320,10 @@ def main():
                 list_of_gridcells += [grid_no]
                 list_of_results   += [(grid_no, lon, lat, TSO)]
         #list_of_results = sorted(list_of_results, key=operator_itemgetter(0))
-        from cPickle import dump as pickle_dump
-        pickle_dump(list_of_results,open('list_of_grid_lon_lat_yield.pickle','wb'))
-        print 'pickled results!'
-        sys.exit(2)
+#        from cPickle import dump as pickle_dump
+#        pickle_dump(list_of_results,open('list_of_grid_lon_lat_yield.pickle','wb'))
+#        print 'pickled results!'
+#        sys.exit(2)
         # set up the grid and create a 2D array with same dimension containing the results
         lons = [lon for g,lon,lat,y in list_of_results]
         lats = [lat for g,lon,lat,y in list_of_results]
@@ -366,6 +367,67 @@ def main():
         #plt.colorbar(pl)
         m.drawcoastlines()
         m.drawcountries()
+        plt.show()
+#-------------------------------------------------------------------------------
+# Plot the gridded crop masks
+
+    if (figure_8 == True):
+
+        from cPickle import load as pickle_load
+        from mpl_toolkits.basemap import Basemap
+        print '\n========================== tackling figure 8 =========================='
+        print '                           CROP MASK FIGURES'
+
+        # read the crops, years to loop over
+        try:
+            crop_dict = pickle_load(open('selected_crops.pickle','rb'))
+            years     = pickle_load(open('selected_years.pickle','rb'))
+        except IOError:
+            print '\nYou have not yet selected a shortlist of crops and years to loop over'
+            print 'Run the script 01_select_crops_n_regions.py first!\n'
+            sys.exit() 
+
+        # open file with grid cell coordinates:
+        CGMS_cells = open_csv(EUROSTATdir, ['CGMS_grid_list.csv'])
+        all_grids  = CGMS_cells['CGMS_grid_list.csv']['GRID_NO']
+        all_lons   = CGMS_cells['CGMS_grid_list.csv']['LONGITUDE']
+        all_lats   = CGMS_cells['CGMS_grid_list.csv']['LATITUDE']
+
+        # loop over crops:
+        for crop in crop_dict.keys():
+
+            print 'Crop:', crop
+            crop_no = crop_dict[crop][0]
+            mask = pickle_load(open('../model_input_data/CGMS/cropmask_c%i.pickle'%crop_no,'rb'))
+
+            for year in years:
+
+                print 'Year:', year
+                lons = list()
+                lats = list()
+                # retrieve the coordinates of the cells in the crop mask:
+                for c,cell_no in enumerate(all_grids):
+                    if cell_no in [n for n,a in mask[year]]:
+                        lons += [all_lons[c]] 
+                        lats += [all_lats[c]]
+
+                # make a basemap
+                fig = plt.figure('%s - %s'%(crop, year))
+                m = Basemap(llcrnrlon=-10., llcrnrlat=26., urcrnrlon=72., urcrnrlat=68.,
+                            lon_0=18.0,lat_0 = 40.0,
+                            rsphere=6371200., projection='aea')
+
+                # convert the data to map coordinates
+                X, Y = m(lons, lats)
+                #yield_map = m.transform_scalar(crop_yield, lons, lats, nx, ny)
+                #print yield_map
+            
+                # show the map
+                pl = m.plot(X, Y, 'g.' )
+                plt.title('Crop mask: %s - %s'%(crop,year))
+                m.drawcoastlines(zorder=3)
+                m.drawcountries(zorder=4)
+                fig.savefig('../figures/crop_mask_%s_year%s.png'%(crop,year))
         plt.show()
 
         

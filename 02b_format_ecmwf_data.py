@@ -34,7 +34,7 @@ def main():
 # ================================= USER INPUT =================================
 
     process  = 'parallel'  # multiprocessing option: can be 'serial' or 'parallel'
-    nb_cores = 10          # number of cores used in case of a parallelization
+    nb_cores = 6          # number of cores used in case of a parallelization
 
 # ==============================================================================
 #-------------------------------------------------------------------------------
@@ -85,7 +85,7 @@ def main():
 		# if we do a serial iteration, we loop over the grid cells that contain
 		# arable land
         if (process == 'serial'):
-            for grid in europ_arable:
+            for grid in [g for g,a, in europ_arable]:
                 format_weather(grid)
 
 		# if we do a parallelization, we use the multiprocessor module to
@@ -93,7 +93,7 @@ def main():
         if (process == 'parallel'):
             import multiprocessing
             p = multiprocessing.Pool(nb_cores)
-            parallel = p.map(format_weather, europ_arable)
+            parallel = p.map(format_weather, [g for g,a in europ_arable])
             p.close()
 
 #-------------------------------------------------------------------------------

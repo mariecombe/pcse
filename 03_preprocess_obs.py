@@ -25,6 +25,7 @@ def main():
 
     """
     from cPickle import load as pickle_load
+    from maries_toolbox import all_crop_names
 #-------------------------------------------------------------------------------
     global currentdir, EUROSTATdir, pickledir, crop_dict
 #-------------------------------------------------------------------------------
@@ -317,41 +318,6 @@ def preprocess_EUROSTAT_data():
     # We add a timestamp at end of the retrieval, to time the process
     end_timestamp = datetime.utcnow()
     print '\nDuration of the retrieval:', end_timestamp-start_timestamp
-
-#===============================================================================
-def all_crop_names():
-#===============================================================================
-    """
-    This creates a dictionary of ALL crop names to read the EUROSTAT csv files:
-    crops[crop_short_name] = ['EUROSTAT_name_1', 'EUROSTAT_name_2']
-
-    EUROSTAT_name_1 can be used to retrieve information in the yield, harvest and
-    area csv files. 
-    EUROSTAT_name_2 should be used in the crop humidity content file only.
-
-    """
-    crops = dict()
-    crops['Winter wheat']    = ['Common wheat and spelt','Common winter wheat']
-    crops['Spring wheat']    = ['Common wheat and spelt','Common spring wheat']
-    #crops['Durum wheat']    = ['Durum wheat','Durum wheat']
-    crops['Grain maize']     = ['Grain maize','Grain maize and corn-cob-mix']
-    crops['Fodder maize']    = ['Green maize','Green maize']
-    crops['Spring barley']   = ['Barley','Barley']
-    crops['Winter barley']   = ['Barley','Winter barley']
-    crops['Rye']             = ['Rye','Rye']
-    #crops['Rice']           = ['Rice','Rice']
-    crops['Sugar beet']      = ['Sugar beet (excluding seed)','Sugar beet (excluding seed)']
-    crops['Potato']          = ['Potatoes (including early potatoes and seed potatoes)',
-                                'Potatoes (including early potatoes and seed potatoes)']
-    crops['Field beans']     = ['Dried pulses and protein crops for the production '\
-                              + 'of grain (including seed and mixtures of cereals '\
-                              + 'and pulses)',
-                                'Broad and field beans']
-    crops['Spring rapeseed'] = ['Rape and turnip rape','Spring rape']
-    crops['Winter rapeseed'] = ['Rape and turnip rape','Winter rape']
-    crops['Sunflower']       = ['Sunflower seed','Sunflower seed']
-
-    return crops
 
 #===============================================================================
 if __name__=='__main__':

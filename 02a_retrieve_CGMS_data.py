@@ -48,10 +48,10 @@ def main():
     nb_cores = 2         # number of cores used in case of a parallelization
 
     # flags to execute parts of the script only:
-    CGMS_input_retrieval = True
+    CGMS_input_retrieval = False
     retrieve_weather     = False  # if True, we retrive the CGMS weather input files
                               # Beware!! these files are huge!!!
-    crop_mask_creation   = False
+    crop_mask_creation   = True
     sync_to_capegrim     = False
 
 # ==============================================================================
@@ -216,8 +216,8 @@ def main():
                 crop_mask[int(year)] = culti_list
          
             # now we are out of the year loop, we pickle the crop mask dictionary
-            filename = 'cropmask_c%d_y%d.pickle'%(crop_no,year)
-            pickle_dump(crop_mask,open('../model_input_data/'+filename,'wb'))
+            filename = '../model_input_data/CGMS/cropmask_c%d.pickle'%(crop_no)
+            pickle_dump(crop_mask,open(filename,'wb'))
          
             # We add a timestamp at end of the retrieval, to time the process
             end_timestamp = datetime.utcnow()
