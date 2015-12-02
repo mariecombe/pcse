@@ -168,11 +168,31 @@ def querie_arable_cells_in_NUTS_region(NUTS_reg_code,_threshold=None,_largest_n=
         sys.exit(2)
 
     # 1- retrieve the NUTS 3 region ID forming the desired NUTS 2 region
-    regions = find_level3_regions(connection, NUTS_reg_code)
-    print regions
+    try:
+        # the CGMS database uses the 2006 EUROSTAT nomenclature for NUTS_ids
+        # we correct a few NUTS names before trying to retrieve information there
+        # 1- Greece old country code was 'GR' before it became 'EL'
+        if NUTS_reg_code.startswith('EL'):
+            NUTS_reg_code = 'GR'+NUTS_reg_code[2:len(NUTS_reg_code)]
+        # 3- Italy old code 'ITD' became 'ITH' in 2010
+        if NUTS_reg_code.startswith('ITH'):
+            NUTS_reg_code = 'ITD'+NUTS_reg_code[3:len(NUTS_reg_code)]
+        # 4- Italy old code 'ITE' became 'ITI' in 2010
+        if NUTS_reg_code.startswith('ITI'):
+            NUTS_reg_code = 'ITE'+NUTS_reg_code[3:len(NUTS_reg_code)]
+
+        regions = find_level3_regions(connection, NUTS_reg_code)
+    except Exception as e:
+        print 'Region id does not exist?', e
+        return None,'all'
 
     # 2- get the grid cells that are complete
-    complete_grids = find_complete_grid_cells_in_regions(connection, regions)
+    try:
+        complete_grids = find_complete_grid_cells_in_regions(connection, regions)
+    # if no cells are wholely contained in the region:
+    except cx_Oracle.DatabaseError:
+        print "No grid cells are entirely contained in this region. Return: None."
+        return None,'all'
 
     # 3- get the grid cells with arable land
     if _threshold is not None:
@@ -184,8 +204,12 @@ def querie_arable_cells_in_NUTS_region(NUTS_reg_code,_threshold=None,_largest_n=
         crit_grid_selec = 'top_%i'%_largest_n
         print 'we select %i top cells!'%_largest_n
     else:
-        r = find_grids_with_arable_land(connection, complete_grids)
         crit_grid_selec = 'all'
+        try:
+            r = find_grids_with_arable_land(connection, complete_grids)
+        except cx_Oracle.DatabaseError:
+            print "No whole grid cells have arable land in this region. Return: None."
+            r = None
 	
     return r,crit_grid_selec
 

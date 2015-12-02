@@ -19,28 +19,29 @@ def main():
 
     """
 #-------------------------------------------------------------------------------
-    from maries_toolbox import open_csv_EUROSTAT, detrend_obs, get_crop_name,\
+    from maries_toolbox import open_csv_EUROSTAT, detrend_obs,\
                                define_opti_years, retrieve_crop_DM_content,\
-                               select_cells, select_soils,\
-                               fetch_EUROSTAT_NUTS_name, get_EUR_frac_crop
+                               select_cells, select_soils, get_EUR_frac_crop
 #-------------------------------------------------------------------------------
-    global currentdir, EUROSTATdir, pickledir, detrend, weather
+    global currentdir, EUROSTATdir, pickledir, caboecmwfdir, detrend, weather
 #-------------------------------------------------------------------------------
 # ================================= USER INPUT =================================
  
     # yield gap factor optimization:
-    selec_method  = 'topn'   # can be 'topn' or 'randomn' or 'all'
+    selec_method  = 'topn'    # can be 'topn' or 'randomn' or 'all'
     ncells        = 10        # number of selected grid cells within a region
     nsoils        = 10        # number of selected soil types within a grid cell
-    weather       = 'ECMWF'   # weather data used for the forward simulations
-                             # can be 'CGMS' or 'ECMWF'
+    weather       = 'ECMWF'   # weather data to use for the optimization
+                              # can be 'CGMS' or 'ECMWF'
 
 # ==============================================================================
 #-------------------------------------------------------------------------------
 # Define general working directories
     currentdir    = os.getcwd()
     EUROSTATdir   = '../observations/EUROSTAT_data/'
-    pickledir  = '../model_input_data/CGMS/'
+    pickledir     = '../model_input_data/CGMS/'
+    #pickledir     = '/Users/mariecombe/mnt/promise/CO2/marie/pickled_CGMS_input_data/'
+    caboecmwfdir  = '/Users/mariecombe/mnt/promise/CO2/marie/CABO_weather_ECMWF/'
 #-------------------------------------------------------------------------------
 # we retrieve the crops, regions, and years to loop over:
     try:
@@ -77,18 +78,16 @@ def main():
 #-------------------------------------------------------------------------------
 # LOOP OVER YEARS:
 #-------------------------------------------------------------------------------
-        for opti_year in years:
-            print 'Year ', opti_year
+        for year in years:
+            print 'Year ', year
             print '================================================'
-            opti_fgap[crop][opti_year] = dict()
+            opti_fgap[crop][year] = dict()
 #-------------------------------------------------------------------------------
 # LOOP OVER THE NUTS REGIONS:
 #-------------------------------------------------------------------------------
             for NUTS_no in sorted(NUTS_regions):
                 NUTS_name = NUTS_regions[NUTS_no][1]
                 print "\nRegion: %s / %s"%(NUTS_no, NUTS_name)
-                optimum = dict() # temporary dictionary, will be overwritten
-                                 # at each crop x year iteration
 #-------------------------------------------------------------------------------
                 # Retrieve the crop dry matter content
                 DM_content = retrieve_crop_DM_content(crop_dict[crop][0], NUTS_no, 
@@ -115,18 +114,18 @@ def main():
 #-------------------------------------------------------------------------------
                 # Determine on which years we will optimize the yield gap 
                 # factor
-                opti_years = define_opti_years(opti_year, detrend[1])
+                #opti_years = define_opti_years(year, detrend[1])
 #-------------------------------------------------------------------------------
                 # Select the grid cells to loop over for the optimization
                 selected_grid_cells = select_cells(NUTS_no, crop_dict[crop][0], 
-                                                   opti_year, 
-                                                   pickledir, 
-                                                   method=selec_method, 
-                                                   n=ncells, 
+                                                   year, pickledir, 
+                                                   method=selec_method, n=ncells, 
                                                    select_from='cultivated')
-                # if there were no cells cultivated that year:
-                if (selected_grid_cells == None):
-                    optimum = 0.
+#-------------------------------------------------------------------------------
+                # if there were no cells cultivated that year, or no reported
+                # yields, we skip that region
+                if (selected_grid_cells == None) or (len(detrend[1])==0):
+                    opti_fgap[crop][year][NUTS_no] = 0.
                     continue # go to the next region
 #-------------------------------------------------------------------------------
 	    		# Select the soil types to loop over for the optimization
@@ -143,7 +142,7 @@ def main():
  
                 # the fraction of cultivation for year X:
                 index_year = np.abs(np.array(frac_crop_over_years[1]) - 
-                                                           float(opti_year))
+                                                           float(year))
                 index_year = index_year.argmin()
                 frac_crop  = frac_crop_over_years[0][index_year]
                 print 'We use a cultivated fraction of %.2f'%frac_crop
@@ -151,29 +150,29 @@ def main():
                 # Count the area used to calculate the harvest
                 if (opti_metric == 'harvest'):
                     areas = calc_cultivated_area_of_crop(selected_grid_cells, 
-                                                        selected_soil_types)
+                                                         selected_soil_types)
 #-------------------------------------------------------------------------------
                 # Perform optimization of the yield gap factor
-                output_tagname = 'crop%i_region%s_%s_%igx%is_%s_%i-%i'%(
+                output_tagname = 'crop%i_region%s_%s_%igx%is_%s_%i'%(
                                   crop_dict[crop][0], NUTS_no, selec_method, ncells, 
-                                  nsoils, opti_metric, opti_years[0], 
-                                  opti_years[-1])
+                                  nsoils, opti_metric, year)
  
                 optimum = optimize_regional_yldgapf_dyn(crop_dict[crop][0],
                                                         frac_crop,
                                                         selected_grid_cells,
                                                         selected_soil_types,
-                                                        opti_years,
-                                                        output_tagname,
+                                                        [year], output_tagname,
                                                         obs_type=opti_metric,
                                                         plot_rmse=False)
 
+                opti_fgap[crop][year][NUTS_no] = optimum
+            print opti_fgap[crop][year]
             sys.exit()
 #-------------------------------------------------------------------------------
 	    		# we get the fgap of this NUTS region for all grid cells
 	    		# entirely contained in it
 #                for grid_no in whole_cells_in_region:
-#                    opti_fgap[crop][opti_year][grid_no] = optimum
+#                    opti_fgap[crop][year][grid_no] = optimum
 
 #-------------------------------------------------------------------------------
 # LOOP OVER THE CULTIVATED GRID CELLS OF THIS CROP x YEAR COMBINATION:
@@ -213,6 +212,7 @@ def optimize_regional_yldgapf_dyn(crop_no_, frac_crop, selected_grid_cells_,
     from matplotlib import pyplot as plt
     from pcse.models import Wofost71_WLP_FD
     from pcse.base_classes import WeatherDataProvider
+    from pcse.fileinput.cabo_weather import CABOWeatherDataProvider
 
     # 1- we add a timestamp to time the function
     print '\nStarted dynamic optimization at timestamp:', datetime.utcnow()

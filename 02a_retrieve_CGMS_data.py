@@ -49,6 +49,7 @@ def main():
 
     # flags to execute parts of the script only:
     CGMS_input_retrieval = False
+    retrieve_NUTS_cells  = False
     retrieve_weather     = False  # if True, we retrive the CGMS weather input files
                               # Beware!! these files are huge!!!
     crop_mask_creation   = True
@@ -64,6 +65,7 @@ def main():
 #-------------------------------------------------------------------------------
 # we remind the user that if all 3 flags are False, nothing will happen...
     if ( (CGMS_input_retrieval == False) 
+        and (retrieve_NUTS_cells == False)
         and (crop_mask_creation == False) 
         and (sync_to_capegrim == False) ):
         print 'You have set the script to do no calculations...'
@@ -72,10 +74,11 @@ def main():
 #-------------------------------------------------------------------------------
 # we retrieve the crops and years to loop over:
     try:
-        crop_dict = pickle_load(open('selected_crops.pickle','rb'))
-        years     = pickle_load(open('selected_years.pickle','rb'))
+        crop_dict    = pickle_load(open('selected_crops.pickle','rb'))
+        years        = pickle_load(open('selected_years.pickle','rb'))
+        NUTS_regions = pickle_load(open('selected_NUTS_regions.pickle','rb'))
     except IOError:
-        print '\nYou have not yet selected a shortlist of crops and years to loop over'
+        print '\nYou have not yet selected a shortlist of crops, years and regions to loop over'
         print 'Run the script 01_select_crops_n_regions.py first!\n'
         sys.exit() 
 #-------------------------------------------------------------------------------
@@ -120,6 +123,31 @@ def main():
     europ_arable = sorted(europ_arable,key=operator_itemgetter(0),reverse=False) 
 
 #-------------------------------------------------------------------------------
+# 1- WE RETRIEVE THE LIST OF WHOLE GRID CELLS PER REGION
+#-------------------------------------------------------------------------------
+    if retrieve_NUTS_cells == True:
+#-------------------------------------------------------------------------------
+        # We add a timestamp at start of the retrieval
+        start_timestamp = datetime.utcnow()
+
+        # WE LOOP OVER ALL CHOSEN NUTS REGIONS
+        from maries_toolbox import querie_arable_cells_in_NUTS_region
+        for NUTS_id in sorted(NUTS_regions):
+            print "NUTS region:", NUTS_id
+
+            # We retrieve the list of grid cells contained in each NUTS region
+            filename = folder_local + 'gridlistobject_all_r%s.pickle'%NUTS_id
+            if os.path.exists(filename):
+                pass
+            else:
+                NUTS_arable = querie_arable_cells_in_NUTS_region(NUTS_id)
+                pickle_dump(NUTS_arable, open(os.path.join(filename), 'wb'))
+
+        # We add a timestamp at end of the retrieval, to time the process
+        end_timestamp = datetime.utcnow()
+        print '\nDuration of the retrieval:', end_timestamp-start_timestamp
+ 
+#-------------------------------------------------------------------------------
 # LOOP OVER SELECTED CROPS:
 #-------------------------------------------------------------------------------
     for crop_key in sorted(crop_dict.keys()):
@@ -130,7 +158,7 @@ def main():
             continue
         print '\nRetrieving input data for %s (CGMS id=%i)'%(crop_key,crop_no)
 #-------------------------------------------------------------------------------
-# 1- WE RETRIEVE CGMS INPUT DATA:
+# 2- WE RETRIEVE CGMS INPUT DATA:
 #-------------------------------------------------------------------------------
         if CGMS_input_retrieval == True:
 #-------------------------------------------------------------------------------
@@ -166,13 +194,13 @@ def main():
                     p = multiprocessing.Pool(nb_cores)
                     parallel = p.map(retrieve_CGMS_input, [g for g,a in europ_arable])
                     p.close()
-         
+
             # We add a timestamp at end of the retrieval, to time the process
             end_timestamp = datetime.utcnow()
             print '\nDuration of the retrieval:', end_timestamp-start_timestamp
 
 #-------------------------------------------------------------------------------
-# 2- WE RETRIEVE THE CULTIVATED GRID CELL IDS
+# 3- WE RETRIEVE THE CULTIVATED GRID CELL IDS
 #-------------------------------------------------------------------------------
         if crop_mask_creation == True:
 #-------------------------------------------------------------------------------
@@ -225,7 +253,7 @@ def main():
                                                            start_timestamp
 
 #-------------------------------------------------------------------------------
-# 3- WE SYNC THE LOCAL FOLDER WITH THE REMOTE CAPEGRIM FOLDER
+# 4- WE SYNC THE LOCAL FOLDER WITH THE REMOTE CAPEGRIM FOLDER
 #-------------------------------------------------------------------------------
         if sync_to_capegrim == True:
 #-------------------------------------------------------------------------------
