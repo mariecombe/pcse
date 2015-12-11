@@ -38,6 +38,25 @@ def main():
 # pre-processing once and for all!
     crop_dict    = all_crop_names()
 #-------------------------------------------------------------------------------
+# 1- PRE-PROCESS EUROSTAT CSV FILE ON DRY MATTER CONTENT:
+#-------------------------------------------------------------------------------
+
+    try:
+        DM           = pickle_load(open(pickledir+'preprocessed_obs_DM.pickle','rb'))
+        DM_standard  = pickle_load(open(pickledir+'preprocessed_standard_DM.pickle','rb'))
+        print '\nThe crop humidity content files exist! Pre-processing aborted.'
+    except IOError: # if the files don't exist, we create them:
+        print '\nNow we launch the pre-processing of the dry matter content data.'
+        dry_matter   = preprocess_EUROSTAT_DM()
+        DM           = dry_matter[0]
+        DM_standard  = dry_matter[1]
+    except Exception as e:
+        print 'Unexpected error:', e
+        sys.exit()
+    print DM
+    print DM_standard
+
+#-------------------------------------------------------------------------------
 # 1- PRE-PROCESS EUROSTAT CSV FILES ON AREAS, YIELDS, HARVESTS:
 #-------------------------------------------------------------------------------
 
@@ -53,20 +72,7 @@ def main():
         preprocess_EUROSTAT_data()
     except Exception as e:
         print 'Unexpected error:', e
-
-#-------------------------------------------------------------------------------
-# 2- PRE-PROCESS EUROSTAT CSV FILE ON DRY MATTER CONTENT:
-#-------------------------------------------------------------------------------
-
-    try:
-        DM           = pickle_load(open(pickledir+'preprocessed_obs_DM.pickle','rb'))
-        DM_standard  = pickle_load(open(pickledir+'preprocessed_standard_DM.pickle','rb'))
-        print '\nThe crop humidity content files exist! Pre-processing aborted.'
-    except IOError: # if the files don't exist, we create them:
-        print '\nNow we launch the pre-processing of the dry matter content data.'
-        preprocess_EUROSTAT_DM()
-    except Exception as e:
-        print 'Unexpected error:', e
+        sys.exit()
 
     print '\nThe pre-processing of EUROSTAT data is over.'
 
@@ -105,6 +111,8 @@ def preprocess_EUROSTAT_DM(plot=False):
         list_of_years = np.linspace(1955,2015,61)
         time_series = plot_DM_time_series(DM, list_of_years, 3, 'ES')
 
+    print DM,DM_standard
+    return DM, DM_standard
 
 #===============================================================================
 # Function to store EUROSTAT standard moisture contents in pickle file
@@ -180,8 +188,9 @@ def pickle_DM(obs_data, picklepathname):
                 for i,time in enumerate(obs_data['TIME']):
                     if ((time == year)
                     and (obs_data['GEO'][i] == list_of_countries_EUR[k])
-                    and (obs_data['CROP_PRO'][i] == crop_dict[crop][1])):
+                    and (obs_data['CROP_PRO'][i] == crop_dict[crop][2])):
                         DM[crop][idc][y] = 1.-float(obs_data['Value'][i])/100. 
+            print crop, crop_dict[crop][2], DM[crop][idc][y], DM[crop][idc]
 
     # we pickle the generated dictionnary containing the dry matter content
     pickle_dump(DM, open(picklepathname, 'wb'))
@@ -215,7 +224,8 @@ def plot_DM_time_series(DM_dict, list_of_years_, crop, country):
 #===============================================================================
 def preprocess_EUROSTAT_data():
 #===============================================================================
-    from maries_toolbox import open_csv_EUROSTAT, detrend_obs
+    from maries_toolbox import open_csv_EUROSTAT, detrend_obs,\
+                               retrieve_crop_DM_content
     from cPickle import load as pickle_load
     from cPickle import dump as pickle_dump
     from datetime import datetime
@@ -258,7 +268,7 @@ def preprocess_EUROSTAT_data():
     for crop in sorted(crop_dict.keys()):
 		# NB: we use the first EUROSTAT name for all csv file, except the
 		# prodhumid one!!
-        EURO_name = crop_dict[crop][0] 
+        EURO_name = crop_dict[crop][1] 
         print '\n%s'%crop
 
         culti_dict[crop]  = dict()
@@ -270,6 +280,10 @@ def preprocess_EUROSTAT_data():
 #-------------------------------------------------------------------------------
         for NUTS_no in sorted(NUTS_regions.keys()): 
             print '    ',NUTS_no
+
+            # We retrieve the average dry matter content of that crop over the
+            # years in that country, or the standard content for that crop
+            DM = retrieve_crop_DM_content(crop, NUTS_no, pickledir)
 
             # settings of the detrend_obs function:
             detr = False # do we detrend observations?
@@ -301,12 +315,12 @@ def preprocess_EUROSTAT_data():
                                       prod_fig=fig, verbose=verb)
             harvest_dict[crop][NUTS_no] = detrend_obs(2000, 2013, 
                                       NUTS_regions[NUTS_no][1], EURO_name, 
-                                      NUTS_data[fileharvest], 1., 2000, 
+                                      NUTS_data[fileharvest], DM, 2000, 
                                       obs_type='harvest', detrend=detr, 
                                       prod_fig=fig, verbose=verb)
             yield_dict[crop][NUTS_no] = detrend_obs(2000, 2013, 
                                       NUTS_regions[NUTS_no][1], EURO_name, 
-                                      NUTS_data[fileyield], 1., 2000, 
+                                      NUTS_data[fileyield], DM, 2000, 
                                       obs_type='yield', detrend=detr,
                                       prod_fig=fig, verbose=verb)
 

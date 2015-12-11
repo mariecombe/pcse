@@ -22,9 +22,9 @@ def main():
 # ================================= USER INPUT =================================
 
     # select which part of the script to execute:
-    plot_crop_share             = False
+    plot_crop_share             = True
     plot_spatial_data_coverage  = False
-    plot_temporal_data_coverage = True
+    plot_temporal_data_coverage = False
 
     # We choose to loop over ALL years (2000-2013) to scan the data coverage
     years = np.linspace(2000,2013,14)

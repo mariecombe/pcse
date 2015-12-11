@@ -39,8 +39,8 @@ def main():
 # Define general working directories
     currentdir    = os.getcwd()
     EUROSTATdir   = '../observations/EUROSTAT_data/'
-    pickledir     = '../model_input_data/CGMS/'
-    #pickledir     = '/Users/mariecombe/mnt/promise/CO2/marie/pickled_CGMS_input_data/'
+    #pickledir     = '../model_input_data/CGMS/'
+    pickledir     = '/Users/mariecombe/mnt/promise/CO2/marie/pickled_CGMS_input_data/'
     caboecmwfdir  = '/Users/mariecombe/mnt/promise/CO2/marie/CABO_weather_ECMWF/'
 #-------------------------------------------------------------------------------
 # we retrieve the crops, regions, and years to loop over:
@@ -90,8 +90,9 @@ def main():
                 print "\nRegion: %s / %s"%(NUTS_no, NUTS_name)
 #-------------------------------------------------------------------------------
                 # Retrieve the crop dry matter content
-                DM_content = retrieve_crop_DM_content(crop_dict[crop][0], NUTS_no, 
-                                                                EUROSTATdir)
+                #DM_content = retrieve_crop_DM_content(crop_dict[crop][0], NUTS_no, 
+                #                                                EUROSTATdir)
+                DM_content = 0.2
 #-------------------------------------------------------------------------------
 	    		# The optimization method and metric are now default
 	    		# options not given as choice for the user. THESE OPTIONS
@@ -215,7 +216,7 @@ def optimize_regional_yldgapf_dyn(crop_no_, frac_crop, selected_grid_cells_,
     from pcse.fileinput.cabo_weather import CABOWeatherDataProvider
 
     # 1- we add a timestamp to time the function
-    print '\nStarted dynamic optimization at timestamp:', datetime.utcnow()
+    start_timestamp = datetime.utcnow()
 
     # aggregated yield method:
     
@@ -241,6 +242,7 @@ def optimize_regional_yldgapf_dyn(crop_no_, frac_crop, selected_grid_cells_,
     iter_no = 0
     RMSE_stored = list()
     while (f_step >= 0.02):
+        print f_step
         iter_no = iter_no + 1
         # sub-method: looping over the yield gap factors
 
@@ -253,6 +255,7 @@ def optimize_regional_yldgapf_dyn(crop_no_, frac_crop, selected_grid_cells_,
 
         RES = [] # list in which we will store the yields of the combinations
 
+        counter=0
         for grid, arable_land in selected_grid_cells_:
  
             frac_arable = arable_land / 625000000.
@@ -275,6 +278,8 @@ def optimize_regional_yldgapf_dyn(crop_no_, frac_crop, selected_grid_cells_,
                 # TSO will store all the yields of one grid cell x soil 
                 # combination, for all years and all 3 yldgapf values
                 TSO = np.zeros((len(f_range), len(opti_years_)))
+
+                counter +=1
         
                 for y, year in enumerate(opti_years_): 
 
@@ -301,6 +306,7 @@ def optimize_regional_yldgapf_dyn(crop_no_, frac_crop, selected_grid_cells_,
                         # get the yield (in kgDM.ha-1) 
                         TSO[f,y] = wofost_object.get_variable('TWSO')
 
+                    print grid, smu, year, counter, TSO[-1]
                 RES = RES + [(grid, stu_no, weight*frac_arable*frac_crop, TSO)]
 
         # 4- we aggregate the yield or harvest into the regional one with array
@@ -325,8 +331,9 @@ def optimize_regional_yldgapf_dyn(crop_no_, frac_crop, selected_grid_cells_,
 
         # 5- we compute the (sim-obs) differences.
         DIFF = TSO_regional - OBS
-        assert (TSO_regional[-1] > OBS[-1]), 'Observed yield too high! The DM '+\
-               'content is wrong. Check it again.'
+        #assert (TSO_regional[-1][0] > 0.), 'Problem with the potential WOFOST simulation.'
+        #assert (TSO_regional[-1] > OBS[-1]), 'Observed yield too high! The DM '+\
+        #       'content is wrong. Check it again.'
         
         # Writing more output
         print '\nIteration %i'%iter_no
@@ -377,9 +384,9 @@ def optimize_regional_yldgapf_dyn(crop_no_, frac_crop, selected_grid_cells_,
 
 	# when we are finished iterating on the yield gap factor range, we sort the
 	# (RMSE, YLDGAPF) tuples by values of YLDGAPF
-    RMSE_stored  = sorted(RMSE_stored, key=operator_itemgetter(0))
-    pickle_dump(RMSE_stored, open(os.path.join(currentdir,'pcse_summary_output',
-                                   'RMSE_' + output_tagname_ + '.pickle'),'wb'))       
+    #RMSE_stored  = sorted(RMSE_stored, key=operator_itemgetter(0))
+    #pickle_dump(RMSE_stored, open(os.path.join(currentdir,'pcse_summary_output',
+    #                               'RMSE_' + output_tagname_ + '.pickle'),'wb'))       
 
 	# when we are finished iterating on the yield gap factor range, we plot the
     # RMSE as a function of the yield gap factor
@@ -400,7 +407,8 @@ def optimize_regional_yldgapf_dyn(crop_no_, frac_crop, selected_grid_cells_,
     print '\noptimum found: %.2f +/- %.2f'%(optimum_yldgapf, f_step)
 
     # 9- we add a timestamp to time the function
-    print 'Finished dynamic optimization at timestamp:', datetime.utcnow()
+    end_timestamp = datetime.utcnow()
+    print 'Finished dynamic optimization at timestamp:', end_timestamp-start_timestamp
 
     # 10- we return the optimized YLDGAPF
     return optimum_yldgapf

@@ -30,7 +30,8 @@ def main():
     figure_5 = False # figure showing a map of yield over a region
     figure_6 = False # comparison with fluxnet data
     figure_7 = False
-    figure_8 = True
+    figure_8 = False
+    figure_9 = True
 
 #-------------------------------------------------------------------------------
 # Define general working directories
@@ -429,6 +430,116 @@ def main():
                 m.drawcountries(zorder=4)
                 fig.savefig('../figures/crop_mask_%s_year%s.png'%(crop,year))
         plt.show()
+
+#-------------------------------------------------------------------------------
+    if (figure_9 == True):
+        from operator import itemgetter as operator_itemgetter
+        from mpl_toolkits.basemap import Basemap
+        print '\n=========================== tackling figure 9 =========================='
+        print '                           MAP OF FLUXNET SITES'
+        namesite=False
+
+        # set up the grid and create a 2D array with same dimension containing the results
+        latcrops = [50.5522,47.2863,51.1001,50.8929,56.4842,55.5303,55.4833,
+                    39.2755,60.8993,43.5494,43.9164,44.7556,48.8440,43.4933,46.9557,
+                    52.8588,40.5238,46.0036,45.0628,45.7476,46.1969,51.9536,
+                    53.3989,51.6500,51.5320,52.7000,55.9069,51.7838,51.5333,
+                    58.3406295776367,52.84,53.,37.910917,55.680682,52.030067,
+                    49.573257,46.45614,52.434181,52.33480278,52.83159444,51.99206111,
+                    44.6539,42.3754,39.7147,42.9272,41.1073,37.6442,
+                    44.7100,42.9502,42.3800,42.3804,46.0043,60.8988,60.8990,
+                    37.0170,59.0866,57.2331,57.2299,57.2331,55.9412,55.9378,
+                    50.8706
+]
+
+        loncrops = [4.7449, 7.7343, 10.9143,13.5225, 9.5872,12.0972,11.6333,
+                    -0.3152,23.5156, 1.1078, 4.8792,-0.5556,1.9524,1.2372,16.6517,
+                    -6.9181,14.9574,13.0275, 8.6685,12.4467,11.1134,4.9029,
+                    6.3560, 4.6390, 5.8440,-1.9833,-2.8586,-0.4761,-1.4833,
+                    13.101767539978,18.31,17.96,-3.228444,12.101398,11.103386,
+                    15.078773,30.33609,16.299523,5.372588889,4.909122222,5.645944444,
+                    11.6228,11.9154,16.2781,12.3651,14.7416,12.8464,
+                    11.5300,12.3818,12.0222,12.0266,13.0278,23.5131,23.5128,
+                    -3.6092,26.3744,9.8446,9.8329,9.8444,8.4474,8.4466,
+                    6.4497
+]
+
+        labelcrop = ['Lon','Oe2','Geb','Kli','Fou','Ris','Sto',
+                     'ES2','Jok','Aur','Avi','Cou','Gri','Lam','He1',
+                     'Ca1','BCi','Be1','Cas','Neg','Vda','Lan',
+                     'Lut','Mol','Vre','Cir','ESa','Her','PL1',
+                     'Lnn','Wlw','Bdg','Gdn','RCW','GsB',
+                     'CZ-KrP','UA-Pet','PL-Brd','NL-Zee','NL-Waa','NL-Dij',
+                     'IT-SPC','IT-Ro3','IT-MsN','IT-Mrs','IT-MPn','IT-Ctv',
+                     'IT-Cng','IT-CdD','IT-CA3','IT-CA1','IT-Be2','FI-Jo3','FI-Jo2'
+                     'ES-Pdu','EE-Pdv','DK-SVR','DK-SVG','DK-SVA','DK-SkG','DK-SkA',
+                     'DE-Seh'
+]
+
+        latgrass = [47.0638,47.3789,47.1167,47.3669,47.2083,47.1167,47.2856,
+                    47.0667,49.4953,47.6167,50.9495,51.2753,47.6000,55.6905,
+                    55.6833,42.1522,61.8330,45.6441,45.6392,46.4333,46.6911,
+                    46.9550,47.8469,55.8588,51.9867,51.9684,52.2982,41.9041,
+                    46.0031,46.1167,46.0156,51.9710,52.0031,52.0289,52.5000,
+                    38.4765,55.8660,51.4333,51.2071]
+
+        longrass = [10.9645,11.1656,11.3175,11.8542,8.4083,8.5333,7.7321,
+                    8.4667,18.5447,12.5833,13.5125,10.6555,12.9667,12.1918,
+                    12.0833,1.4485,24.1930,2.7370,2.7370,-0.4667,19.6013,
+                    16.6526,19.7260,-6.9181,-8.7518,-9.9003,-6.4998,13.6052,
+                    13.0257,11.7028,11.0467,4.9270,4.8055,5.0675,5.5000,
+                    -8.0246,-3.2058,-1.2333,-2.8286]
+
+        labelgrass = ['Lan','Leu','Neu','Sch','Cha','Fru','Oe1',
+                      'See','BK2','Ber','Gri','Meh','Sch','Eng',
+                      'Lva','VDA','Sii','Lq1','Lq2','Lus','Bug',
+                      'He2','Mat','Ca2','Dri','Kil','Wex','Amp',
+                      'Be2','Mal','MBo','Ca1','Haa','Hor','Lel',
+                      'Mi2','EBu','PL2','Tad']
+
+        latclosedshrub = [36.9406,40.6060,42.1897]
+        lonclosedshrub = [-2.0329,8.1510,11.9221]
+        labelclosedshrub = ['Agu','Noe','Tol']
+
+        latopenshrub = [36.8348,36.9283,42.5839]
+        lonopenshrub = [-2.2511,-2.7505,10.0784]
+        labelopenshrub = ['Amo','LJu','Pia']
+
+        latsavanna = [39.9415,38.5406]
+        lonsavanna = [-5.7734,-8.0001]
+        labelsavanna = ['LMa','Mi3']
+
+        # create a basemap
+        m = Basemap(llcrnrlon=-10., llcrnrlat=26., urcrnrlon=72., urcrnrlat=68.,
+                    lon_0=18.0,lat_0 = 40.0,
+                    rsphere=6371200., projection='aea')
+
+        # plot the sites
+        Xcrop, Ycrop   = m(loncrops, latcrops)
+        Xgrass, Ygrass = m(longrass, latgrass)
+        Xclsh, Yclsh   = m(lonclosedshrub, latclosedshrub)
+        Xopsh, Yopsh   = m(lonopenshrub, latopenshrub)
+        Xsav, Ysav     = m(lonsavanna, latsavanna)
+
+        # show the map
+        fig, ax = plt.subplots(nrows = 1, ncols = 1, figsize=(7,6))
+        fig.subplots_adjust(0.05,0.02,0.95,0.95,0.4,0.6)
+        m.drawcoastlines()
+        m.drawcountries()
+        #pl = m.plot(Xclsh, Yclsh, color='cyan', marker='^', ls='None')
+        #pl = m.plot(Xopsh, Yopsh, color='cyan', marker='^', ls='None', label='shrubland')
+        #pl = m.plot(Xsav, Ysav, color='orange', marker='v', ls='None', label='savanna')
+        #pl = m.plot(Xgrass, Ygrass, c='limegreen', marker='s', ls='None', label='grassland')
+        pl = m.plot(Xcrop, Ycrop, 'ro', label='cropland')
+        plt.legend(ncol=1, loc='best')
+        if namesite == True:
+            for i,lab in enumerate(labelcrop):
+                plt.annotate(lab, (Xcrop[i], Ycrop[i]))
+            for i,lab in enumerate(labelgrass):
+                plt.annotate(lab, (Xgrass[i], Ygrass[i]))
+        #plt.title('FluxNet sites')
+        fig.savefig('../figures/FluxNetSites.png')
+        print '\n================================= done =================================\n'
 
         
 #===============================================================================

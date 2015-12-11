@@ -48,11 +48,11 @@ def main():
     nb_cores = 2         # number of cores used in case of a parallelization
 
     # flags to execute parts of the script only:
-    CGMS_input_retrieval = False
+    CGMS_input_retrieval = True
     retrieve_NUTS_cells  = False
     retrieve_weather     = False  # if True, we retrive the CGMS weather input files
                               # Beware!! these files are huge!!!
-    crop_mask_creation   = True
+    crop_mask_creation   = False
     sync_to_capegrim     = False
 
 # ==============================================================================
@@ -122,6 +122,7 @@ def main():
         pickle_dump(europ_arable, open(pathname,'wb'))
     europ_arable = sorted(europ_arable,key=operator_itemgetter(0),reverse=False) 
 
+
 #-------------------------------------------------------------------------------
 # 1- WE RETRIEVE THE LIST OF WHOLE GRID CELLS PER REGION
 #-------------------------------------------------------------------------------
@@ -184,7 +185,8 @@ def main():
                 # if we do a serial iteration, we loop over the grid cells that 
                 # contain arable land
                 if (process == 'serial'):
-                    for grid in [g for g,a in europ_arable]:
+                    #for grid in [g for g,a in europ_arable]:
+                    for grid in [56126,70081,94086,100094,102119,106095]:
                         retrieve_CGMS_input(grid)
          
                 # if we do a parallelization, we use the multiprocessor module to 

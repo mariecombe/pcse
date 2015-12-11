@@ -761,7 +761,7 @@ def detrend_obs( _start_year, _end_year, _NUTS_name, _crop_name,
 #===============================================================================
 # Function to retrieve the dry matter content of a given crop in a given
 # country (this is based on EUROSTAT crop humidity data)
-def retrieve_crop_DM_content(crop_no_, NUTS_no_, EUROSTATdir):
+def retrieve_crop_DM_content(crop, NUTS_no_, EUROSTATdir):
 #===============================================================================
 
     from cPickle import load as pickle_load
@@ -769,18 +769,20 @@ def retrieve_crop_DM_content(crop_no_, NUTS_no_, EUROSTATdir):
     # we retrieve the dry matter of a specific crop and country, over the 
     # years 1955-2015
     DM_obs = pickle_load(open(os.path.join(EUROSTATdir, 
-                         'EUROSTAT_obs_crop_humidity.pickle'), 'rb'))
-    DM_content = DM_obs[crop_no_][NUTS_no_[0:2]]
-    # if the retrieved array is not empty, then we use the average 
+                         'preprocessed_obs_DM.pickle'), 'rb'))
+    DM_content = DM_obs[crop][NUTS_no_[0:2]]
+    # if the retrieved array is not empty, and if it's not sugar beet or potato
+    # (we do not trust the reported DM of these crops) then we use the average 
     # reported DM:
-    if (np.isnan(DM_content).all() == False):
+    if (np.isnan(DM_content).all() == False) and \
+        ((crop!='Sugar beet') or (crop!='Potato')):
         DM_content = np.ma.mean(np.ma.masked_invalid(DM_content))
         print '\nWe use the observed DM content', DM_content
     # otherwise we use the standard EUROSTAT DM content for that crop:
     else:
         DM_standard = pickle_load(open(os.path.join(EUROSTATdir, 
-                                'EUROSTAT_standard_crop_humidity.pickle'),'rb'))
-        DM_content = DM_standard[crop_no_]
+                                'preprocessed_standard_DM.pickle'),'rb'))
+        DM_content = DM_standard[crop]
         print '\nWe use the standard DM content', DM_content
 
     return DM_content
@@ -949,8 +951,8 @@ def open_csv_EUROSTAT(inpath,filelist,convert_to_float=False,verbose=True):
 def all_crop_names():
 #===============================================================================
     """
-    This creates a dictionary of ALL crop names to read the EUROSTAT csv files:
-    crops[crop_short_name] = [DM_content, 'EUROSTAT_name_1', 'EUROSTAT_name_2']
+    This creates a dictionary of ALL WOFOST crops to read the EUROSTAT csv files:
+    crops[crop_short_name] = [CGMS_id, 'EUROSTAT_name_1', 'EUROSTAT_name_2']
 
     EUROSTAT_name_1 can be used to retrieve information in the yield, harvest and
     area csv files. 
@@ -958,25 +960,29 @@ def all_crop_names():
 
     """
     crops = dict()
-    crops['Winter wheat']    = [0.86,'Common wheat and spelt','Common winter wheat']
-    crops['Spring wheat']    = [0.86,'Common wheat and spelt','Common spring wheat']
-    #crops['Durum wheat']    = [0.86,'Durum wheat','Durum wheat']
-    crops['Grain maize']     = [0.86,'Grain maize','Grain maize and corn-cob-mix']
-    crops['Fodder maize']    = [0.35,'Green maize','Green maize']
-    crops['Spring barley']   = [0.86,'Barley','Barley']
-    crops['Winter barley']   = [0.86,'Barley','Winter barley']
-    crops['Rye']             = [0.86,'Rye','Rye']
-    #crops['Rice']           = [0.87,'Rice','Rice']
-    crops['Sugar beet']      = [0.20,'Sugar beet (excluding seed)','Sugar beet (excluding seed)']
-    crops['Potato']          = [0.20,'Potatoes (including early potatoes and seed potatoes)',
+    crops['Winter wheat']    = [1,'Common wheat and spelt','Common winter wheat']
+    crops['Spring wheat']    = [np.nan,'Common wheat and spelt','Common spring wheat']
+    #crops['Durum wheat']     = [np.nan,'Durum wheat','Durum wheat']
+    crops['Grain maize']     = [2,'Grain maize','Grain maize and corn-cob-mix']
+    crops['Fodder maize']    = [12,'Green maize','Green maize']
+    crops['Spring barley']   = [3,'Barley','Barley']
+    crops['Winter barley']   = [13,'Barley','Winter barley']
+    crops['Rye']             = [4,'Rye','Rye']
+    #crops['Rice']            = [np.nan,'Rice','Rice']
+    crops['Sugar beet']      = [6,'Sugar beet (excluding seed)','Sugar beet (excluding seed)']
+    crops['Potato']          = [7,'Potatoes (including early potatoes and seed potatoes)',
                                 'Potatoes (including early potatoes and seed potatoes)']
-    crops['Field beans']     = [0.86,'Dried pulses and protein crops for the production '\
+    crops['Field beans']     = [8,'Dried pulses and protein crops for the production '\
                               + 'of grain (including seed and mixtures of cereals '\
                               + 'and pulses)',
                                 'Broad and field beans']
-    crops['Spring rapeseed'] = [0.91,'Rape and turnip rape','Spring rape']
-    crops['Winter rapeseed'] = [0.91,'Rape and turnip rape','Winter rape']
-    crops['Sunflower']       = [0.91,'Sunflower seed','Sunflower seed']
+    crops['Spring rapeseed'] = [np.nan,'Rape and turnip rape','Spring rape']
+    crops['Winter rapeseed'] = [10,'Rape and turnip rape','Winter rape']
+    crops['Sunflower']       = [11,'Sunflower seed','Sunflower seed']
+    #crops['Linseed']         = [np.nan, 'Linseed (oil flax)', '']
+    #crops['Soya']            = [np.nan, 'Soya', '']
+    #crops['Cotton']          = [np.nan, 'Cotton seed', '']
+    #crops['Tobacco']         = [np.nan, 'Tobacco', '']
 
     return crops
 
