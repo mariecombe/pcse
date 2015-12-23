@@ -60,12 +60,12 @@ def main():
                     'SK':2,'TR':2,'UK':1}
 
     # list of selected crops of interest:
-    crops = ['Spring barley','Fodder maize','Sugar beet','Potato']#'Grain maize','Spring wheat','Winter wheat',
+    crops = ['Potato']#'Grain maize','Spring wheat','Winter wheat',
             # 'Spring barley','Winter barley','Spring rapeseed','Winter rapeseed',
             # 'Rye','Potato','Sugar beet','Sunflower','Field beans']
 
     # list of selected years to simulate the c cycle for:
-    years = [2004,2005,2006,2007]#,2001,2002,2003,2004,2005,2006,2007,2008,2009,2010]
+    years = [2006]#,2001,2002,2003,2004,2005,2006,2007,2008,2009,2010]
 
 # ==============================================================================
 #-------------------------------------------------------------------------------

@@ -348,11 +348,14 @@ def select_cells(NUTS_no, crop_no, year, folder_pickle, method='topn', n=3,
         culti_cells = pickle_load(open(filename,'rb'))
         # get only the intersection, i.e. the cultivated cells in NUTS region:
         list_of_tuples = list()
-        for cell in NUTS_arable[0]:
-            if cell[0] in [c for c,a in culti_cells[year]]:
-                list_of_tuples += [cell]
-        #list_of_tuples = list_of_tuples
-        print 'list of cultivated cells:', list_of_tuples, len(list_of_tuples)
+        if (NUTS_arable[0] != None):
+            for cell in NUTS_arable[0]:
+                if cell[0] in [c for c,a in culti_cells[year]]:
+                    list_of_tuples += [cell]
+            #list_of_tuples = list_of_tuples
+            #print 'list of cultivated cells:', list_of_tuples, len(list_of_tuples)
+        else:
+            return None
 
     if len(list_of_tuples)==0: 
         return None

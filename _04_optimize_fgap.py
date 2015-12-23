@@ -19,18 +19,16 @@ def main():
 
     """
 #-------------------------------------------------------------------------------
-    from maries_toolbox import open_csv_EUROSTAT, detrend_obs,\
-                               define_opti_years, retrieve_crop_DM_content,\
-                               select_cells, select_soils, get_EUR_frac_crop
-#-------------------------------------------------------------------------------
-    global currentdir, EUROSTATdir, pickledir, caboecmwfdir, detrend, weather
+    global currentdir, EUROSTATdir, pickledir, caboecmwfdir, crop_dict,\
+           NUTS_regions, years, crop, crop_name, year, observed_data,\
+           selec_method, ncells, nsoils, weather, opti_metric
 #-------------------------------------------------------------------------------
 # ================================= USER INPUT =================================
  
     # yield gap factor optimization:
     selec_method  = 'topn'    # can be 'topn' or 'randomn' or 'all'
-    ncells        = 10        # number of selected grid cells within a region
-    nsoils        = 10        # number of selected soil types within a grid cell
+    ncells        = 1        # number of selected grid cells within a region
+    nsoils        = 1        # number of selected soil types within a grid cell
     weather       = 'ECMWF'   # weather data to use for the optimization
                               # can be 'CGMS' or 'ECMWF'
 
@@ -39,9 +37,10 @@ def main():
 # Define general working directories
     currentdir    = os.getcwd()
     EUROSTATdir   = '../observations/EUROSTAT_data/'
-    #pickledir     = '../model_input_data/CGMS/'
-    pickledir     = '/Users/mariecombe/mnt/promise/CO2/marie/pickled_CGMS_input_data/'
-    caboecmwfdir  = '/Users/mariecombe/mnt/promise/CO2/marie/CABO_weather_ECMWF/'
+    pickledir     = '../model_input_data/CGMS/'
+    #pickledir     = '/Users/mariecombe/mnt/promise/CO2/marie/pickled_CGMS_input_data/'
+    #caboecmwfdir  = '/Users/mariecombe/mnt/promise/CO2/marie/CABO_weather_ECMWF/'
+    caboecmwfdir  = '../model_input_data/CABO_weather_ECMWF/'
 #-------------------------------------------------------------------------------
 # we retrieve the crops, regions, and years to loop over:
     try:
@@ -52,7 +51,6 @@ def main():
         print '\nYou have not yet selected a shortlist of crops, regions and years to loop over'
         print 'Run the script 01_select_crops_n_regions.py first!\n'
         sys.exit() 
-    years = [2006]
 #-------------------------------------------------------------------------------
 # we retrieve the EUROSTAT pre-processed yield observations:
     try:
@@ -67,6 +65,17 @@ def main():
 #-------------------------------------------------------------------------------
 # we initialize the dictionary of fgap:
     opti_fgap = dict()
+#-------------------------------------------------------------------------------
+# The optimization method and metric are now default options not given as
+# choice for the user. THESE OPTIONS SHOULD NOT BE MODIFIED ANYMORE.
+    opti_metric = 'yield'      # can be 'yield' or 'harvest'
+#-------------------------------------------------------------------------------
+# Retrieve the observed EUROSTAT yield or harvest and remove its technological
+# trend 
+    if (opti_metric == 'harvest'):
+        observed_data = harvests_dict
+    elif (opti_metric == 'yield'):
+        observed_data = yields_dict
 #-------------------------------------------------------------------------------
 # LOOP OVER CROPS:
 #-------------------------------------------------------------------------------
@@ -86,87 +95,7 @@ def main():
 # LOOP OVER THE NUTS REGIONS:
 #-------------------------------------------------------------------------------
             for NUTS_no in sorted(NUTS_regions):
-                NUTS_name = NUTS_regions[NUTS_no][1]
-                print "\nRegion: %s / %s"%(NUTS_no, NUTS_name)
-#-------------------------------------------------------------------------------
-                # Retrieve the crop dry matter content
-                #DM_content = retrieve_crop_DM_content(crop_dict[crop][0], NUTS_no, 
-                #                                                EUROSTATdir)
-                DM_content = 0.2
-#-------------------------------------------------------------------------------
-	    		# The optimization method and metric are now default
-	    		# options not given as choice for the user. THESE OPTIONS
-	    		# SHOULD NOT BE MODIFIED ANYMORE.
-                opti_metric = 'yield'      # can be 'yield' or 'harvest'
-#-------------------------------------------------------------------------------
-	    		# Retrieve the observed EUROSTAT yield or harvest and
-	    		# remove its technological trend 
-                if (opti_metric == 'harvest'):
-                    observed_data = harvests_dict
-                elif (opti_metric == 'yield'):
-                    observed_data = yields_dict
- 
-                # NB: we do NOT detrend the yields anymore, since fgap is not
-                # supposed to be representative of multi-annual gap
-                detrend = yields_dict[crop][NUTS_no]
-                print 'Raw yields observations:'
-                print detrend[0]
-                print detrend[1]
-#-------------------------------------------------------------------------------
-                # Determine on which years we will optimize the yield gap 
-                # factor
-                #opti_years = define_opti_years(year, detrend[1])
-#-------------------------------------------------------------------------------
-                # Select the grid cells to loop over for the optimization
-                selected_grid_cells = select_cells(NUTS_no, crop_dict[crop][0], 
-                                                   year, pickledir, 
-                                                   method=selec_method, n=ncells, 
-                                                   select_from='cultivated')
-#-------------------------------------------------------------------------------
-                # if there were no cells cultivated that year, or no reported
-                # yields, we skip that region
-                if (selected_grid_cells == None) or (len(detrend[1])==0):
-                    opti_fgap[crop][year][NUTS_no] = 0.
-                    continue # go to the next region
-#-------------------------------------------------------------------------------
-	    		# Select the soil types to loop over for the optimization
-                selected_soil_types = select_soils(crop_dict[crop][0],
-                                                   [g for g,a in selected_grid_cells],
-                                                   pickledir,
-                                                   method=selec_method, 
-                                                   n=nsoils)
-#-------------------------------------------------------------------------------
-                # we retrieve the EUROSTAT fraction of arable land 
-                # cultivated into the crop
-                frac_crop_over_years = get_EUR_frac_crop(crop_name, 
-                                                     NUTS_name, EUROSTATdir)
- 
-                # the fraction of cultivation for year X:
-                index_year = np.abs(np.array(frac_crop_over_years[1]) - 
-                                                           float(year))
-                index_year = index_year.argmin()
-                frac_crop  = frac_crop_over_years[0][index_year]
-                print 'We use a cultivated fraction of %.2f'%frac_crop
-#-------------------------------------------------------------------------------
-                # Count the area used to calculate the harvest
-                if (opti_metric == 'harvest'):
-                    areas = calc_cultivated_area_of_crop(selected_grid_cells, 
-                                                         selected_soil_types)
-#-------------------------------------------------------------------------------
-                # Perform optimization of the yield gap factor
-                output_tagname = 'crop%i_region%s_%s_%igx%is_%s_%i'%(
-                                  crop_dict[crop][0], NUTS_no, selec_method, ncells, 
-                                  nsoils, opti_metric, year)
- 
-                optimum = optimize_regional_yldgapf_dyn(crop_dict[crop][0],
-                                                        frac_crop,
-                                                        selected_grid_cells,
-                                                        selected_soil_types,
-                                                        [year], output_tagname,
-                                                        obs_type=opti_metric,
-                                                        plot_rmse=False)
-
-                opti_fgap[crop][year][NUTS_no] = optimum
+                opti_fgap[crop][year][NUTS_no] = optimize_fgap(NUTS_no)
             print opti_fgap[crop][year]
             sys.exit()
 #-------------------------------------------------------------------------------
@@ -197,11 +126,86 @@ def main():
     pickle_dump(open('opti_fgap_dict.pickle','wb'))
 
 #===============================================================================
+def optimize_fgap(NUTS_no):
+#===============================================================================
+    from maries_toolbox import define_opti_years,\
+                               select_cells, select_soils, get_EUR_frac_crop
+#-------------------------------------------------------------------------------
+    NUTS_name = NUTS_regions[NUTS_no][1]
+    print "\nRegion: %s / %s"%(NUTS_no, NUTS_name)
+#-------------------------------------------------------------------------------
+    # NB: we do NOT detrend the yields anymore, since fgap is not
+    # supposed to be representative of multi-annual gap
+    detrend = observed_data[crop][NUTS_no]
+    #print 'Raw yields observations:'
+    #print detrend[0]
+    #print detrend[1]
+#-------------------------------------------------------------------------------
+# if there were no reported yields at all, or no reported yield for the year of
+# interest, we skip that region
+    if (len(detrend[1])==0) or (year not in detrend[1]):
+        print 'No reported yield, optimum cannot be compiled'
+        return np.nan
+#-------------------------------------------------------------------------------
+    # Determine on which years we will optimize the yield gap 
+    # factor
+    #opti_years = define_opti_years(year, detrend[1])
+#-------------------------------------------------------------------------------
+    # Select the grid cells to loop over for the optimization
+    selected_grid_cells = select_cells(NUTS_no, crop_dict[crop][0], 
+                                       year, pickledir, 
+                                       method=selec_method, n=ncells, 
+                                       select_from='cultivated')
+#-------------------------------------------------------------------------------
+# if there were no cells cultivated that year, we skip that region
+    if (selected_grid_cells == None):
+        print 'No cultivated grid cells, optimum cannot be compiled'
+        return np.nan
+#-------------------------------------------------------------------------------
+	# Select the soil types to loop over for the optimization
+    selected_soil_types = select_soils(crop_dict[crop][0],
+                                       [g for g,a in selected_grid_cells],
+                                       pickledir,
+                                       method=selec_method, 
+                                       n=nsoils)
+#-------------------------------------------------------------------------------
+    # we retrieve the EUROSTAT fraction of arable land 
+    # cultivated into the crop
+    frac_crop_over_years = get_EUR_frac_crop(crop_name, 
+                                         NUTS_name, EUROSTATdir)
+ 
+    # the fraction of cultivation for year X:
+    index_year = np.abs(np.array(frac_crop_over_years[1]) - 
+                                               float(year))
+    index_year = index_year.argmin()
+    frac_crop  = frac_crop_over_years[0][index_year]
+    print 'We use a cultivated fraction of %.2f'%frac_crop
+#-------------------------------------------------------------------------------
+    # Count the area used to calculate the harvest
+    if (opti_metric == 'harvest'):
+        areas = calc_cultivated_area_of_crop(selected_grid_cells, 
+                                             selected_soil_types)
+#-------------------------------------------------------------------------------
+    # Perform optimization of the yield gap factor
+    output_tagname = 'crop%i_region%s_%s_%igx%is_%s_%i'%(
+                      crop_dict[crop][0], NUTS_no, selec_method, ncells, 
+                      nsoils, opti_metric, year)
+ 
+    optimum = optimize_regional_yldgapf_dyn(detrend,crop_dict[crop][0],
+                                            frac_crop,
+                                            selected_grid_cells,
+                                            selected_soil_types,
+                                            [year], output_tagname,
+                                            obs_type=opti_metric,
+                                            plot_rmse=False)
+    return optimum
+
+#===============================================================================
 # Function to optimize the regional yield gap factor using the difference
 # between the regional simulated and the observed harvest or yield (ie. 1 gap to
 # optimize per NUTS region). This function iterates dynamically to find the
 # optimum YLDGAPF.
-def optimize_regional_yldgapf_dyn(crop_no_, frac_crop, selected_grid_cells_,
+def optimize_regional_yldgapf_dyn(detrend, crop_no_, frac_crop, selected_grid_cells_,
            selected_soil_types_, opti_years_, output_tagname_, obs_type='yield',
            plot_rmse=True):
 #===============================================================================
@@ -334,6 +338,9 @@ def optimize_regional_yldgapf_dyn(crop_no_, frac_crop, selected_grid_cells_,
         #assert (TSO_regional[-1][0] > 0.), 'Problem with the potential WOFOST simulation.'
         #assert (TSO_regional[-1] > OBS[-1]), 'Observed yield too high! The DM '+\
         #       'content is wrong. Check it again.'
+        if (TSO_regional[-1] <= OBS[-1]):
+            print '\nObserved yield larger than simulated yield. Optimum found: 1'
+            return 1.
         
         # Writing more output
         print '\nIteration %i'%iter_no
@@ -378,9 +385,21 @@ def optimize_regional_yldgapf_dyn(crop_no_, frac_crop, selected_grid_cells_,
         # smallest interpolated RMSE
 
         index_new_center = RMSE.argmin()
-        f0 = f_range[index_new_center-1]
-        f2 = f_range[index_new_center]
-        f4 = f_range[index_new_center+1]
+        try:
+            f0 = f_range[index_new_center-1]
+            f2 = f_range[index_new_center]
+            f4 = f_range[index_new_center+1]
+        except IndexError:
+            # if the optimum is close to 1:
+            if index_new_center == len(f_range)-1:
+                f0 = f_range[index_new_center-2]
+                f2 = f_range[index_new_center-1]
+                f4 = f_range[index_new_center]
+            # if the optimum is close to 0:
+            elif index_new_center == 0:
+                f0 = f_range[index_new_center]
+                f2 = f_range[index_new_center+1]
+                f4 = f_range[index_new_center+2]
 
 	# when we are finished iterating on the yield gap factor range, we sort the
 	# (RMSE, YLDGAPF) tuples by values of YLDGAPF
