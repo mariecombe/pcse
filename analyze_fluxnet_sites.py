@@ -16,7 +16,9 @@ def main():
 # flags to run parts of the script only
     obs_plot        = False
     forward_sim     = False
+    sim_plot        = False
     plot_obs_vs_sim = False
+    calc_integrated_fluxes_stats = True
 #-------------------------------------------------------------------------------
 # Define general working directories
     EUROSTATdir = '../observations/EUROSTAT_data/'
@@ -54,9 +56,28 @@ def main():
 
 #-------------------------------------------------------------------------------
 # plot the observed FluxNet carbon fluxes:
+
+    #Store the FluxNet observed data
+    Results = dict()
+    for crop in cover.keys():
+        Results[crop] = dict()
+        for site in cover[crop]:
+            Results[crop][site] = dict()
+            for year in years[crop][site]:
+                Results[crop][site][year] = dict()  
+                # retrieve FluxNet data
+                listoffiles = [f for f in os.listdir(FluxNetdir) if (site in f and 
+                              'daily' in f and str(year) in f)]
+                if len(listoffiles) > 0:
+                    ObsData = open_csv(FluxNetdir, listoffiles)
+                    Results[crop][site][year]['OBS'] = ObsData[listoffiles[0]]
+                else:
+                    Results[crop][site][year]['OBS'] = None
+
+    # plot the observed data separately
     if obs_plot == True:
         for crop in cover.keys():
-            plot_fluxnet_daily_fluxes(crop, cover[crop], years[crop], FluxNetdir)
+            plot_obs_fluxes(crop, cover[crop], years[crop], FluxNetdir)
 
 #-------------------------------------------------------------------------------
 # find closest CGMS grid cell for all sites:
@@ -74,10 +95,19 @@ def main():
         indx = np.argmin(np.array(dist_list))
         flux_gri[site] = all_grids[indx]
 
-        print 'FluxNet site %s: closest grid cell is %i'%(site, all_grids[indx])
+        print 'FluxNet site %s with lon=%.2f, lat=%.2f: closest grid cell is %i'%(site, lon, lat, all_grids[indx])
 
 #-------------------------------------------------------------------------------
-# Simulate the optimize GPP, Reco and NEE for the FluxNet sites
+# get the cultivated area of those grid cells:
+    filepath = os.path.join(inputdir,'europe_arable_CGMS_cellids.pickle')
+    europ_arable = pickle_load(open(filepath,'rb'))
+    tuple_cell_area = list()
+    for g,a in europ_arable:
+        if g in flux_gri.values():
+            tuple_cell_area += [(g,a)]
+
+#-------------------------------------------------------------------------------
+# Simulate the optimized GPP, Reco and NEE for the FluxNet sites
 
     # we retrieve the crop id numbers
     crop_dict = map_crop_id_to_crop_name(cover.keys())
@@ -87,31 +117,41 @@ def main():
         print '\n %s'%crop
         # loop over sites
         for site in cover[crop]:
-            print '\n%s: lon = %.2f, lat = %.2f, closest cell = %i'%(site, lon, 
-                                                                 lat, grid_no)
             # get the closest grid cell id number:
             grid_no = int(flux_gri[site])
+            culti_land = [a for (g,a) in tuple_cell_area if (g==grid_no)][0]
             # get the longitute and latitute of the site:
             indx = flux_nam.index(site)
             lon = flux_lon[indx]
             lat = flux_lat[indx]
+            #print '\n%s: lon = %.2f, lat = %.2f, closest cell = %i'%(site, lon, 
+            #                                                     lat, grid_no)
             # stuff to print to screen
-            print '\nYLDGAPF(-),  grid_no,  year,  stu_no, stu_area(ha), '\
+            if (forward_sim == True):
+                print '\nYLDGAPF(-),  grid_no,  year,  stu_no, stu_area(ha), '\
                  +'TSO(kgDM.ha-1), TLV(kgDM.ha-1), TST(kgDM.ha-1), '\
                  +'TRT(kgDM.ha-1), maxLAI(m2.m-2), rootdepth(cm), TAGP(kgDM.ha-1)'
             for year in years[crop][site]:
-                if (grid_no == 107097): continue # I forgot to retrieve input
-                                                 # data for the Dijkgraaf site
+                if (grid_no == 107097):  # I forgot to retrieve input
+                                         # data for the Dijkgraaf site
+                    Results[crop][site][year]['SIM'] = None
+                    continue
                 # OPTIMIZATION OF FGAP:
                 yldgapf = fgap[crop][site][year]
                 # FORWARD SIMULATIONS:
                 if (forward_sim == True):
                     perform_yield_sim(crop_no, grid_no, int(year), yldgapf)
-                # POST-PROCESSING OF GPP, RAUTO:
-                time_series = compile_nee(grid_no, culti_land, year)
-            
+                # POST-PROCESSING OF GPP, RAUTO, RHET, NEE:
+                SimData = compile_nee(crop_no, crop, site, grid_no, year)
+                Results[crop][site][year]['SIM'] = SimData
+                # if required, plot the simulated fluxes separately:
+                if (sim_plot == True):
+                    plot_sim_fluxes(time_series[0],time_series[1],
+                    time_series[2],time_series[3], time_series[4], crop, grid_no,
+                    site, year, units='perday')
+
 #-------------------------------------------------------------------------------
-# plot the fluxes of GPP, TER, NEE for each site
+# plot the observed and simulated fluxes of GPP, TER, NEE for each site
     if (plot_obs_vs_sim == True):
 #-------------------------------------------------------------------------------
         from matplotlib import pyplot as plt
@@ -122,13 +162,126 @@ def main():
             # loop over sites
             for site in cover[crop]:
                 grid_no = int(flux_gri[site])
-                print '\n%s: lon = %.2f, lat = %.2f, closest cell = %i'%(site, 
-                                                              lon, lat, grid_no)
-                # get the closest grid cell id number:
+                #print '\n%s: lon = %.2f, lat = %.2f, closest cell = %i'%(site, 
+                #                                              lon, lat, grid_no)
                 for year in years[crop][site]:
-                    # plot one time series of observed fluxes obs + simulated    
-                    plot_nee_time_series()
-                    plt.show()
+                    plot_sim_vs_obs_fluxes(Results[crop][site][year], crop,
+                    site, grid_no, year)
+
+#-------------------------------------------------------------------------------
+# calculate yearly integral of the GPP, TER and NEE fluxes, and compute some 
+# statistics on it like mean, std dev, RMSE
+    if (calc_integrated_fluxes_stats == True):
+#-------------------------------------------------------------------------------
+        # loop over crops
+        for crop in cover.keys():
+            crop_no = crop_dict[crop][0]
+            # loop over sites
+            for site in cover[crop]:
+                grid_no = int(flux_gri[site])
+                # loop over years
+                for year in years[crop][site]:
+                    if (Results[crop][site][year]['OBS'] != None and
+                    Results[crop][site][year]['SIM'] != None):
+                        compute_stats_on_integrated_fluxes(Results[crop][site][year],
+                        crop, site, grid_no, year)
+
+#===============================================================================
+def compute_stats_on_integrated_fluxes(Results_dict, crop_name, site_name, 
+grid_no, year):
+#===============================================================================
+    print '\n---------------------------------------------'
+    print 'Site %s, %s, year %i'%(site_name, crop_name, year)
+    print 'there are %i observed days and %i simulated days'%(np.ma.count(np.ma.masked_equal(Results_dict['OBS']['GPP_f'],-9999.)), len(Results_dict['SIM'][0]))
+    print '---------------------------------------------'
+    obs_varz = ['GPP_f','Reco','NEE_f']
+    factorz  = [-1.,1.,1.]
+    for var,i,name,fac in zip(obs_varz,[1,3,4], ['GPP','TER','NEE'], factorz):
+        # STATS ON OBSERVATIONS
+        # we filter out the -9999. values:
+        ma_obs_data   = fac*np.ma.masked_equal(Results_dict['OBS'][var], -9999.)
+        # we compute statistics on the filtered data
+        sum_obs_var   = np.ma.MaskedArray.sum(ma_obs_data)
+        ave_obs_var   = np.ma.MaskedArray.mean(ma_obs_data)
+        stdev_obs_var = np.ma.MaskedArray.std(ma_obs_data)
+
+        # STATS ON SIMULATIONS
+        # we filter out the days on which we didn't have observations
+        ma_sim_doy    = np.ma.masked_outside(Results_dict['SIM'][0], 
+                                           Results_dict['OBS']['DoY'][0],
+                                           Results_dict['OBS']['DoY'][-1])
+        obs_mask      = np.ma.getmask(ma_sim_doy)
+        if (i != 3): # For GPP or NEE
+            sim_data  = Results_dict['SIM'][i]
+        else: # for TER, we use the max between WOFOST Rauto and AGs TER:
+            sim_data  = np.maximum.reduce([Results_dict['SIM'][3], 
+                                           Results_dict['SIM'][2]]) 
+        #ma_sim_data   = np.ma.masked_where(obs_mask, sim_data)
+        ma_sim_data   = np.ma.masked_equal(sim_data, -9999.)
+        # we compute statistics on the filtered data
+        sum_sim_var   = np.ma.MaskedArray.sum(ma_sim_data)
+        ave_sim_var   = np.ma.MaskedArray.mean(ma_sim_data)
+        stdev_sim_var = np.ma.MaskedArray.std(ma_sim_data)
+
+        # we compute the root mean squared error of the model:
+        RMSE  = np.sqrt(((ma_sim_data - ma_obs_data) ** 2).mean())
+        NRMSE = RMSE / (np.ma.max(ma_obs_data) - np.ma.min(ma_obs_data)) *100.
+
+        # We print out the results on screen
+        print '\n%s'%name
+        print '         %10s %10s'%('SIM', 'OBS')
+        print 'Sum:     %10.2f %10.2f gC m-2 y-1'%(sum_sim_var, sum_obs_var)
+        print 'Mean:    %10.2f %10.2f gC m-2 d-1'%(ave_sim_var, ave_obs_var)
+        print 'Std dev: %10.2f %10.2f gC m-2 d-1'%(stdev_sim_var, stdev_obs_var)
+        print 'RMSE of %s: %5.2f gC m-2 d-1'%(name, RMSE)
+        print 'NRMSE of %s: %5.2f'%(name, NRMSE)+' %'
+
+    return None
+#===============================================================================
+def plot_sim_vs_obs_fluxes(Results_dict, crop_name, site_name, grid_no, year):
+#===============================================================================
+
+    from matplotlib import pyplot as plt
+    from matplotlib import rcParams as rc
+    plt.close('all')
+
+    obs_varz = ["GPP_f","Reco","NEE_f"]
+    labz     = ['GPP','Reco','NEE']
+    colorz   = ['g','r','k']
+    limz     = [[-20.,0.],[0.,10.],[-15.,0.]]
+    factorz  = [-1.,1.,1.] 
+    if (Results_dict['OBS'] != None): obs_time = Results_dict['OBS']['DoY']
+    if (Results_dict['SIM'] != None): sim_time = Results_dict['SIM'][0]
+
+    fig, axes = plt.subplots(nrows=3, ncols=1, figsize=(14,10))
+    fig.subplots_adjust(0.1,0.1,0.98,0.98,0.2,0.2)
+
+    for ax, it, var, fac, lab, col, lims in zip(axes.flatten(), [1,2,4], obs_varz, 
+    factorz, labz, colorz, limz):
+        ax.axhline(y=0., ls='-', lw=0.5, c='k')
+        if (Results_dict['OBS'] != None): 
+            ax.scatter(obs_time, fac*np.ma.masked_equal(Results_dict['OBS'][var],-9999.), marker='+', s=50, label='obs', c=col)
+        if (lab != 'Reco' and Results_dict['SIM'] != None): 
+            ax.plot(sim_time, Results_dict['SIM'][it], label='sim', c=col, ls='-', lw=2)
+        if (lab == 'Reco' and Results_dict['SIM'] != None): 
+            ax.plot(sim_time, np.maximum.reduce([Results_dict['SIM'][3], Results_dict['SIM'][2]]), c=col, ls='-', lw=2)
+            ax.fill_between(sim_time, 0., Results_dict['SIM'][2], facecolor='r', alpha=0.2, lw=0)
+            #ax.plot(sim_time, Results_dict['SIM'][3], c=col, ls=':', lw=2)
+        ax.set_xlim([0.,366.])
+        #ax.set_ylim(lims)
+        ax.set_ylabel(lab + r' (g$_{C}$ m$^{-2}$ d$^{-1}$)', fontsize=18)
+        size = [tick.label.set_fontsize(18) for tick in ax.yaxis.get_major_ticks()]
+        size = [tick.label.set_fontsize(18) for tick in ax.xaxis.get_major_ticks()]
+    plt.xlabel('time (DOY)', fontsize=18)
+    plt.legend(loc='upper left', ncol=2, fontsize=14)
+    #fig.suptitle('Daily carbon fluxes of %s for all '%crop_name+\
+    #             'soil types of grid cell %i in %i'%(grid_no,
+    #                                      year), fontsize=18)
+    figname = '%s_%i_%s_g%i.png'%(crop_name,year,\
+                                                        site_name,grid_no)
+    #plt.show()
+    fig.savefig('../figures/FluxNet_R10=05_'+figname)
+    return None
 
 #===============================================================================
 # Function to do forward simulations of crop yield for a given YLDGAPF and for a
@@ -143,13 +296,13 @@ def perform_yield_sim(crop_no, grid_no, year, fgap):
     weather = 'ECMWF'   
     selec_method = 'all' 
     nsoils = 1
-    inputdir = '../model_input_data/CGMS/'
+    pickledir = '../model_input_data/CGMS/'
     caboecmwfdir = '../model_input_data/CABO_weather_ECMWF/'
     outputdir = '../model_output/FluxNet_sites_output/'
 #-------------------------------------------------------------------------------
     # Retrieve the weather data of one grid cell
     if (weather == 'CGMS'):
-        filename = inputdir+'weatherobject_g%d.pickle'%grid_no
+        filename = pickledir+'weatherobject_g%d.pickle'%grid_no
         weatherdata = WeatherDataProvider()
         weatherdata._load(filename)
     if (weather == 'ECMWF'):
@@ -158,28 +311,28 @@ def perform_yield_sim(crop_no, grid_no, year, fgap):
     #print weatherdata(datetime.date(datetime(2006,4,1)))
 
     # Retrieve the soil data of one grid cell 
-    filename = inputdir+'soilobject_g%d.pickle'%grid_no
+    filename =pickledir+'soilobject_g%d.pickle'%grid_no
     soil_iterator = pickle_load(open(filename,'rb'))
 
     # Retrieve calendar data of one year for one grid cell
-    filename = inputdir+'timerobject_g%d_c%d_y%d.pickle'%(grid_no,crop_no,year)
+    filename = pickledir+'timerobject_g%d_c%d_y%d.pickle'%(grid_no,crop_no,year)
     timerdata = pickle_load(open(filename,'rb'))
                     
     # Retrieve crop data of one year for one grid cell
-    filename = inputdir+'cropobject_g%d_c%d_y%d.pickle'%(grid_no,crop_no,year)
+    filename = pickledir+'cropobject_g%d_c%d_y%d.pickle'%(grid_no,crop_no,year)
     cropdata = pickle_load(open(filename,'rb'))
 
     # retrieve the fgap data of one year and one grid cell
     cropdata['YLDGAPF'] = fgap
 
     # Select soil types to loop over for the forward runs
-    selected_soil_types = select_soils(crop_no, [grid_no], inputdir, 
+    selected_soil_types = select_soils(crop_no, [grid_no], pickledir, 
                                        method=selec_method, n=nsoils)
 
     for smu, stu_no, stu_area, soildata in selected_soil_types[grid_no]:
         
         # Retrieve the site data of one year, one grid cell, one soil type
-        filename = inputdir+'siteobject_g%d_c%d_y%d_s%d.pickle'%(grid_no,crop_no,
+        filename = pickledir+'siteobject_g%d_c%d_y%d_s%d.pickle'%(grid_no,crop_no,
                                                                       year,stu_no)
         sitedata = pickle_load(open(filename,'rb'))
 
@@ -220,47 +373,81 @@ def perform_yield_sim(crop_no, grid_no, year, fgap):
     return None
 
 #===============================================================================
-def compile_nee(grid_no, culti_land, year):
+def compile_nee(crop_no, crop_name, site_name, grid_no, year):
 #===============================================================================
+# fixed settings for these point simulations:
+    prod_figure = True
+    #weather = 'ECMWF'   
+    #CGMSdir  = '/Users/mariecombe/mnt/promise/CO2/marie/pickled_CGMS_input_data/'
+    CGMSdir = '../model_input_data/CGMS/'
+    pcse_outputdir = '../model_output/FluxNet_sites_output/'
+    #caboecmwfdir = '../model_input_data/CABO_weather_ECMWF/'
+    #outputdir = '../model_output/FluxNet_sites_output/'
+#-------------------------------------------------------------------------------
+    from cPickle import dump as pickle_dump
+    from maries_toolbox import select_soils, open_pcse_csv_output
+    import datetime as dt
+    import math
+#-------------------------------------------------------------------------------
+# constants for R_hetero
+    Eact0   = 53.3e3    # activation energy [kJ kmol-1]
+    R10     = 0.05 #0.23      # respiration at 10C [mgCO2 m-2 s-1], can be between
+    Cw      = 1.6e-3    # constant water stress correction (Jacobs et al. 2007)
+    wsmax   = 0.55      # upper reference value soil water [-]
+    wsmin   = 0.005     # lower reference value soil water [-]
+# molar masses for unit conversion of carbon fluxes
+    mmC    = 12.01
+    mmCO2  = 44.01
+    mmCH2O = 30.03 
+#-------------------------------------------------------------------------------
 # We retrieve the longitude and latitude of the CGMS grid cell
-        i   = np.argmin(np.absolute(all_grids - grid_no))
-        lon = lons[i]
-        lat = lats[i]
-        print '- grid cell no %i: lon = %.2f , lat = %.2f'%(grid_no,lon,lat)
+    i   = np.argmin(np.absolute(all_grids - grid_no))
+    lon = lons[i]
+    lat = lats[i]
+    #print '- grid cell no %i: lon = %.2f , lat = %.2f'%(grid_no,lon,lat)
 
 #-------------------------------------------------------------------------------
 # We open the incoming surface shortwave radiation [W.m-2] 
 
-    filename_rad = 'rad_ecmwf_%i_lon%.2f_lat%.2f.pickle'%(opti_year,lon,lat)
+    filename_rad = 'rad_ecmwf_%i_lon%.2f_lat%.2f.pickle'%(year,lon,lat)
     path_rad     = os.path.join(inputdir,filename_rad)
     if os.path.exists(path_rad):
         rad = pickle_load(open(path_rad, 'rb'))
     else:
-        from 06_complete_c_cycle import retrieve_ecmwf_ssrd
-        rad = retrieve_ecmwf_ssrd(opti_year, lon, lat)
+        rad = retrieve_ecmwf_ssrd(year, lon, lat)
         pickle_dump(rad,open(path_rad, 'wb'))
 
 #-------------------------------------------------------------------------------
 # We open the surface temperature record
 
-    filename_ts = 'ts_ecmwf_%i_lon%.2f_lat%.2f.pickle'%(opti_year,lon,lat)
+    filename_ts = 'ts_ecmwf_%i_lon%.2f_lat%.2f.pickle'%(year,lon,lat)
     path_ts     = os.path.join(inputdir,filename_ts)
     if os.path.exists(path_ts):
         ts = pickle_load(open(path_ts, 'rb'))
     else:
-        from 06_complete_c_cycle import retrieve_ecmwf_tsurf
-        ts = retrieve_ecmwf_tsurf(opti_year, lon, lat)
+        ts = retrieve_ecmwf_tsurf(year, lon, lat)
         pickle_dump(ts,open(path_ts, 'wb'))
 
 #-------------------------------------------------------------------------------
 # we initialize the timeseries of gpp and Resp for the grid cell
 
-    time_cell_timeseries = rad[0]
-    len_cell_timeseries  = len(rad[0])
-    gpp_cell_timeseries  = np.array([0.]*len_cell_timeseries)
-    raut_cell_timeseries = np.array([0.]*len_cell_timeseries)
-    rhet_cell_timeseries = np.array([0.]*len_cell_timeseries)
+    time_cell_persec_timeseries = rad[0]
+    time_cell_perday_timeseries = rad[0][::8]/(3600.*24.)
+
+    len_cell_persec_timeseries  = len(rad[0])
+    len_cell_perday_timeseries  = len(rad[0][::8])
+
+    gpp_cell_persec_timeseries  = np.array([0.]*len_cell_persec_timeseries)
+    gpp_cell_perday_timeseries  = np.array([0.]*len_cell_perday_timeseries)
+
+    raut_cell_persec_timeseries = np.array([0.]*len_cell_persec_timeseries)
+    raut_cell_perday_timeseries = np.array([0.]*len_cell_perday_timeseries)
+
+    rhet_cell_persec_timeseries = np.array([0.]*len_cell_persec_timeseries)
+    rhet_cell_perday_timeseries = np.array([0.]*len_cell_perday_timeseries)
     sum_stu_areas        = 0.
+    # number of seconds in 3 hours (the radiation and temperature are 3-hourly)
+    delta = 3600. * 3.
 
     if (prod_figure == True):
         from matplotlib import pyplot as plt
@@ -271,17 +458,19 @@ def compile_nee(grid_no, culti_land, year):
 #-------------------------------------------------------------------------------
     # Select soil types to loop over for the forward runs
     selected_soil_types = select_soils(crop_no, [grid_no],
-                           pickledir, method=selec_method, n=nsoils)
+                           CGMSdir, method='all', n=1)
 #-------------------------------------------------------------------------------
 #       WE NEED TO LOOP OVER THE SOIL TYPE
     for smu, stu_no, stu_area, soildata in selected_soil_types[grid_no]:
-        print grid_no, stu_no
+        #print grid_no, stu_no
 #-------------------------------------------------------------------------------
 # We open the WOFOST results file
 
-        filelist    = 'pcse_output_c%i_g%i_s%i_y%i.csv'\
-                       %(crop_no, grid_no, stu_no, opti_year) 
-        wofost_data = open_pcse_csv_output(pcse_outputdir, [filelist])
+        filename    = 'pcse_timeseries_c%i_y%i_g%i_s%i.csv'\
+                       %(crop_no, year, grid_no, stu_no) 
+        results_set = open_pcse_csv_output(pcse_outputdir, [filename])
+        wofost_data = results_set[0]
+        #print wofost_data[filename].keys()
 
 #-------------------------------------------------------------------------------
 # We apply the short wave radiation diurnal cycle on the GPP and R_auto
@@ -296,16 +485,14 @@ def compile_nee(grid_no, culti_land, year):
         # GPP and Rauto later on
         sum_stu_areas += stu_area 
 
-        for DOY, timeinsec in enumerate(time_cell_timeseries[::8]):
-            #print 'doy, timeinsec:', DOY, timeinsec
-
+        for DOY, timeinsec in enumerate(time_cell_persec_timeseries[::8]):
             # conversion of current time in seconds into date
-            time = datetime.date(opti_year,1,1) + datetime.timedelta(DOY)
+            time = dt.date(year,1,1) + dt.timedelta(DOY)
             #print 'date:', time
 
             # we test to see if we are within the growing season
-            test_sow = (time - wofost_data[filelist]['day'][0]).total_seconds()
-            test_rip = (time - wofost_data[filelist]['day'][-1]).total_seconds() 
+            test_sow = (time - wofost_data[filename]['day'][0]).total_seconds()
+            test_rip = (time - wofost_data[filename]['day'][-1]).total_seconds() 
             #print 'tests:', test_sow, test_rip
 
             # if the day of the time series is before sowing date: plant 
@@ -331,14 +518,14 @@ def compile_nee(grid_no, culti_land, year):
                 #print 'index of day in wofost record:', index_day_w
 
                 # unit conversion: from kgCH2O/ha/day to gC/m2/day
-                gpp_day    = - wofost_data[filelist]['GASS'][index_day_w] * \
+                gpp_day    = - wofost_data[filename]['GASS'][index_day_w] * \
                                                         (mmC / mmCH2O) * 0.1
-                maint_resp = wofost_data[filelist]['MRES'][index_day_w] * \
+                maint_resp = wofost_data[filename]['MRES'][index_day_w] * \
                                                         (mmC / mmCH2O) * 0.1
                 try: # if there are any available assimilates for growth
-                    growth_fac = (wofost_data[filelist]['DMI'][index_day_w]) / \
-                             (wofost_data[filelist]['GASS'][index_day_w] - 
-                              wofost_data[filelist]['MRES'][index_day_w])
+                    growth_fac = (wofost_data[filename]['DMI'][index_day_w]) / \
+                             (wofost_data[filename]['GASS'][index_day_w] - 
+                              wofost_data[filename]['MRES'][index_day_w])
                     growth_resp = (1.-growth_fac)*(-gpp_day-maint_resp) 
                 except ZeroDivisionError: # otherwise there is no crop growth
                     growth_resp = 0.
@@ -352,21 +539,20 @@ def compile_nee(grid_no, culti_land, year):
             # we apply the radiation cycle on the GPP and Rauto
             # and we transform the daily integral into a rate
             weights        = rad_cycle / sum(rad_cycle)
-            # the sum of the 8 rates is equal to total/dt:
-            dt             = 3600. * 3.
-            sum_gpp_rates  = gpp_day   / dt
-            sum_raut_rates = raut_day  / dt 
+            # the sum of the 8 rates is equal to total/delta:
+            sum_gpp_rates  = gpp_day   / delta
+            sum_raut_rates = raut_day  / delta
             # the day's 8 values of actual gpp and raut rates per second:
             gpp_cycle      = weights * sum_gpp_rates
             raut_cycle     = weights * sum_raut_rates
             # NB: we check if the applied diurnal cycle is correct
             assert (sum(weights)-1. < 0.000001), "wrong radiation kernel"
-            assert (len(gpp_cycle)*int(dt) == 86400), "wrong dt in diurnal cycle"
-            assert ((sum(gpp_cycle)*dt-gpp_day) < 0.00001), "wrong diurnal cycle "+\
-                "applied on GPP: residual=%.2f "%(sum(gpp_cycle)*dt-gpp_day) +\
+            assert (len(gpp_cycle)*int(delta) == 86400), "wrong dt in diurnal cycle"
+            assert ((sum(gpp_cycle)*delta-gpp_day) < 0.00001), "wrong diurnal cycle "+\
+                "applied on GPP: residual=%.2f "%(sum(gpp_cycle)*delta-gpp_day) +\
                 "on DOY %i"%DOY
-            assert ((sum(raut_cycle)*dt-raut_day) < 0.00001), "wrong diurnal cycle "+\
-                "applied on Rauto: residual=%.2f "%(sum(raut_cycle)*dt-raut_day) +\
+            assert ((sum(raut_cycle)*delta-raut_day) < 0.00001), "wrong diurnal cycle "+\
+                "applied on Rauto: residual=%.2f "%(sum(raut_cycle)*delta-raut_day) +\
                 "on DOY %i"%DOY
 
             # if the applied diurnal cycle is ok, we append that day's cycle
@@ -381,16 +567,14 @@ def compile_nee(grid_no, culti_land, year):
             raut_perday_timeseries = np.concatenate((raut_perday_timeseries,
                                                    [raut_day]), axis=0)
 
-
         if (prod_figure == True):
             for ax, var, name, lims in zip(axes.flatten(), 
             [gpp_perday_timeseries, raut_perday_timeseries, 
             gpp_perday_timeseries + raut_perday_timeseries],
             ['GPP', 'Rauto', 'NPP'], [[-20.,0.],[0.,10.],[-15.,0.]]):
-                ax.plot(time_cell_timeseries[::8]/(3600.*24.), var, 
-                                                      label='stu %i'%stu_no)
-                ax.set_xlim([40.,170.])
-                ax.set_ylim(lims)
+                ax.plot(time_cell_perday_timeseries, var, label='stu %i'%stu_no)
+                #ax.set_xlim([40.,170.])
+                #ax.set_ylim(lims)
                 ax.set_ylabel(name + r' (g$_{C}$ m$^{-2}$ d$^{-1}$)', fontsize=14)
 
 #-------------------------------------------------------------------------------
@@ -398,24 +582,41 @@ def compile_nee(grid_no, culti_land, year):
 # are applied depending on the site!! so the sowing and maturity dates might
 # differ from stu to stu
 
-        # sum the timeseries of GPP and Rauto for all soil types
-        gpp_cell_timeseries  = gpp_cell_timeseries  + gpp_cycle_timeseries*stu_area
-        raut_cell_timeseries = raut_cell_timeseries + raut_cycle_timeseries*stu_area
+		# TWO OPTIONS: we can compile time series of carbon fluxes in units per
+		# day or per second
+        # a- sum the PER SECOND timeseries of GPP and Rauto for all soil types
+        gpp_cell_persec_timeseries  = gpp_cell_persec_timeseries + \
+                                      gpp_cycle_timeseries*stu_area
+        raut_cell_persec_timeseries = raut_cell_persec_timeseries + \
+                                      raut_cycle_timeseries*stu_area
+
+        # b- sum the PER DAY timeseries of GPP and Rauto for all soil types
+        gpp_cell_perday_timeseries  = gpp_cell_perday_timeseries + \
+                                      gpp_perday_timeseries*stu_area
+        raut_cell_perday_timeseries = raut_cell_perday_timeseries + \
+                                      raut_perday_timeseries*stu_area
 
     # finish the figure of multiple stu carbon fluxes
     if (prod_figure == True):
         plt.xlabel('time (DOY)', fontsize=14)
         plt.legend(loc='upper left', ncol=2, fontsize=10)
         fig1.suptitle('Daily carbon fluxes of %s for all '%crop_name+\
-                     'soil types of grid cell %i (%s) in %i'%(grid_no,
-                                             NUTS_no, opti_year), fontsize=18)
-        figname = 'GPP_perday_c%s_%s_y%i_g%i.png'%(crop_no,NUTS_no,opti_year,\
-                                                                    grid_no)
-        fig1.savefig(figname)
+                     'soil types of grid cell %i in %i'%(grid_no,
+                                              year), fontsize=18)
+        figname = 'GPP_allsoils_%s_%i_%s_g%i.png'%(crop_name,year,\
+                                                            site_name,grid_no)
+        #plt.show()
+        fig1.savefig('../figures/FluxNet_'+figname)
 
-    # for each grid cell, calculate the weighted average GPP and Rauto
-    gpp_cell_timeseries  = gpp_cell_timeseries  / sum_stu_areas
-    raut_cell_timeseries = raut_cell_timeseries / sum_stu_areas
+    # TWO OPTIONS: we can compile time series of carbon fluxes in units per day
+    # or per second
+    # a- for each grid cell, weighted average GPP and Rauto PER SECOND
+    gpp_cell_persec_timeseries  = gpp_cell_persec_timeseries  / sum_stu_areas
+    raut_cell_persec_timeseries = raut_cell_persec_timeseries / sum_stu_areas
+
+    # b- for each grid cell, weighted average GPP and Rauto PER DAY
+    gpp_cell_perday_timeseries  = gpp_cell_perday_timeseries  / sum_stu_areas
+    raut_cell_perday_timeseries = raut_cell_perday_timeseries / sum_stu_areas
 
 #-------------------------------------------------------------------------------
 # We calculate the heterotrophic respiration with the surface temperature
@@ -424,22 +625,41 @@ def compile_nee(grid_no, culti_land, year):
     # pb: we need to simulate wg with that approach...
     #fw = Cw * wsmax / (wg + wsmin)
     tsurf_inter = Eact0 / (283.15 * 8.314) * (1 - 283.15 / ts[1])
-    rhet_cell_timeseries = R10 * np.array([ math.exp(t) for t in tsurf_inter ]) 
-    # conversion from mgCO2/m2/s to gC/m2/s
-    rhet_cell_timeseries = rhet_cell_timeseries * (mmC / mmCO2) * 0.001
+    rhet_cell_persec_timeseries = R10 * np.array([ math.exp(t) for t in tsurf_inter ]) 
+    # compute rhet per day:
+    for i in range(len(rhet_cell_perday_timeseries)):
+        rhet_cell_perday_timeseries[i] = rhet_cell_persec_timeseries[i*8] * delta +\
+                                       rhet_cell_persec_timeseries[i*8+1] * delta +\
+                                       rhet_cell_persec_timeseries[i*8+2] * delta +\
+                                       rhet_cell_persec_timeseries[i*8+3] * delta +\
+                                       rhet_cell_persec_timeseries[i*8+4] * delta +\
+                                       rhet_cell_persec_timeseries[i*8+5] * delta +\
+                                       rhet_cell_persec_timeseries[i*8+6] * delta +\
+                                       rhet_cell_persec_timeseries[i*8+7] * delta 
+
+    # conversion from mgCO2 to gC
+    conversion_fac = (mmC / mmCO2) * 0.001
+    rhet_cell_persec_timeseries = rhet_cell_persec_timeseries * conversion_fac
+    rhet_cell_perday_timeseries = rhet_cell_perday_timeseries * conversion_fac
 
 #-------------------------------------------------------------------------------
 # We calculate NEE as the net flux
 
-    nee_cell_timeseries = gpp_cell_timeseries + raut_cell_timeseries +\
-                          rhet_cell_timeseries
+    nee_cell_persec_timeseries = gpp_cell_persec_timeseries  + \
+                                 raut_cell_persec_timeseries + \
+                                 rhet_cell_persec_timeseries
+    nee_cell_perday_timeseries = gpp_cell_perday_timeseries  + \
+                                 raut_cell_perday_timeseries + \
+                                 rhet_cell_perday_timeseries
 
 #-------------------------------------------------------------------------------
-    return gpp_cell_timeseries, raut_cell_timeseries, rhet_cell_timeseries,\
-           nee_cell_timeseries
+# here we choose to return the carbon fluxes PER DAY
+    return time_cell_perday_timeseries, gpp_cell_perday_timeseries, \
+           raut_cell_perday_timeseries, rhet_cell_perday_timeseries, \
+           nee_cell_perday_timeseries
 
 #===============================================================================
-def plot_fluxnet_daily_fluxes(crop, site_names, years_dict, FLUXNETdir):
+def plot_obs_fluxes(crop, site_names, years_dict, FLUXNETdir):
 #===============================================================================
 
     from maries_toolbox import open_csv
@@ -484,28 +704,43 @@ def plot_fluxnet_daily_fluxes(crop, site_names, years_dict, FLUXNETdir):
     return None
 
 #===============================================================================
-def plot_nee_time_series():
+def plot_sim_fluxes(time_cell_timeseries, gpp_cell_timeseries, 
+    raut_cell_timeseries, rhet_cell_timeseries, nee_cell_timeseries, crop_name,
+    grid_no, site_name, year, units='persec'):
 #===============================================================================
 
     from matplotlib import pyplot as plt
     fig2 = plt.figure(figsize=(14,6))
     fig2.subplots_adjust(0.1,0.2,0.98,0.85,0.4,0.6)
-    plt.plot(time_cell_timeseries/(3600.*24.),gpp_cell_timeseries*1000., 
-                                                 label=r'$\mathrm{GPP}$', c='g')
-    plt.plot(time_cell_timeseries/(3600.*24.),raut_cell_timeseries*1000.,
-                                              label=r'$R_{aut}$', c='b')
-    plt.plot(time_cell_timeseries/(3600.*24.),rhet_cell_timeseries*1000.,
-                                              label=r'$R_{het}$', c='r')
-    plt.plot(time_cell_timeseries/(3600.*24.),nee_cell_timeseries*1000., 
-                                                 label=r'$\mathrm{NEE}$', c='k')
+
+    if (units == 'persec'):
+        plt.plot(time_cell_timeseries/(3600.*24.),gpp_cell_timeseries*1000., 
+                                                label=r'$\mathrm{GPP}$', c='g')
+        plt.plot(time_cell_timeseries/(3600.*24.),raut_cell_timeseries*1000.,
+                                                label=r'$R_{aut}$', c='b')
+        plt.plot(time_cell_timeseries/(3600.*24.),rhet_cell_timeseries*1000.,
+                                                label=r'$R_{het}$', c='r')
+        plt.plot(time_cell_timeseries/(3600.*24.),nee_cell_timeseries*1000., 
+                                                label=r'$\mathrm{NEE}$', c='k')
+        plt.ylabel(r'carbon flux (mg$_{C}$ m$^{-2}$ s$^{-1}$)')
+    if (units == 'perday'):
+        plt.plot(time_cell_timeseries,gpp_cell_timeseries, 
+                                                label=r'$\mathrm{GPP}$', c='g')
+        plt.plot(time_cell_timeseries,raut_cell_timeseries,
+                                                label=r'$R_{aut}$', c='b')
+        plt.plot(time_cell_timeseries,rhet_cell_timeseries,
+                                                label=r'$R_{het}$', c='r')
+        plt.plot(time_cell_timeseries,nee_cell_timeseries, 
+                                                label=r'$\mathrm{NEE}$', c='k')
+        plt.ylabel(r'carbon flux (g$_{C}$ m$^{-2}$ d$^{-1}$)')
     plt.xlim([0.,365.])
-    plt.ylim([-1.,1.])
     plt.xlabel('time (DOY)')
-    plt.ylabel(r'carbon flux (mg$_{C}$ m$^{-2}$ s$^{-1}$)')
     plt.legend(loc='best', ncol=2, fontsize=10)
     plt.title('Average carbon fluxes of %s over the  '%crop_name+\
-                 'cultivated area of grid cell %i (%s) in %i'%(grid_no,
-                                                    NUTS_no, opti_year))
+                 'cultivated area of grid cell %i in %i'%(grid_no,
+                                                    year))
+    filename = 'FluxNet_NEE_cell%i_year%i_%s_%s.png'%(grid_no,year,crop_name,site_name)
+    fig2.savefig('../figures/'+filename)
     return None
 
 #===============================================================================
@@ -515,11 +750,11 @@ def build_years_dict():
     years['Winter wheat'] = dict()
     years['Grain maize']  = dict()
     # list of years for winter wheat sites:
-    years['Winter wheat']['BE-Lon'] = [2004,2005,2006,2007]
-    years['Winter wheat']['DE-Kli'] = [2005,2006,2007]
-    years['Winter wheat']['FR-Aur'] = [2005,2006]
-    years['Winter wheat']['FR-Gri'] = [2005,2006]
-    years['Winter wheat']['FR-Lam'] = [2006,2007]
+    years['Winter wheat']['BE-Lon'] = [2005,2007] #winter wheat rotation
+    years['Winter wheat']['DE-Kli'] = [2006]
+    years['Winter wheat']['FR-Aur'] = [2006] #not sure between 2005 and 2006
+    years['Winter wheat']['FR-Gri'] = [2006]
+    years['Winter wheat']['FR-Lam'] = [2007]
     # list of years for grain maize sites:
     years['Grain maize']['DE-Kli']  = [2007]
     years['Grain maize']['FR-Gri']  = [2005]
@@ -571,6 +806,108 @@ def build_fgap_dict():
     fgap['Grain maize']['NL-Lan'][2005] = 0.8
 
     return fgap
+
+#===============================================================================
+# function that will retrieve the surface temperature from the ECMWF data
+# (ERA-interim). It will return two arrays: one of the time in seconds since
+# 1st of Jan, and one with the tsurf variable in K.
+def retrieve_ecmwf_tsurf(year, lon, lat):
+#===============================================================================
+
+    import netCDF4 as cdf
+
+    ecmwfdir_tsurf = '/Storage/TM5/METEO/tm5-nc/ec/ei/fc012up2tr3/tropo25/'+\
+                     'eur100x100/'
+
+    tsurf = np.array([])
+    time  = np.array([])
+
+    for month in range (1,13):
+        print year, month
+        for day in range(1,32):
+
+            # open file if it exists
+            namefile = 't_%i%02d%02d_00p03.nc'%(year,month,day)
+            if (os.path.exists(os.path.join(ecmwfdir_tsurf,'%i/%02d'%(year,month),
+                                                             namefile))==False):
+                print 'cannot find %s'%namefile
+                continue
+            pathfile = os.path.join(ecmwfdir_tsurf,'%i/%02d'%(year,month),namefile)
+            f = cdf.Dataset(pathfile)
+
+            # retrieve closest latitude and longitude index of desired location
+            lats = f.variables['lat'][:]
+            lons = f.variables['lon'][:]
+            latindx = np.argmin( np.abs(lats - lat) )
+            lonindx = np.argmin( np.abs(lons - lon) )
+
+            # retrieve the temperature at the highest pressure level, at that 
+            # lon,lat location 
+            #print f.variables['ssrd'] # to get the dimensions of the variable
+            tsurf = np.append(tsurf, f.variables['T'][0:8, 0, latindx, lonindx])
+            # retrieve the nb of seconds on day 1 of that year
+            if (month ==1 and day ==1):
+                convtime = f.variables['time'][0]
+            # NB: the file has 8 time steps (3-hourly)
+            time = np.append(time, f.variables['time'][:] - convtime)  
+            f.close()
+
+    if (len(time) < 2920):
+        print '!!!WARNING!!!'
+        print 'there are less than 365 days of data that we could retrieve'
+        print 'check the folder %s for year %i'%(ecmwfdir_tsurf, year)
+ 
+    return time, tsurf
+
+#===============================================================================
+# function that will retrieve the incoming surface shortwave radiation from the
+# ECMWF data (ERA-interim). It will return two arrays: one of the time in
+# seconds since 1st of Jan, and one with the ssrd variable in W.m-2.
+def retrieve_ecmwf_ssrd(year, lon, lat):
+#===============================================================================
+
+    import netCDF4 as cdf
+
+    ecmwfdir_ssrd = '/Storage/TM5/METEO/tm5-nc/ec/ei/fc012up2tr3/sfc/glb100x100/'
+
+    ssrd = np.array([])
+    time = np.array([])
+
+    for month in range (1,13):
+        print year, month
+        for day in range(1,32):
+
+            # open file if it exists
+            namefile = 'ssrd_%i%02d%02d_00p03.nc'%(year,month,day)
+            if (os.path.exists(os.path.join(ecmwfdir_ssrd,'%i/%02d'%(year,month),
+                                                             namefile))==False):
+                print 'cannot find %s'%namefile
+                continue
+            pathfile = os.path.join(ecmwfdir_ssrd,'%i/%02d'%(year,month),namefile)
+            f = cdf.Dataset(pathfile)
+
+            # retrieve closest latitude and longitude index of desired location
+            lats = f.variables['lat'][:]
+            lons = f.variables['lon'][:]
+            latindx = np.argmin( np.abs(lats - lat) )
+            lonindx = np.argmin( np.abs(lons - lon) )
+
+            # retrieve the shortwave downward surface radiation at that location 
+            #print f.variables['ssrd'] # to get the dimensions of the variable
+            ssrd = np.append(ssrd, f.variables['ssrd'][0:8, latindx, lonindx])
+            # retrieve the nb of seconds on day 1 of that year
+            if (month ==1 and day ==1):
+                convtime = f.variables['time'][0]
+            # NB: the file has 8 time steps (3-hourly)
+            time = np.append(time, f.variables['time'][:] - convtime)  
+            f.close()
+
+    if (len(time) < 2920):
+        print '!!!WARNING!!!'
+        print 'there are less than 365 days of data that we could retrieve'
+        print 'check the folder %s for year %i'%(ecmwfdir_ssrd, year)
+ 
+    return time, ssrd
 
 #===============================================================================
 if __name__=='__main__':

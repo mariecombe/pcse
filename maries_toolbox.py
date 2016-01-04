@@ -803,7 +803,7 @@ def open_pcse_csv_output(inpath,filelist):
 
     for i,namefile in enumerate(filelist):
          
-        print "\nOpening %s......"%(namefile)
+        #print "\nOpening %s......"%(namefile)
 
         # open file, read all lines
         inputpath = os.path.join(inpath,namefile)
@@ -842,7 +842,7 @@ def open_pcse_csv_output(inpath,filelist):
             dictnamelist[varname]=data[:,j]
         Dict[namefile] = dictnamelist
     
-        print "Dictionary created!"
+        #print "Dictionary created!"
 
     return Dict, crop_yield
 
@@ -857,7 +857,7 @@ def open_csv(inpath,filelist,convert_to_float=False):
 
     for i,namefile in enumerate(filelist):
          
-        print "\nOpening %s......"%(namefile)
+        #print "\nOpening %s......"%(namefile)
 
         # open file, read all lines
         inputpath = os.path.join(inpath,namefile)
@@ -886,7 +886,7 @@ def open_csv(inpath,filelist,convert_to_float=False):
             dictnamelist[varname]=data[:,j]
         Dict[namefile] = dictnamelist
     
-        print "Dictionary created!"
+        #print "Dictionary created!"
 
     return Dict
 
