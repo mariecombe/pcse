@@ -28,9 +28,10 @@ def main():
     obs_plot        = False
     forward_sim     = False
     sim_plot        = False
-    plot_obs_vs_sim = True
+    plot_obs_vs_sim = False
     calc_integrated_fluxes_stats = False
     find_optimum_R10 = False
+    find_nightime_R10 = True
 #-------------------------------------------------------------------------------
 # Define general working directories
     EUROSTATdir = '../observations/EUROSTAT_data/'
@@ -294,6 +295,54 @@ def main():
                     # plot the RMSE and NRMSE for that site:
                     plot_optimum_R10(R10_list, rmse_ter, rmse_nee, site, crop, year)
 
+#-------------------------------------------------------------------------------
+# We analyze the R10 of the nighttime respiration
+    if (find_nightime_R10 == True):
+        print "\nLet's find the nightime R10!"
+#-------------------------------------------------------------------------------
+        # loop over crops
+        for crop in cover.keys():
+            crop_no = crop_dict[crop][0]
+            # loop over sites
+            for site in cover[crop]:
+                # get the closest grid cell id number:
+                grid_no = int(flux_gri[site])
+                # loop over years
+                for year in years[crop][site]:
+                    # we open the hourly data files
+                    #
+                    if (Results[crop][site][year]['OBS'] == None):
+                        continue
+                    # we select the night-time respiration from the observations
+                    obs_ter = Results[crop][site][year]['OBS']['Reco']
+                    # we select the night-time temperature from the observations
+                    obs_ts  = Results[crop][site][year]['OBS']['Ts1_f']
+                    print len(obs_ter), len(obs_ts)
+                    print Results[crop][site][year]['OBS']['SWin']
+                    sys.exit()
+                    # we filter the missing data out
+                    ma_ter  = np.ma.masked_equal(obs_ter,-9999.) 
+                    ma_ts   = np.ma.masked_equal(obs_ts ,-9999.) 
+                    # we filter the daytime hours: i.e. when SWin>0.
+#                    ma_day  = 
+#        ma_sim_doy    = np.ma.masked_outside(Results_dict['SIM'][0], 
+#                                           Results_dict['OBS']['DoY'][0],
+#                                           Results_dict['OBS']['DoY'][-1])
+#        obs_mask      = np.ma.getmask(ma_sim_doy)
+#        # apply the daytime mask on both ter and ts:
+#        ma_sim_data   = np.ma.masked_where(obs_mask, sim_data)
+#        # we compute statistics on the filtered data
+#        sum_sim_var   = np.ma.MaskedArray.sum(ma_sim_data)
+#        ave_sim_var   = np.ma.MaskedArray.mean(ma_sim_data)
+#        stdev_sim_var = np.ma.MaskedArray.std(ma_sim_data)
+#
+#        # we compute the root mean squared error of the model:
+#        RMSE[name]  = np.sqrt(((ma_sim_data - ma_obs_data) ** 2).mean())
+#        NRMSE[name] = RMSE[name] / (np.ma.max(ma_obs_data) - np.ma.min(ma_obs_data)) *100.
+
+                    # we loop over R10 to simulate the night-time respiration 
+                    # with temperature
+                    # we choose the R10 that minimizes RMSE
 
 #===============================================================================
 def plot_optimum_R10(R10_list, rmse_ter, rmse_nee, site_name, crop_name, year):
