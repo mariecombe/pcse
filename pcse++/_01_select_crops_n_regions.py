@@ -76,8 +76,8 @@ def main():
     EUROSTATdir   = '../observations/EUROSTAT_data/'
 #-------------------------------------------------------------------------------
 # create a temporary directory if it doesn't exist
-    if not os.path.exists("tmp"):
-        os.makedirs("tmp")
+    if not os.path.exists("../tmp"):
+        os.makedirs("../tmp")
 
 #-------------------------------------------------------------------------------
 # 1- WE CREATE A DICTIONARY OF REGIONS IDS AND NAMES TO LOOP OVER
@@ -89,7 +89,7 @@ def main():
     NUTS_names_dict = map_NUTS_id_to_NUTS_name(NUTS_regions, EUROSTATdir)
 #-------------------------------------------------------------------------------
 # pickle the produced dictionary in the current directory:
-    pathname = os.path.join(currentdir, 'tmp/selected_NUTS_regions.pickle')
+    pathname = os.path.join(currentdir, '../tmp/selected_NUTS_regions.pickle')
     if os.path.exists(pathname): os.remove(pathname)
     pickle_dump(NUTS_names_dict, open(pathname,'wb'))
 
@@ -100,7 +100,7 @@ def main():
     crop_names_dict = map_crop_id_to_crop_name(crops)
 #-------------------------------------------------------------------------------
 # pickle the produced dictionary:
-    pathname = os.path.join(currentdir, 'tmp/selected_crops.pickle')
+    pathname = os.path.join(currentdir, '../tmp/selected_crops.pickle')
     if os.path.exists(pathname): os.remove(pathname)
     pickle_dump(crop_names_dict, open(pathname,'wb'))
 
@@ -109,7 +109,7 @@ def main():
 #-------------------------------------------------------------------------------
 # pickle the produced dictionary:
     print '\nWe select the following years:\n', years
-    pathname = os.path.join(currentdir, 'tmp/selected_years.pickle')
+    pathname = os.path.join(currentdir, '../tmp/selected_years.pickle')
     if os.path.exists(pathname): os.remove(pathname)
     pickle_dump(years, open(pathname,'wb'))
 
@@ -507,7 +507,7 @@ def make_NUTS_composite(lands_levels, EUROSTATdir):
     # Read a shapefile and its metadata
     # read the shapefile data WITHOUT plotting its shapes
 
-    path = EUROSTATdir + 'EUROSTAT_website_2010_shapefiles/'
+    path = EUROSTATdir
     filename = 'NUTS_RG_03M_2010'# NUTS regions 
     name = 'NUTS'
     NUTS_info = map.readshapefile(path + filename, name, drawbounds=False) 
