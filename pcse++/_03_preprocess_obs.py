@@ -30,9 +30,11 @@ def main():
     global currentdir, EUROSTATdir, pickledir, crop_dict
 #-------------------------------------------------------------------------------
 # Define working directories
-    currentdir   = os.getcwd()
-    EUROSTATdir  = '../observations/EUROSTAT_data/'
-    pickledir    = '../model_input_data/'
+    currentdir  = os.getcwd()
+    EUROSTATdir = 'EUROSTATobs/'
+    pickledir   = '/Users/mariecombe/Documents/Work/Research_project_3/'+\
+                   'model_input_data/'
+    #pickledir   = '/Users/mariecombe/mnt/promise/CO2/marie/'
 #-------------------------------------------------------------------------------
 # NB: we will loop over ALL crops available, because we want to do the 
 # pre-processing once and for all!
@@ -53,8 +55,6 @@ def main():
     except Exception as e:
         print 'Unexpected error:', e
         sys.exit()
-    print DM
-    print DM_standard
 
 #-------------------------------------------------------------------------------
 # 1- PRE-PROCESS EUROSTAT CSV FILES ON AREAS, YIELDS, HARVESTS:

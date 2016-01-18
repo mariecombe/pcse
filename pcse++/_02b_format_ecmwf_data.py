@@ -42,7 +42,7 @@ def main():
     dir_sfc     = '/Storage/TM5/METEO/tm5-nc/ec/ei/fc012up2tr3/sfc/glb100x100/'
     dir_tropo   = '/Storage/TM5/METEO/tm5-nc/ec/ei/fc012up2tr3/tropo25/'+\
                   'eur100x100/'
-    EUROSTATdir = '../observations/EUROSTAT_data/'
+    EUROSTATdir = 'EUROSTATobs/'
     weatherdir  = '/Users/mariecombe/mnt/promise/CO2/marie/CABO_weather_ECMWF/'
 #-------------------------------------------------------------------------------
 # we retrieve the years to loop over:

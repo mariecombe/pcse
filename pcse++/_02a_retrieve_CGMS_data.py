@@ -4,10 +4,6 @@ import sys, os
 import numpy as np
 from cPickle import dump as pickle_dump
 from cPickle import load as pickle_load
-from pcse.exceptions import PCSEError 
-from pcse.db.cgms11 import TimerDataProvider, SoilDataIterator, \
-                           CropDataProvider, STU_Suitability, \
-                           SiteDataProvider, WeatherObsGridDataProvider
 
 # This script retrieves input data (soil, crop, timer and site) from the CGMS 
 # database
@@ -38,8 +34,12 @@ def main():
     from datetime import datetime
     from operator import itemgetter as operator_itemgetter
 #-------------------------------------------------------------------------------
-    global currentdir, EUROSTATdir, folder_local,\
+    global folder_local,\
            crop_no, suitable_stu, year, engine, retrieve_weather
+#-------------------------------------------------------------------------------
+# Temporarily add parent directory to python path, to be able to import pcse
+# modules
+    sys.path.insert(0, "..") 
 #-------------------------------------------------------------------------------
 # ================================= USER INPUT =================================
  
@@ -55,13 +55,19 @@ def main():
     crop_mask_creation   = False
     sync_to_capegrim     = False
 
+    # path to CGMS input data on the university machine:
+    folder_local  = '/Users/mariecombe/Documents/Work/Research_project_3/'+\
+                    'model_input_data/CGMS/'
+
+    # path to CGMS input data on capegrim
+    folder_cape   = '/Users/mariecombe/mnt/promise/CO2/marie/'+\
+                    'pickled_CGMS_input_data/'
+
 # ==============================================================================
 #-------------------------------------------------------------------------------
 # Define general working directories
-    currentdir    = os.getcwd()
-    folder_local  = '../model_input_data/CGMS/'
-    folder_cape   = '/Users/mariecombe/mnt/promise/CO2/marie/pickled_CGMS_input_data/'
-    EUROSTATdir   = '../observations/EUROSTAT_data/'
+    # path to basic EUROSTAT csv files:
+    EUROSTATdir   = 'EUROSTATobs/'
 #-------------------------------------------------------------------------------
 # we remind the user that if all 3 flags are False, nothing will happen...
     if ( (CGMS_input_retrieval == False) 
@@ -74,11 +80,12 @@ def main():
 #-------------------------------------------------------------------------------
 # we retrieve the crops and years to loop over:
     try:
-        crop_dict    = pickle_load(open('selected_crops.pickle','rb'))
-        years        = pickle_load(open('selected_years.pickle','rb'))
-        NUTS_regions = pickle_load(open('selected_NUTS_regions.pickle','rb'))
+        crop_dict    = pickle_load(open('../tmp/selected_crops.pickle','rb'))
+        years        = pickle_load(open('../tmp/selected_years.pickle','rb'))
+        NUTS_regions = pickle_load(open('../tmp/selected_NUTS_regions.pickle','rb'))
     except IOError:
-        print '\nYou have not yet selected a shortlist of crops, years and regions to loop over'
+        print '\nYou have not yet selected a shortlist of crops, years and '+\
+              'regions to loop over'
         print 'Run the script 01_select_crops_n_regions.py first!\n'
         sys.exit() 
 #-------------------------------------------------------------------------------
@@ -105,7 +112,7 @@ def main():
 # We only select grid cells located in Europe that contain arable land (no need 
 # to retrieve data where there are no crops!)
 
-    pathname = os.path.join('../model_input_data/europe_arable_CGMS_cellids.pickle')
+    pathname = os.path.join('EUROSTATobs/europe_arable_CGMS_cellids.pickle')
     try:
         europ_arable = pickle_load(open(pathname,'rb'))
     except IOError:
@@ -171,6 +178,7 @@ def main():
             if os.path.exists(filename):
                 suitable_stu = pickle_load(open(filename,'rb'))
             else:
+                from pcse.db.cgms11 import STU_Suitability
                 suitable_stu = STU_Suitability(engine, crop_no)
                 suitable_stu_list = []
                 for item in suitable_stu:
@@ -246,7 +254,7 @@ def main():
                 crop_mask[int(year)] = culti_list
          
             # now we are out of the year loop, we pickle the crop mask dictionary
-            filename = '../model_input_data/CGMS/cropmask_c%d.pickle'%(crop_no)
+            filename = folder_local + 'cropmask_c%d.pickle'%(crop_no)
             pickle_dump(crop_mask,open(filename,'wb'))
          
             # We add a timestamp at end of the retrieval, to time the process
@@ -271,6 +279,10 @@ def main():
 # function that will retrieve CGMS input data from Oracle database
 def retrieve_CGMS_input(grid):
 #===============================================================================
+    from pcse.exceptions import PCSEError 
+    from pcse.db.cgms11 import TimerDataProvider, SoilDataIterator, \
+                               CropDataProvider, STU_Suitability, \
+                               SiteDataProvider, WeatherObsGridDataProvider
 # if the retrieval does not raise an error, the crop was thus cultivated that year
     print '    - grid cell no %i'%grid
     try:
@@ -341,6 +353,9 @@ def retrieve_CGMS_input(grid):
 #===============================================================================
 def get_id_if_cultivated(grid_no):
 #===============================================================================
+    from pcse.exceptions import PCSEError 
+    from pcse.db.cgms11 import TimerDataProvider
+
     print '    - grid cell no %i'%grid_no
     try:
         timerdata    = TimerDataProvider(engine, grid_no, crop_no, year)

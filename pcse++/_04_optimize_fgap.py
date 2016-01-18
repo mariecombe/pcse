@@ -19,9 +19,13 @@ def main():
 
     """
 #-------------------------------------------------------------------------------
-    global currentdir, EUROSTATdir, pickledir, caboecmwfdir, crop_dict,\
+    global currentdir, EUROSTATdir, inputdir, ecmwfdir, crop_dict,\
            NUTS_regions, years, crop, crop_name, year, observed_data,\
            selec_method, ncells, nsoils, weather, opti_metric
+#-------------------------------------------------------------------------------
+# Temporarily add parent directory to python path, to be able to import pcse
+# modules
+    sys.path.insert(0, "..") 
 #-------------------------------------------------------------------------------
 # ================================= USER INPUT =================================
  
@@ -32,30 +36,33 @@ def main():
     weather       = 'ECMWF'   # weather data to use for the optimization
                               # can be 'CGMS' or 'ECMWF'
 
+    # input directory paths
+    inputdir = '/Users/mariecombe/Documents/Work/Research_project_3/'+\
+               'model_input_data/'
+    #inputdir = '/Users/mariecombe/mnt/promise/CO2/marie/'
+
 # ==============================================================================
 #-------------------------------------------------------------------------------
 # Define general working directories
     currentdir    = os.getcwd()
-    EUROSTATdir   = '../observations/EUROSTAT_data/'
-    pickledir     = '../model_input_data/CGMS/'
-    #pickledir     = '/Users/mariecombe/mnt/promise/CO2/marie/pickled_CGMS_input_data/'
-    #caboecmwfdir  = '/Users/mariecombe/mnt/promise/CO2/marie/CABO_weather_ECMWF/'
-    caboecmwfdir  = '../model_input_data/CABO_weather_ECMWF/'
+    EUROSTATdir   = 'EUROSTATobs/'
+    ecmwfdir      = inputdir + 'CABO_weather_ECMWF/'
 #-------------------------------------------------------------------------------
 # we retrieve the crops, regions, and years to loop over:
     try:
-        crop_dict    = pickle_load(open('selected_crops.pickle','rb'))
-        years        = pickle_load(open('selected_years.pickle','rb'))
-        NUTS_regions = pickle_load(open('selected_NUTS_regions.pickle','rb'))
+        crop_dict    = pickle_load(open('../tmp/selected_crops.pickle','rb'))
+        years        = pickle_load(open('../tmp/selected_years.pickle','rb'))
+        NUTS_regions = pickle_load(open('../tmp/selected_NUTS_regions.pickle','rb'))
     except IOError:
-        print '\nYou have not yet selected a shortlist of crops, regions and years to loop over'
+        print '\nYou have not yet selected a shortlist of crops, regions and '+\
+              'years to loop over'
         print 'Run the script 01_select_crops_n_regions.py first!\n'
         sys.exit() 
 #-------------------------------------------------------------------------------
 # we retrieve the EUROSTAT pre-processed yield observations:
     try:
-        filename1 = '../model_input_data/preprocessed_yields.pickle'
-        filename2 = '../model_input_data/preprocessed_harvests.pickle'
+        filename1 = inputdir + 'preprocessed_yields.pickle'
+        filename2 = inputdir + 'preprocessed_harvests.pickle'
         yields_dict   = pickle_load(open(filename1,'rb'))
         harvests_dict = pickle_load(open(filename2,'rb'))
     except IOError:
@@ -153,7 +160,7 @@ def optimize_fgap(NUTS_no):
 #-------------------------------------------------------------------------------
     # Select the grid cells to loop over for the optimization
     selected_grid_cells = select_cells(NUTS_no, crop_dict[crop][0], 
-                                       year, pickledir, 
+                                       year, inputdir+'CGMS/', 
                                        method=selec_method, n=ncells, 
                                        select_from='cultivated')
 #-------------------------------------------------------------------------------
@@ -165,7 +172,7 @@ def optimize_fgap(NUTS_no):
 	# Select the soil types to loop over for the optimization
     selected_soil_types = select_soils(crop_dict[crop][0],
                                        [g for g,a in selected_grid_cells],
-                                       pickledir,
+                                       inputdir+'CGMS/',
                                        method=selec_method, 
                                        n=nsoils)
 #-------------------------------------------------------------------------------
@@ -195,6 +202,7 @@ def optimize_fgap(NUTS_no):
                                             frac_crop,
                                             selected_grid_cells,
                                             selected_soil_types,
+                                            inputdir+'CGMS/',
                                             [year], output_tagname,
                                             obs_type=opti_metric,
                                             plot_rmse=False)
@@ -206,7 +214,7 @@ def optimize_fgap(NUTS_no):
 # optimize per NUTS region). This function iterates dynamically to find the
 # optimum YLDGAPF.
 def optimize_regional_yldgapf_dyn(detrend, crop_no_, frac_crop, selected_grid_cells_,
-           selected_soil_types_, opti_years_, output_tagname_, obs_type='yield',
+ selected_soil_types_, inputdir, opti_years_, output_tagname_, obs_type='yield',
            plot_rmse=True):
 #===============================================================================
 
@@ -267,14 +275,14 @@ def optimize_regional_yldgapf_dyn(detrend, crop_no_, frac_crop, selected_grid_ce
             # Retrieve the weather data of one grid cell (all years are in one
             # file) 
             if (weather == 'CGMS'):
-                filename = pickledir+'weatherobject_g%d.pickle'%grid
+                filename = inputdir+'weatherobject_g%d.pickle'%grid
                 weatherdata = WeatherDataProvider()
                 weatherdata._load(filename)
             if (weather == 'ECMWF'):
-                weatherdata = CABOWeatherDataProvider('%i'%grid,fpath=caboecmwfdir)
+                weatherdata = CABOWeatherDataProvider('%i'%grid,fpath=ecmwfdir)
                         
             # Retrieve the soil data of one grid cell (all possible soil types) 
-            filename = pickledir+'soilobject_g%d.pickle'%grid
+            filename = inputdir+'soilobject_g%d.pickle'%grid
             soil_iterator = pickle_load(open(filename,'rb'))
 
             for smu, stu_no, weight, soildata in selected_soil_types_[grid]:
@@ -288,13 +296,13 @@ def optimize_regional_yldgapf_dyn(detrend, crop_no_, frac_crop, selected_grid_ce
                 for y, year in enumerate(opti_years_): 
 
                     # Retrieve yearly data 
-                    filename = pickledir+'timerobject_g%d_c%d_y%d.pickle'\
+                    filename = inputdir+'timerobject_g%d_c%d_y%d.pickle'\
                                                            %(grid,crop_no_,year)
                     timerdata = pickle_load(open(filename,'rb'))
-                    filename = pickledir+'cropobject_g%d_c%d_y%d.pickle'\
+                    filename = inputdir+'cropobject_g%d_c%d_y%d.pickle'\
                                                            %(grid,crop_no_,year)
                     cropdata = pickle_load(open(filename,'rb'))
-                    filename = pickledir+'siteobject_g%d_c%d_y%d_s%d.pickle'\
+                    filename = inputdir+'siteobject_g%d_c%d_y%d_s%d.pickle'\
                                                     %(grid,crop_no_,year,stu_no)
                     sitedata = pickle_load(open(filename,'rb'))
 
@@ -428,344 +436,6 @@ def optimize_regional_yldgapf_dyn(detrend, crop_no_, frac_crop, selected_grid_ce
     # 9- we add a timestamp to time the function
     end_timestamp = datetime.utcnow()
     print 'Finished dynamic optimization at timestamp:', end_timestamp-start_timestamp
-
-    # 10- we return the optimized YLDGAPF
-    return optimum_yldgapf
-
-#===============================================================================
-# Function to optimize the yield gap factor within a NUTS region using the
-# difference between the aggregated regional yield and the observed yield (ie. 1
-# gap to optimize). This function iterates dynamically to find the optimum
-# YLDGAPF.
-def optimize_yldgapf_dyn_agyield(crop_no_, selected_grid_cells_,
-            selected_soil_types_, opti_years_, output_tagname_, plot_rmse=True):
-#===============================================================================
-
-    import math
-    from cPickle import dump as pickle_dump
-    from datetime import datetime
-    from operator import itemgetter as operator_itemgetter
-    from matplotlib import pyplot as plt
-    from pcse.models import Wofost71_WLP_FD
-    from pcse.base_classes import WeatherDataProvider
-
-    # 1- we add a timestamp to time the function
-    print '\nStarted dynamic optimization at timestamp:', datetime.utcnow()
-
-    # aggregated yield method:
-    
-    # 2- we construct a 2D array with same dimensions as TSO_regional,
-    # containing the observed yields
-    row = [] # this list will become the row of the 2D array
-    for y,year in enumerate(opti_years_):
-        index_year = np.argmin(np.absolute(detrend[1]-year))
-        row = row + [detrend[0][y]]
-    OBS = np.tile(row, (5,1)) # repeats the list as a row 3 times, to get a 
-                              # 2D array
-
-    # 3- we calculate all the individual yields from the selected grid cells x
-    # soils combinations
-
-    # NB: we explore the range of yldgapf between 0.1 and 1.
-    f0  = 0.
-    f2  = 0.5
-    f4  = 1.
-    f_step  = 0.25 
-    # Until the precision of the yield gap factor is good enough (i.e. < 0.02)
-    # we loop over it. We do 12 iterations in total with this method.
-    iter_no = 0
-    RMSE_stored = list()
-    while (f_step >= 0.02):
-        iter_no = iter_no + 1
-        # sub-method: looping over the yield gap factors
-
-        # we build a range of 3 yield gap factors to explore one low bound, one
-        # high bound, one in the middle
-        f_step = (f4 - f0)/4.
-        f1 = f0 + f_step
-        f3 = f2 + f_step
-        f_range = [f0, f1, f2, f3, f4]
-
-        RES = [] # list in which we will store the yields of the combinations
-
-        for grid in [g for g,a in selected_grid_cells_]:
- 
-            # Retrieve the weather data of one grid cell (all years are in one
-            # file) 
-            filename = pickledir+'weatherobject_g%d.pickle'%grid
-            weatherdata = WeatherDataProvider()
-            weatherdata._load(filename)
-                        
-            # Retrieve the soil data of one grid cell (all possible soil types) 
-            filename = pickledir+'soilobject_g%d.pickle'%grid
-            soil_iterator = pickle_load(open(filename,'rb'))
-
-            for smu, stu_no, weight, soildata in selected_soil_types_[grid]:
-
-                # TSO will store all the yields of one grid cell x soil 
-                # combination, for all years and all 3 yldgapf values
-                TSO = np.zeros((len(f_range), len(opti_years_)))
-        
-                for y, year in enumerate(opti_years_): 
-
-                    # Retrieve yearly data 
-                    filename = pickledir+'timerobject_g%d_c%d_y%d.pickle'\
-                                                           %(grid,crop_no_,year)
-                    timerdata = pickle_load(open(filename,'rb'))
-                    filename = pickledir+'cropobject_g%d_c%d_y%d.pickle'\
-                                                           %(grid,crop_no_,year)
-                    cropdata = pickle_load(open(filename,'rb'))
-                    filename = pickledir+'siteobject_g%d_c%d_y%d_s%d.pickle'\
-                                                    %(grid,crop_no_,year,stu_no)
-                    sitedata = pickle_load(open(filename,'rb'))
-
-                    for f,factor in enumerate(f_range):
-            
-                        cropdata['YLDGAPF']=factor
-                       
-                        # run WOFOST
-                        wofost_object = Wofost71_WLP_FD(sitedata, timerdata,
-                                                soildata, cropdata, weatherdata)
-                        wofost_object.run_till_terminate()
-        
-                        # get the yield (in gDM.m-2) 
-                        TSO[f,y] = wofost_object.get_variable('TWSO')
-
-                RES = RES + [(grid, stu_no, weight, TSO)]
-
-        # 4- we aggregate the yield into the regional one with array operations
-
-        sum_weighted_yields = np.zeros((len(f_range), len(opti_years_)))
-                                    # empty 2D array with same dimension as TSO
-        sum_weights         = 0.
-        for grid, stu_no, weight, TSO in RES:
-            # adding weighted 2D-arrays in the empty array sum_weighted_yields
-            sum_weighted_yields = sum_weighted_yields + weight*TSO 
-            # computing the sum of the soil type area weights
-            sum_weights         = sum_weights + weight 
-        TSO_regional = sum_weighted_yields / sum_weights # weighted average
-
-        # 5- we compute the (sim-obs) differences.
-        DIFF = TSO_regional - OBS
-        
-        # Writing more output
-        print '\nIteration %i'%iter_no
-        print 'OPTIMIZATION MATRICES'
-        print 'rows = yldgapf values; cols = optimization years'
-        print 'opti years:', opti_years_, ', yldgapf values:', f_range
-        print 'matrix of regional yields:'
-        print ' '.join(str(f) for f in TSO_regional)
-        print 'matrix of observed yields:'
-        print ' '.join(str(f) for f in OBS)
-        print 'matrix of sim-obs differences:'
-        print ' '.join(str(f) for f in DIFF)
-
-        # 6- we calculate the RMSE (root mean squared error) of the 3 yldgapf
-        # The RMSE of each yldgapf is based on N obs-sim differences for the N
-        # years looped over
-
-        RMSE = np.zeros(len(f_range))
-        for f,factor in enumerate(f_range):
-            list_of_DIFF = []
-            for y, year in enumerate(opti_years_):
-                list_of_DIFF = list_of_DIFF + [DIFF[f,y]]
-            RMSE[f] = np.sqrt(np.mean( [ math.pow(j,2) for j in
-                                                           list_of_DIFF ] ))
-        print 'Root Mean Square Error:'
-        print ' '.join(str(f) for f in RMSE)
-
-        RMSE_stored = RMSE_stored + [(f_range[1], RMSE[1]), (f_range[3], RMSE[3])]
-        if (iter_no == 1):
-            RMSE_stored = RMSE_stored + [(f_range[0], RMSE[0]), 
-                                         (f_range[2], RMSE[2]),
-                                         (f_range[4], RMSE[4])]
-
-        # 7- We update the yldgapf range to explore for the next iteration. 
-        # For this we do a linear interpolation of RMSE between the 3 yldgapf
-        # explored here, and the next range to explore is the one having the
-        # smallest interpolated RMSE
-
-        index_new_center = RMSE.argmin()
-        f0 = f_range[index_new_center-1]
-        f2 = f_range[index_new_center]
-        f4 = f_range[index_new_center+1]
-
-	# when we are finished iterating on the yield gap factor range, we sort the
-	# (RMSE, YLDGAPF) tuples by values of YLDGAPF
-    RMSE_stored  = sorted(RMSE_stored, key=operator_itemgetter(0))
-    pickle_dump(RMSE_stored, open(os.path.join(currentdir,'pcse_summary_output',
-                                   'RMSE_' + output_tagname_ + '.pickle'),'wb'))       
-
-	# when we are finished iterating on the yield gap factor range, we plot the
-    # RMSE as a function of the yield gap factor
-    if (plot_rmse == True):
-        x,y = zip(*RMSE_stored)
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5,5))
-        fig.subplots_adjust(0.15,0.16,0.95,0.96,0.4,0.)
-        ax.plot(x, y, c='k', marker='o')
-        ax.set_xlabel('yldgapf (-)')
-        ax.set_ylabel('RMSE')
-        fig.savefig('RMSE_'+output_tagname_+'_dyniter.png')
-
-    # 8- when we are finished iterating on the yield gap factor range, we return
-    # the optimum value. We look for the yldgapf with the lowest RMSE
-    index_optimum   = RMSE.argmin()
-    optimum_yldgapf = f_range[index_optimum] 
-
-    print '\noptimum found: %.2f +/- %.2f'%(optimum_yldgapf, f_step)
-
-    # 9- we add a timestamp to time the function
-    print 'Finished dynamic optimization at timestamp:', datetime.utcnow()
-
-    # 10- we return the optimized YLDGAPF
-    return optimum_yldgapf
-
-#===============================================================================
-# Function to optimize the yield gap factor within a NUTS region using the
-# difference between the aggregated regional yield and the observed yield (ie. 1
-# gap to optimize). This function explores a whole matrix of yldgapf to find the 
-# optimum value 
-def optimize_yldgapf_matrix_agyield(crop_no_, selected_grid_cells_,
-                                   selected_soil_types_, opti_years_, plot_name,
-                                   plot_rmse=True):
-#===============================================================================
-
-    import math
-    from datetime import datetime
-    from matplotlib import pyplot as plt
-    from pcse.models import Wofost71_WLP_FD
-    from pcse.base_classes import WeatherDataProvider
-
-    # 1- we add a timestamp to time the function
-    print '\nStarted matrix optimization at timestamp:', datetime.utcnow()
-
-    # aggregated yield method:
-    
-	# We want a step of 0.02 on the yldgapf so we explore 51 values betwen 0.
-	# and 1. NB: to increase the precision on the yldgapf, just increase
-	# nb_f_values
-    nb_f_values = 51
-    f_range = np.linspace(0.,1.,nb_f_values)
-
-    # 2- we construct a 2D array with same dimensions as TSO_regional,
-    # containing the observed yields
-    row = [] # this list will become the row of the 2D array
-    for y,year in enumerate(opti_years_):
-        index_year = np.argmin(np.absolute(detrend[1]-year))
-        row = row + [detrend[0][y]]
-    OBS = np.tile(row, (nb_f_values,1)) # repeats the list as a row n times,
-                                        # to get a 2D array
-
-    # 3- we calculate all the individual yields from the selected grid cells x
-    # soils combinations
-
-    # NB: we explore the range of yldgapf between 0.1 and 1.
-
-    RES = []
-
-    for grid in [g for g,a in selected_grid_cells_]:
-
-        # Retrieve the weather data of one grid cell (all years are in one
-        # file) 
-        filename = pickledir+'weatherobject_g%d.pickle'%grid
-        weatherdata = WeatherDataProvider()
-        weatherdata._load(filename)
-                    
-        # Retrieve the soil data of one grid cell (all possible soil types) 
-        filename = pickledir+'soilobject_g%d.pickle'%grid
-        soil_iterator = pickle_load(open(filename,'rb'))
-
-        for smu, stu_no, weight, soildata in selected_soil_types_[grid]:
-
-            # We calculate the (obs - sim) difference for each yldgapf
-            TSO = np.zeros((nb_f_values, len(opti_years_)))
-    
-            for y, year in enumerate(opti_years_): 
-
-                # Retrieve yearly data 
-                filename = pickledir+'timerobject_g%d_c%d_y%d.pickle'\
-                                                       %(grid,crop_no_,year)
-                timerdata = pickle_load(open(filename,'rb'))
-                filename = pickledir+'cropobject_g%d_c%d_y%d.pickle'\
-                                                       %(grid,crop_no_,year)
-                cropdata = pickle_load(open(filename,'rb'))
-                filename = pickledir+'siteobject_g%d_c%d_y%d_s%d.pickle'\
-                                                %(grid,crop_no_,year,stu_no)
-                sitedata = pickle_load(open(filename,'rb'))
-
-                for f,factor in enumerate(f_range):
-        
-                    cropdata['YLDGAPF']=factor
-                   
-                    # run WOFOST
-                    wofost_object = Wofost71_WLP_FD(sitedata, timerdata,
-                                            soildata, cropdata, weatherdata)
-                    wofost_object.run_till_terminate()
-    
-                    # get the yield (in gDM.m-2) 
-                    TSO[f,y] = wofost_object.get_variable('TWSO')
-
-            RES = RES + [(grid, stu_no, weight, TSO)]
-
-    # 4- we aggregate the yield into the regional one with array operations
-
-    sum_weighted_yields = np.zeros((nb_f_values, len(opti_years_)))
-                                # empty 2D arraywith same dimension as DIFF
-    sum_weights         = 0.
-    for grid, stu_no, weight, TSO in RES:
-        # adding weighted 2D-arrays in the empty array sum_weighted_yields
-        sum_weighted_yields = sum_weighted_yields + weight*TSO 
-        # computing the sum of the soil type area weights
-        sum_weights         = sum_weights + weight 
-    TSO_regional = sum_weighted_yields / sum_weights # weighted average
-
-    # 5- we compute the (sim-obs) differences.
-    DIFF = TSO_regional - OBS
-    
-    # Writing more output
-    print 'OPTIMIZATION MATRICES'
-    print 'rows = yldgapf values; cols = optimization years'
-    print 'opti years:', opti_years_, ', yldgapf values:', f_range
-    print 'matrix of regional yields:'
-    print ' '.join(str(f) for f in TSO_regional)
-    print 'matrix of observed yields:'
-    print ' '.join(str(f) for f in OBS)
-    print 'matrix of sim-obs differences:'
-    print ' '.join(str(f) for f in DIFF)
-
-    # 6- we calculate the RMSE (root mean squared error) of the 3 yldgapf
-    # The RMSE of each yldgapf is based on N obs-sim differences for the N
-    # years looped over
-
-    RMSE = np.zeros(nb_f_values)
-    for f,factor in enumerate(f_range):
-        list_of_DIFF = []
-        for y, year in enumerate(opti_years_):
-            list_of_DIFF = list_of_DIFF + [DIFF[f,y]]
-        RMSE[f] = np.sqrt(np.mean( [ math.pow(j,2) for j in
-                                                       list_of_DIFF ] ))
-    print 'Root Mean Square Error:'
-    print ' '.join(str(f) for f in RMSE)
-
-	# when we are finished iterating on the yield gap factor range, we plot the
-    # RMSE as a function of the yield gap factor
-    if (plot_rmse == True):
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5,5))
-        fig.subplots_adjust(0.15,0.16,0.95,0.96,0.4,0.)
-        ax.plot(f_range, RMSE, c='k', marker='o')
-        ax.set_xlabel('yldgapf (-)')
-        ax.set_ylabel('RMSE')
-        fig.savefig('RMSE_'+plot_name+'_matrixiter.png')
-
-    # 8- when we are finished iterating on the yield gap factor range, we return
-    # the optimum value. We look for the yldgapf with the lowest RMSE
-    index_optimum   = RMSE.argmin()
-    optimum_yldgapf = f_range[index_optimum] 
-
-    print '\noptimum found:', optimum_yldgapf, '+/- 0.02'
-
-    # 9- we add a timestamp to time the function
-    print 'Finished matrix optimization at timestamp:', datetime.utcnow()
 
     # 10- we return the optimized YLDGAPF
     return optimum_yldgapf

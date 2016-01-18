@@ -73,7 +73,7 @@ def main():
 #-------------------------------------------------------------------------------
 # Define general working directories
     currentdir    = os.getcwd()
-    EUROSTATdir   = '../observations/EUROSTAT_data/'
+    EUROSTATdir   = 'EUROSTATobs/'
 #-------------------------------------------------------------------------------
 # create a temporary directory if it doesn't exist
     if not os.path.exists("../tmp"):
