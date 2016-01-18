@@ -47,8 +47,6 @@ def main():
     from cPickle import load as pickle_load
     from cPickle import dump as pickle_dump
 #-------------------------------------------------------------------------------
-    global EUROSTATdir
-#-------------------------------------------------------------------------------
 # ================================= USER INPUT =================================
 
     # for each country code, we say which NUTS region level we want to 
@@ -67,23 +65,31 @@ def main():
     # list of selected years to simulate the c cycle for:
     years = [2006]#,2001,2002,2003,2004,2005,2006,2007,2008,2009,2010]
 
+    # If you want to check if we match the crop and region names in the EUROSTAT
+    # files, set the following files to true, it will print the result to screen
+    check_eurostat_file = False
+
 # ==============================================================================
 #-------------------------------------------------------------------------------
 # Define general working directories
     currentdir    = os.getcwd()
     EUROSTATdir   = '../observations/EUROSTAT_data/'
-    inputdir      = '../model_input_data/'
+#-------------------------------------------------------------------------------
+# create a temporary directory if it doesn't exist
+    if not os.path.exists("tmp"):
+        os.makedirs("tmp")
+
 #-------------------------------------------------------------------------------
 # 1- WE CREATE A DICTIONARY OF REGIONS IDS AND NAMES TO LOOP OVER
 #-------------------------------------------------------------------------------
 # Select the regions ID in which we are interested in
-    NUTS_regions = make_NUTS_composite(lands_levels)
+    NUTS_regions = make_NUTS_composite(lands_levels, EUROSTATdir)
 #-------------------------------------------------------------------------------
 # Create a dictionary of NUTS region names, corresponding to the selected NUTS id
-    NUTS_names_dict = map_NUTS_id_to_NUTS_name(NUTS_regions)
+    NUTS_names_dict = map_NUTS_id_to_NUTS_name(NUTS_regions, EUROSTATdir)
 #-------------------------------------------------------------------------------
 # pickle the produced dictionary in the current directory:
-    pathname = os.path.join(currentdir, 'selected_NUTS_regions.pickle')
+    pathname = os.path.join(currentdir, 'tmp/selected_NUTS_regions.pickle')
     if os.path.exists(pathname): os.remove(pathname)
     pickle_dump(NUTS_names_dict, open(pathname,'wb'))
 
@@ -94,7 +100,7 @@ def main():
     crop_names_dict = map_crop_id_to_crop_name(crops)
 #-------------------------------------------------------------------------------
 # pickle the produced dictionary:
-    pathname = os.path.join(currentdir, 'selected_crops.pickle')
+    pathname = os.path.join(currentdir, 'tmp/selected_crops.pickle')
     if os.path.exists(pathname): os.remove(pathname)
     pickle_dump(crop_names_dict, open(pathname,'wb'))
 
@@ -103,14 +109,15 @@ def main():
 #-------------------------------------------------------------------------------
 # pickle the produced dictionary:
     print '\nWe select the following years:\n', years
-    pathname = os.path.join(currentdir, 'selected_years.pickle')
+    pathname = os.path.join(currentdir, 'tmp/selected_years.pickle')
     if os.path.exists(pathname): os.remove(pathname)
     pickle_dump(years, open(pathname,'wb'))
 
 #-------------------------------------------------------------------------------
 # 4- FOR INFORMATION: WE CHECK IF WE MATCH THE EUROSTAT NAMES
 #-------------------------------------------------------------------------------
-    check_EUROSTAT_names_match(NUTS_names_dict, crop_names_dict)
+    if check_eurostat_file == True:
+        check_EUROSTAT_names_match(NUTS_names_dict, crop_names_dict, EUROSTATdir)
 
 
 #===============================================================================
@@ -151,12 +158,13 @@ def map_crop_id_to_crop_name(crop_list):
             crop_names[nickname] = [6,'Sugar beet (excluding seed)',
                                       'Sugar beet (excluding seed)']
         if (nickname == 'Potato'):
-            crop_names[nickname] = [7,'Potatoes (including early potatoes and seed potatoes)',
-                                      'Potatoes (including early potatoes and seed potatoes)']
+            crop_names[nickname] = [7,'Potatoes (including early potatoes and'+\
+                                      ' seed potatoes)','Potatoes (including '+\
+                                      'early potatoes and seed potatoes)']
         if (nickname == 'Field beans'):
-            crop_names[nickname] = [8,'Dried pulses and protein crops for the production '\
-                                    + 'of grain (including seed and mixtures of cereals '\
-                                    + 'and pulses)',
+            crop_names[nickname] = [8,'Dried pulses and protein crops for the'+\
+                                      ' production of grain (including seed ' +\
+                                      'and mixtures of cereals and pulses)',
                                       'Broad and field beans']
         if (nickname == 'Spring rapeseed'):
             crop_names[nickname] = [np.nan,'Rape and turnip rape',
@@ -173,7 +181,7 @@ def map_crop_id_to_crop_name(crop_list):
     return crop_names
 
 #===============================================================================
-def map_NUTS_id_to_NUTS_name(list_of_NUTS_ids):
+def map_NUTS_id_to_NUTS_name(list_of_NUTS_ids, EUROSTATdir):
 #===============================================================================
     from maries_toolbox import fetch_EUROSTAT_NUTS_name
 
@@ -202,8 +210,10 @@ def map_NUTS_id_to_NUTS_name(list_of_NUTS_ids):
             if (NUTS_no == 'PL62'): NUTS_name = "Warminsko-mazurskie"
             if (NUTS_no == 'RO32'): NUTS_name = "Bucuresti - Ilfov"
             # we select the english name:
-            if (NUTS_no == 'CY00'): NUTS_name = "CYPRUS" # 'Cyprus' or 'Kypros' in EUROSTAT
-            if (NUTS_no == 'CZ0'): NUTS_name = "CZECH REPUBLIC" # 'Czech Republic' or 'Cesk\xe1 republika'
+            if (NUTS_no == 'CY00'): NUTS_name = "CYPRUS" 
+                                    # 'Cyprus' or 'Kypros' in EUROSTAT
+            if (NUTS_no == 'CZ0'): NUTS_name = "CZECH REPUBLIC" 
+                                    # 'Czech Republic' or 'Cesk\xe1 republika'
             # for all previous examples, EURO_name = NUTS_name:
             EURO_name = NUTS_name.lower()
 			# we correct the accents of the following region names in the
@@ -487,7 +497,7 @@ def map_NUTS_id_to_NUTS_name(list_of_NUTS_ids):
     return dict_geo_units
 
 #===============================================================================
-def make_NUTS_composite(lands_levels):
+def make_NUTS_composite(lands_levels, EUROSTATdir):
 #===============================================================================
 
     from mpl_toolkits.basemap import Basemap
@@ -516,7 +526,7 @@ def make_NUTS_composite(lands_levels):
     return NUTS_ids_list
 
 #===============================================================================
-def check_EUROSTAT_names_match(NUTS_names_dict, crop_names_dict):
+def check_EUROSTAT_names_match(NUTS_names_dict, crop_names_dict, EUROSTATdir):
 #===============================================================================
     from maries_toolbox import open_csv_EUROSTAT
 

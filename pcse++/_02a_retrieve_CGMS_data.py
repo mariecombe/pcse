@@ -185,8 +185,8 @@ def main():
                 # if we do a serial iteration, we loop over the grid cells that 
                 # contain arable land
                 if (process == 'serial'):
-                    #for grid in [g for g,a in europ_arable]:
-                    for grid in [56126,70081,94086,100094,102119,106095]:
+                    for grid in [g for g,a in europ_arable]:
+                    #for grid in [56126,70081,94086,100094,102119,106095]:
                         retrieve_CGMS_input(grid)
          
                 # if we do a parallelization, we use the multiprocessor module to 
