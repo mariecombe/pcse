@@ -55,13 +55,9 @@ def main():
     crop_mask_creation   = False
     sync_to_capegrim     = False
 
-    # path to CGMS input data on the university machine:
+    # path to the base folder for CGMS input data on the local machine:
     folder_local  = '/Users/mariecombe/Documents/Work/Research_project_3/'+\
                     'model_input_data/CGMS/'
-
-    # path to CGMS input data on capegrim
-    folder_cape   = '/Users/mariecombe/mnt/promise/CO2/marie/'+\
-                    'pickled_CGMS_input_data/'
 
 # ==============================================================================
 #-------------------------------------------------------------------------------
@@ -144,7 +140,8 @@ def main():
             print "NUTS region:", NUTS_id
 
             # We retrieve the list of grid cells contained in each NUTS region
-            filename = folder_local + 'gridlistobject_all_r%s.pickle'%NUTS_id
+            filename = folder_local + 'gridlist_objects/'+\
+                       'gridlistobject_all_r%s.pickle'%NUTS_id
             if os.path.exists(filename):
                 pass
             else:
@@ -174,7 +171,8 @@ def main():
             start_timestamp = datetime.utcnow()
          
             # We retrieve the list of suitable soil types for the selected crop species
-            filename = folder_local + 'suitablesoilsobject_c%d.pickle'%crop_no
+            filename = folder_local + 'soildata_objects/' +\
+                       'suitablesoilsobject_c%d.pickle'%crop_no
             if os.path.exists(filename):
                 suitable_stu = pickle_load(open(filename,'rb'))
             else:
@@ -254,7 +252,8 @@ def main():
                 crop_mask[int(year)] = culti_list
          
             # now we are out of the year loop, we pickle the crop mask dictionary
-            filename = folder_local + 'cropmask_c%d.pickle'%(crop_no)
+            filename = folder_local + 'cropdata_objects/'+\
+                       'cropmask_c%d.pickle'%(crop_no)
             pickle_dump(crop_mask,open(filename,'wb'))
          
             # We add a timestamp at end of the retrieval, to time the process
@@ -262,15 +261,6 @@ def main():
             print '\nDuration of the crop mask creation:', end_timestamp - \
                                                            start_timestamp
 
-#-------------------------------------------------------------------------------
-# 4- WE SYNC THE LOCAL FOLDER WITH THE REMOTE CAPEGRIM FOLDER
-#-------------------------------------------------------------------------------
-        if sync_to_capegrim == True:
-#-------------------------------------------------------------------------------
-
-            subprocess.call(["rsync","-auEv","-e",
-                     "'ssh -l mariecombe -i /Users/mariecombe/.shh/id_dsa'",
-             "--delete",folder_local,"mariecombe@capegrim.wur.nl:"+folder_cape])
 
 
 ### END OF THE MAIN CODE ###
@@ -287,7 +277,7 @@ def retrieve_CGMS_input(grid):
     print '    - grid cell no %i'%grid
     try:
         # We retrieve the crop calendar (timerdata)
-        filename = folder_local + \
+        filename = folder_local + 'timerdata_objects/%i/c%i/'%(year,crop_no) +\
                    'timerobject_g%d_c%d_y%d.pickle'%(grid, crop_no, year)
         if os.path.exists(filename):
             pass
@@ -297,7 +287,8 @@ def retrieve_CGMS_input(grid):
 
         # If required by the user, we retrieve the weather data
         if retrieve_weather == True: 
-            filename = folder_local + 'weatherobject_g%d.pickle'%grid
+            filename = folder_local + 'weather_objects/' +\
+                       'weatherobject_g%d.pickle'%grid
             if os.path.exists(filename):
                 pass
             else:
@@ -305,7 +296,8 @@ def retrieve_CGMS_input(grid):
                 weatherdata._dump(filename)
 
         # We retrieve the soil data (soil_iterator)
-        filename = folder_local + 'soilobject_g%d.pickle'%grid
+        filename = folder_local + 'soildata_objects/' +\
+                   'soilobject_g%d.pickle'%grid
         if os.path.exists(filename):
             soil_iterator = pickle_load(open(filename,'rb'))
         else:
@@ -313,7 +305,7 @@ def retrieve_CGMS_input(grid):
             pickle_dump(soil_iterator,open(filename,'wb'))       
 
         # We retrieve the crop variety info (crop_data)
-        filename = folder_local + \
+        filename = folder_local + 'cropdata_objects/%i/c%i/'%(year,crop_no) +\
                    'cropobject_g%d_c%d_y%d.pickle'%(grid,crop_no,year)
         if os.path.exists(filename):
             pass
@@ -331,7 +323,12 @@ def retrieve_CGMS_input(grid):
                 print '        soil type no %i'%stu_no
 
                 # We retrieve the site data (site management)
-                filename = folder_local + \
+                if (str(grid)).startswith('1'):
+                    dum = str(grid)[0:2]
+                else:
+                    dum = str(grid)[0]
+                filename = folder_local + 'sitedata_objects/' +\
+                           '%i/c%i/grid_%s/'%(year,crop_no,dum) +\
                            'siteobject_g%d_c%d_y%d_s%d.pickle'%(grid, crop_no,
                                                                    year, stu_no)
                 if os.path.exists(filename):
