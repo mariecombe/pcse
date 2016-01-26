@@ -3,14 +3,16 @@ import sys
 import os
 import logging
 import py.tools.rc as rc
+from py.tools.initexit import start_logger, parse_options
 
 # Append path so that modules can be imported
 sys.path.append(os.getcwd())
 
 # Set up the basic logging style, start logging from DEBUG and higher
-logging.basicConfig(level=logging.DEBUG, 
-                    format=' [%(levelname)-7s] (%(asctime)s) py-%(module)-20s : %(message)s',
-                    datefmt='%Y-%m-%d %H:%M:%S')
+
+_ = start_logger()
+
+args,opts = parse_options()
 
 # First message from logger
 logging.info('Python Code has started')
@@ -41,6 +43,7 @@ for year in years:
     for crop in crops:
 
         header= pf.get_job_header()
+        header += 'python ../../pcse++/_01_select_crops_n_regions.py %s %s\n' % (year , crop)
         pf.write_job('jobs/test_%s_%s.jb'%(year.strip(),crop.strip(),), header, '999')
 
 #exit
