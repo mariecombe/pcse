@@ -65,6 +65,9 @@ def main():
     # list of selected years to simulate the c cycle for:
     years = [2006]#,2001,2002,2003,2004,2005,2006,2007,2008,2009,2010]
 
+    # input directory path
+    inputdir = '/Users/mariecombe/mnt/promise/CO2/wofost/'
+
     # If you want to check if we match the crop and region names in the EUROSTAT
     # files, set the following files to true, it will print the result to screen
     check_eurostat_file = False
@@ -73,7 +76,7 @@ def main():
 #-------------------------------------------------------------------------------
 # Define general working directories
     currentdir    = os.getcwd()
-    EUROSTATdir   = 'EUROSTATobs/'
+    EUROSTATdir   = os.path.join(inputdir,'EUROSTATobs')
 #-------------------------------------------------------------------------------
 # create a temporary directory if it doesn't exist
     if not os.path.exists("../tmp"):
@@ -510,7 +513,7 @@ def make_NUTS_composite(lands_levels, EUROSTATdir):
     path = EUROSTATdir
     filename = 'NUTS_RG_03M_2010'# NUTS regions 
     name = 'NUTS'
-    NUTS_info = map.readshapefile(path + filename, name, drawbounds=False) 
+    NUTS_info = map.readshapefile(os.path.join(path,filename), name, drawbounds=False) 
 
     # retrieve the list of patches to fill and its data to plot
     NUTS_ids_list = list()
