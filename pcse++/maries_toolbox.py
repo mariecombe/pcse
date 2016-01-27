@@ -326,7 +326,8 @@ def select_cells(NUTS_no, crop_no, year, folder_pickle, method='topn', n=3,
         # we first read the list of all 'whole' grid cells of that region
         # NB: list_of_tuples is a list of (grid_cell_id, arable_land_area)
         # tuples, which are already sorted by decreasing amount of arable land
-        filename = folder_pickle+'gridlistobject_all_r%s.pickle'%NUTS_no
+        filename = folder_pickle+'gridlist_objects/'+\
+                   'gridlistobject_all_r%s.pickle'%NUTS_no
         try:
             NUTS_arable = pickle_load(open(filename, 'rb'))
         except IOError:
@@ -337,14 +338,15 @@ def select_cells(NUTS_no, crop_no, year, folder_pickle, method='topn', n=3,
 
     elif (select_from == 'cultivated'):
         # first get the arable cells contained in NUTS region
-        filename = folder_pickle+'gridlistobject_all_r%s.pickle'%NUTS_no
+        filename = folder_pickle+'gridlist_objects/'+\
+                   'gridlistobject_all_r%s.pickle'%NUTS_no
         try:
             NUTS_arable = pickle_load(open(filename, 'rb'))
         except IOError:
             NUTS_arable = querie_arable_cells_in_NUTS_region(NUTS_no)
             pickle_dump(NUTS_arable, open(os.path.join(filename), 'wb'))
         # then read the European cultivated cells for that year and crop
-        filename = folder_pickle+'cropmask_c%i.pickle'%crop_no
+        filename = folder_pickle+'cropdata_objects/cropmask_c%i.pickle'%crop_no
         culti_cells = pickle_load(open(filename,'rb'))
         # get only the intersection, i.e. the cultivated cells in NUTS region:
         list_of_tuples = list()
@@ -419,7 +421,8 @@ def select_soils(crop_no, grid_cells, folder_pickle, method='topn', n=3):
     from cPickle import load as pickle_load
 
     # we first read the list of suitable soil types for our chosen crop 
-    filename = folder_pickle+'suitablesoilsobject_c%d.pickle'%crop_no
+    filename = folder_pickle+'soildata_objects/'+\
+               'suitablesoilsobject_c%d.pickle'%crop_no
     suitable_soils = pickle_load(open(filename,'rb')) 
  
     dict_soil_types = {}
@@ -428,7 +431,8 @@ def select_soils(crop_no, grid_cells, folder_pickle, method='topn', n=3):
     for grid in grid_cells:
  
         # we read the list of soil types contained within the grid cell
-        filename = folder_pickle+'soilobject_g%d.pickle'%grid
+        filename = folder_pickle+'soildata_objects/'+\
+                   'soilobject_g%d.pickle'%grid
         soil_iterator_ = pickle_load(open(filename,'rb'))
  
         # Rank soils by decreasing area
