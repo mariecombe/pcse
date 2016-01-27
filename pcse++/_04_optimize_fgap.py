@@ -92,12 +92,13 @@ def main():
         observed_data = harvests_dict
     elif (opti_metric == 'yield'):
         observed_data = yields_dict
+
 #-------------------------------------------------------------------------------
-# START OF THE OPTIMIZATION OF THE YIELD GAP FACTOR:
+# I - OPTIMIZE THE YIELD GAP FACTOR:
 #-------------------------------------------------------------------------------
 # LOOP OVER YEARS:
 #-------------------------------------------------------------------------------
-    for year in years:
+    for year in np.arange(2000,2011,1):
         print 'Year ', year
         print '================================================'
 
@@ -164,10 +165,30 @@ def main():
                 # we save the dictionary of optimum fgap in the output folder
                 print opti_fgap
                 pickle_dump(opti_fgap, open(filename,'wb'))
-    sys.exit()
 
 #-------------------------------------------------------------------------------
-# GRIDDING OF THE FGAP:
+# II - READ THE 2000-2010 OPTIMIZED FGAP:
+#-------------------------------------------------------------------------------
+    opti_fgap = dict()
+#-------------------------------------------------------------------------------
+# LOOP OVER YEARS:
+#-------------------------------------------------------------------------------
+    for year in np.arange(2000,2011,1):
+        opti_fgap[year] = dict()
+#-------------------------------------------------------------------------------
+# LOOP OVER CROPS:
+#-------------------------------------------------------------------------------
+        for crop in sorted(crop_dict.keys()):
+            # load the optimum fgap of that year:
+            filename = outputdir + '%i/%s/opti_fgap_dict.pickle'%(year,crop) 
+            opti_fgap[year][crop] = pickle_load(open(filename,'rb'))
+
+
+#-------------------------------------------------------------------------------
+# III - FILL THE GAPS OF FGAP INFO:
+#-------------------------------------------------------------------------------
+    print "\nNow filling the gaps of the optimized fgap maps......"
+    sys.exit()
 #-------------------------------------------------------------------------------
 # LOOP OVER YEARS:
 #-------------------------------------------------------------------------------
@@ -181,18 +202,44 @@ def main():
             crop_name  = crop_dict[crop][1]
             print '\nCrop no %i: %s / %s'%(crop_dict[crop][0],crop, crop_name)
             print '================================================'
+            # spatial and time average fgap for that crop:
+            crop_fgap = np.mean([[opti_fgap[y][crop][n] for n in NUTS] for y in 
+                        np.arange(2000,2011,1)])
+            # spatial average fgap for that crop and year:
+            euro_fgap = np.mean([opti_fgap[year][crop][n] for n in NUTS_regions])
+#-------------------------------------------------------------------------------
+# LOOP OVER THE NUTS REGIONS:
+#-------------------------------------------------------------------------------
+            for NUTS_no in sorted(NUTS_regions):
+                # we skip the regions that have an optimum
+                if (opti_fgap[year][crop][NUTS_no] != np.nan): 
+                    continue
+                # for the regions that do not have an optimum, we try to fill 
+                # the gap using rules
+                else:
+                    prev_fgap = opti_fgap[year-1][crop][NUTS_no]
+                    next_fgap = opti_fgap[year+1][crop][NUTS_no]
+                    clim_fgap = np.mean([opti_fgap[y][crop][NUTS_no] for y in 
+                                np.arange(2000,2011,1)])
+                    # rule 1 - try to borrow fgap from previous year, same region 
+                    if (prev_fgap != np.nan):
+                        opti_fgap[year][crop][NUTS_no] = prev_fgap
+                    # rule 2 - try to borrow fgap from next year, same region
+                    elif (next_fgap != np.nan):
+                        opti_fgap[year][crop][NUTS_no] = next_fgap
+                    # rule 3 - try to borrow the 2000-2010 fgap mean of that region
+                    elif (clim_fgap != np.nan):
+                        opti_fgap[year][crop][NUTS_no] = clim_fgap
+                    # rule 4 - try to borrow the European fgap mean of that year
+                    elif (euro_fgap != np.nan):
+                        opti_fgap[year][crop][NUTS_no] = euro_fgap
+                    # rule 5 - borrow the European climatic mean fgap of that crop
+                    else:
+                        opti_fgap[year][crop][NUTS_no] = crop_fgap
 
-            # load the optimum fgap of that year:
-            filename = outputdir + '%i/%s/opti_fgap_dict.pickle'%(year,crop) 
-            optimum = pickle_load(open(filename,'rb'))
 
 #-------------------------------------------------------------------------------
-            #for NUTS_no in sorted(NUTS_regions):
-	    		# we get the fgap of this NUTS region for all grid cells
-	    		# entirely contained in it
-#                for grid_no in whole_cells_in_region:
-#                    opti_fgap[crop][year][grid_no] = optimum[NUTS_no]
-
+# IV - GRID THE OPTIMUM FGAP INFORMATION ON THE CGMS GRID
 #-------------------------------------------------------------------------------
 # LOOP OVER THE CULTIVATED GRID CELLS:
 #-------------------------------------------------------------------------------
