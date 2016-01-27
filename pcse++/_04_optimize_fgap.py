@@ -30,11 +30,11 @@ def main():
 # ================================= USER INPUT =================================
  
     # yield gap factor optimization:
-    force_optimization = False # decides if we recalculate the optimum fgap, in
+    force_optimization = True # decides if we recalculate the optimum fgap, in
                                # case the results file already exists
     selec_method  = 'topn'    # can be 'topn' or 'randomn' or 'all'
-    ncells        = 3        # number of selected grid cells within a region
-    nsoils        = 3        # number of selected soil types within a grid cell
+    ncells        = 10        # number of selected grid cells within a region
+    nsoils        = 10        # number of selected soil types within a grid cell
     weather       = 'ECMWF'   # weather data to use for the optimization
                               # can be 'CGMS' or 'ECMWF'
 
@@ -356,14 +356,16 @@ def optimize_regional_yldgapf_dyn(detrend, crop_no_, frac_crop, selected_grid_ce
             # Retrieve the weather data of one grid cell (all years are in one
             # file) 
             if (weather == 'CGMS'):
-                filename = inputdir+'weatherobject_g%d.pickle'%grid
+                filename = inputdir+'weather_objects/'+\
+                           'weatherobject_g%d.pickle'%grid
                 weatherdata = WeatherDataProvider()
                 weatherdata._load(filename)
             if (weather == 'ECMWF'):
                 weatherdata = CABOWeatherDataProvider('%i'%grid,fpath=ecmwfdir)
                         
             # Retrieve the soil data of one grid cell (all possible soil types) 
-            filename = inputdir+'soilobject_g%d.pickle'%grid
+            filename = inputdir+'soildata_objects/'+\
+                       'soilobject_g%d.pickle'%grid
             soil_iterator = pickle_load(open(filename,'rb'))
 
             for smu, stu_no, weight, soildata in selected_soil_types_[grid]:
@@ -377,13 +379,24 @@ def optimize_regional_yldgapf_dyn(detrend, crop_no_, frac_crop, selected_grid_ce
                 for y, year in enumerate(opti_years_): 
 
                     # Retrieve yearly data 
-                    filename = inputdir+'timerobject_g%d_c%d_y%d.pickle'\
+                    filename = inputdir+\
+                               'timerdata_objects/%i/c%i/'%(year,crop_no_)+\
+                               'timerobject_g%d_c%d_y%d.pickle'\
                                                            %(grid,crop_no_,year)
                     timerdata = pickle_load(open(filename,'rb'))
-                    filename = inputdir+'cropobject_g%d_c%d_y%d.pickle'\
+                    filename = inputdir+\
+                               'cropdata_objects/%i/c%i/'%(year,crop_no_)+\
+                               'cropobject_g%d_c%d_y%d.pickle'\
                                                            %(grid,crop_no_,year)
                     cropdata = pickle_load(open(filename,'rb'))
-                    filename = inputdir+'siteobject_g%d_c%d_y%d_s%d.pickle'\
+                    if str(grid).startswith('1'):
+                        dum = str(grid)[0:2]
+                    else:
+                        dum = str(grid)[0]
+                    filename = inputdir+\
+                               'sitedata_objects/%i/c%i/grid_%s/'\
+                                                          %(year,crop_no_,dum)+\
+                               'siteobject_g%d_c%d_y%d_s%d.pickle'\
                                                     %(grid,crop_no_,year,stu_no)
                     sitedata = pickle_load(open(filename,'rb'))
 

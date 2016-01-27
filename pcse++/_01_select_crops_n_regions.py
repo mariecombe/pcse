@@ -58,12 +58,20 @@ def main():
                     'SK':2,'TR':2,'UK':1}
 
     # list of selected crops of interest:
-    crops = ['Potato']#'Grain maize','Spring wheat','Winter wheat',
+<<<<<<< Updated upstream
+    crops = ['Grain maize']#'Grain maize','Spring wheat','Winter wheat',
+=======
+    crops = ['Grain maize']#,'Spring wheat','Winter wheat',
+>>>>>>> Stashed changes
             # 'Spring barley','Winter barley','Spring rapeseed','Winter rapeseed',
             # 'Rye','Potato','Sugar beet','Sunflower','Field beans']
 
     # list of selected years to simulate the c cycle for:
-    years = [2006]#,2001,2002,2003,2004,2005,2006,2007,2008,2009,2010]
+<<<<<<< Updated upstream
+    years = [2006,2007]#,2001,2002,2003,2004,2005,2006,2007,2008,2009,2010]
+=======
+    years = [2000,2001,2002,2003,2004]#,2005,2006,2007,2008,2009,2010]
+>>>>>>> Stashed changes
 
     # If you want to check if we match the crop and region names in the EUROSTAT
     # files, set the following files to true, it will print the result to screen
