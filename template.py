@@ -56,7 +56,7 @@ for year in years:
 
         # create directory structure for optimized output per crop and year
        
-        dirname = os.path.join(outputdir,'%s'%year,crop.strip().replace(' ','_') )  
+        dirname = os.path.join(outputdir,'%s'%year.strip(),crop.strip().replace(' ','_') )  
         if not os.path.exists(dirname): 
             os.makedirs(dirname)
             logging.info('Created new folder: %s'%dirname)

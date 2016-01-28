@@ -8,5 +8,5 @@ crop.types          : Potato, Winter Wheat, Winter Barley
 
 optimize.type       : observed
 
-dir.project         : /Storage/CO2/peters/ww
+dir.project         : /Storage/CO2/peters/template
 
