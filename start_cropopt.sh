@@ -28,7 +28,7 @@ mkdir -p ${rundir}
 mkdir -p ${jobdir}
 rsync -au --cvs-exclude ./py ${rundir}/
 rsync -au --cvs-exclude ./pcse ${rundir}/
-rsync -au --cvs-exclude --exclude=*EURO* ./pcse++ ${rundir}/
+rsync -au --cvs-exclude ./carbon_cycle ${rundir}/
 rsync -au --cvs-exclude ./template* ${rundir}/
 cd ${rundir}
 

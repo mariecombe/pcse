@@ -338,15 +338,16 @@ def select_cells(NUTS_no, crop_no, year, folder_pickle, method='topn', n=3,
 
     elif (select_from == 'cultivated'):
         # first get the arable cells contained in NUTS region
-        filename = folder_pickle+'gridlist_objects/'+\
-                   'gridlistobject_all_r%s.pickle'%NUTS_no
+        filename = os.path.join(folder_pickle,'gridlist_objects',\
+                   'gridlistobject_all_r%s.pickle'%NUTS_no)
         try:
             NUTS_arable = pickle_load(open(filename, 'rb'))
         except IOError:
             NUTS_arable = querie_arable_cells_in_NUTS_region(NUTS_no)
             pickle_dump(NUTS_arable, open(os.path.join(filename), 'wb'))
         # then read the European cultivated cells for that year and crop
-        filename = folder_pickle+'cropdata_objects/cropmask_c%i.pickle'%crop_no
+        filename = os.path.join(folder_pickle,'cropdata_objects',\
+                   'cropmask_c%i.pickle'%crop_no)
         culti_cells = pickle_load(open(filename,'rb'))
         # get only the intersection, i.e. the cultivated cells in NUTS region:
         list_of_tuples = list()
@@ -354,8 +355,6 @@ def select_cells(NUTS_no, crop_no, year, folder_pickle, method='topn', n=3,
             for cell in NUTS_arable[0]:
                 if cell[0] in [c for c,a in culti_cells[year]]:
                     list_of_tuples += [cell]
-            #list_of_tuples = list_of_tuples
-            #print 'list of cultivated cells:', list_of_tuples, len(list_of_tuples)
         else:
             return None
 
@@ -375,8 +374,8 @@ def select_cells(NUTS_no, crop_no, year, folder_pickle, method='topn', n=3,
     else:
         subset_list   = list_of_tuples
 
-    print '\nWe have selected', len(subset_list),'grid cells:',\
-              [g for g,a in subset_list]
+    #print '\nWe have selected', len(subset_list),'grid cells:',\
+    #          [g for g,a in subset_list]
 
     return subset_list
 
@@ -421,8 +420,8 @@ def select_soils(crop_no, grid_cells, folder_pickle, method='topn', n=3):
     from cPickle import load as pickle_load
 
     # we first read the list of suitable soil types for our chosen crop 
-    filename = folder_pickle+'soildata_objects/'+\
-               'suitablesoilsobject_c%d.pickle'%crop_no
+    filename = os.path.join(folder_pickle,'soildata_objects',\
+               'suitablesoilsobject_c%d.pickle'%crop_no )
     suitable_soils = pickle_load(open(filename,'rb')) 
  
     dict_soil_types = {}
@@ -431,8 +430,8 @@ def select_soils(crop_no, grid_cells, folder_pickle, method='topn', n=3):
     for grid in grid_cells:
  
         # we read the list of soil types contained within the grid cell
-        filename = folder_pickle+'soildata_objects/'+\
-                   'soilobject_g%d.pickle'%grid
+        filename = os.path.join(folder_pickle,'soildata_objects',\
+                   'soilobject_g%d.pickle'%grid )
         soil_iterator_ = pickle_load(open(filename,'rb'))
  
         # Rank soils by decreasing area
@@ -461,8 +460,8 @@ def select_soils(crop_no, grid_cells, folder_pickle, method='topn', n=3):
 
         dict_soil_types[grid] = subset_list
 
-        print 'We have selected',len(subset_list),'soil types:',\
-               [stu for smu, stu, w, data in subset_list],'for grid', grid
+        #print 'We have selected',len(subset_list),'soil types:',\
+        #       [stu for smu, stu, w, data in subset_list],'for grid', grid
  
     return dict_soil_types
 

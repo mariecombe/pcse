@@ -6,7 +6,7 @@ sys.path.append('../')  # all py* code
 sys.path.append('../../')
 sys.path.insert(0, "..")
 from py.tools.initexit import start_logger, parse_options
-from py.pcse_extended._01_select_crops_n_regions import select_crops_regions
+from py.carbon_cycle._01_select_crops_n_regions import select_crops_regions
 import py.tools.rc as rc
 import logging
 import numpy as np
@@ -127,7 +127,7 @@ def main():
             crop_name  = crop_dict[crop][1]
             print '\nCrop no %i: %s / %s'%(crop_dict[crop][0],crop, crop_name)
             print '================================================'
-            if force_optimization == True):
+            if force_optimization == True:
                 filelist = [f for f in os.listdir(outputdir)]
                 for f in filelist:
                     os.remove(os.path.join(outputdir,f))
@@ -357,7 +357,7 @@ def optimize_fgap(NUTS_no):
 
                 # pickle the information per NUTS region
                 outlist = [NUTS_no, opti_code, optimum, shortlist_cells]
-                filename = os.path.join(cwdir,outputdir,'fgap_%s.pickle'%NUTS_no)
+                filename = os.path.join(outputdir,'fgap_%s.pickle'%NUTS_no)
                 pickle_dump(outlist, open(filename,'wb'))
 
     return None
