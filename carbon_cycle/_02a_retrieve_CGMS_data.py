@@ -34,8 +34,7 @@ def main():
     from datetime import datetime
     from operator import itemgetter as operator_itemgetter
 #-------------------------------------------------------------------------------
-    global folder_local,\
-           crop_no, suitable_stu, year, engine, retrieve_weather
+    global CGMSdir, crop_no, suitable_stu, year, engine, retrieve_weather
 #-------------------------------------------------------------------------------
 # Temporarily add parent directory to python path, to be able to import pcse
 # modules
@@ -56,14 +55,13 @@ def main():
     sync_to_capegrim     = False
 
     # path to the base folder for CGMS input data on the local machine:
-    folder_local  = '/Users/mariecombe/Documents/Work/Research_project_3/'+\
-                    'model_input_data/CGMS/'
+    inputdir  = '/Users/mariecombe/Documents/Work/Research_project_3/'+\
+                'model_input_data/'
 
 # ==============================================================================
 #-------------------------------------------------------------------------------
 # Define general working directories
-    # path to basic EUROSTAT csv files:
-    EUROSTATdir   = 'EUROSTATobs/'
+    CGMSdir     = os.path.join(inputdir, 'CGMS')
 #-------------------------------------------------------------------------------
 # we remind the user that if all 3 flags are False, nothing will happen...
     if ( (CGMS_input_retrieval == False) 
@@ -108,13 +106,13 @@ def main():
 # We only select grid cells located in Europe that contain arable land (no need 
 # to retrieve data where there are no crops!)
 
-    pathname = os.path.join('EUROSTATobs/europe_arable_CGMS_cellids.pickle')
+    pathname = os.path.join(CGMSdir,'europe_arable_CGMS_cellids.pickle')
     try:
         europ_arable = pickle_load(open(pathname,'rb'))
     except IOError:
         from maries_toolbox import open_csv, get_list_CGMS_cells_in_Europe_arable
         # we read the list of CGMS grid cells from file
-        CGMS_cells = open_csv(EUROSTATdir, ['CGMS_grid_list.csv'])
+        CGMS_cells = open_csv(CGMSdir, ['CGMS_grid_list.csv'])
         all_grids  = CGMS_cells['CGMS_grid_list.csv']['GRID_NO']
         lons       = CGMS_cells['CGMS_grid_list.csv']['LONGITUDE']
         lats       = CGMS_cells['CGMS_grid_list.csv']['LATITUDE']
@@ -140,8 +138,8 @@ def main():
             print "NUTS region:", NUTS_id
 
             # We retrieve the list of grid cells contained in each NUTS region
-            filename = folder_local + 'gridlist_objects/'+\
-                       'gridlistobject_all_r%s.pickle'%NUTS_id
+            filename = os.path.join(CGMSdir, 'gridlist_objects/',
+                       'gridlistobject_all_r%s.pickle'%(NUTS_id))
             if os.path.exists(filename):
                 pass
             else:
@@ -170,9 +168,10 @@ def main():
             # We add a timestamp at start of the retrieval
             start_timestamp = datetime.utcnow()
          
-            # We retrieve the list of suitable soil types for the selected crop species
-            filename = folder_local + 'soildata_objects/' +\
-                       'suitablesoilsobject_c%d.pickle'%crop_no
+			# We retrieve the list of suitable soil types for the selected crop
+			# species
+            filename = os.path.join(CGMSdir, 'soildata_objects/',
+                       'suitablesoilsobject_c%d.pickle'%(crop_no))
             if os.path.exists(filename):
                 suitable_stu = pickle_load(open(filename,'rb'))
             else:
@@ -186,7 +185,8 @@ def main():
          
             # WE LOOP OVER ALL YEARS:
             for y, year in enumerate(years): 
-                print '\n######################## Year %i ########################\n'%year
+                print '\n######################## Year %i ##############'%year+\
+                '##########\n'
          
                 # if we do a serial iteration, we loop over the grid cells that 
                 # contain arable land
@@ -195,12 +195,13 @@ def main():
                     #for grid in [56126,70081,94086,100094,102119,106095]:
                         retrieve_CGMS_input(grid)
          
-                # if we do a parallelization, we use the multiprocessor module to 
-                # provide series of cells to the function
+				# if we do a parallelization, we use the multiprocessor module
+				# to provide series of cells to the function
                 if (process == 'parallel'):
                     import multiprocessing
                     p = multiprocessing.Pool(nb_cores)
-                    parallel = p.map(retrieve_CGMS_input, [g for g,a in europ_arable])
+                    parallel = p.map(retrieve_CGMS_input, [g for g,a in 
+                               europ_arable])
                     p.close()
 
             # We add a timestamp at end of the retrieval, to time the process
@@ -220,7 +221,8 @@ def main():
          
             # WE LOOP OVER ALL YEARS:
             for y, year in enumerate(years): 
-                print '######################## Year %i ########################\n'%year
+                print '\n######################## Year %i ##############'%year+\
+                '##########\n'
          
                 culti_list = list()
          
@@ -252,8 +254,8 @@ def main():
                 crop_mask[int(year)] = culti_list
          
             # now we are out of the year loop, we pickle the crop mask dictionary
-            filename = folder_local + 'cropdata_objects/'+\
-                       'cropmask_c%d.pickle'%(crop_no)
+            filename = os.path.join(CGMSdir, 'cropdata_objects/',
+                       'cropmask_c%d.pickle'%(crop_no))
             pickle_dump(crop_mask,open(filename,'wb'))
          
             # We add a timestamp at end of the retrieval, to time the process
@@ -273,12 +275,13 @@ def retrieve_CGMS_input(grid):
     from pcse.db.cgms11 import TimerDataProvider, SoilDataIterator, \
                                CropDataProvider, STU_Suitability, \
                                SiteDataProvider, WeatherObsGridDataProvider
-# if the retrieval does not raise an error, the crop was thus cultivated that year
+# if the retrieval does not raise an error, the crop was cultivated that year
     print '    - grid cell no %i'%grid
     try:
         # We retrieve the crop calendar (timerdata)
-        filename = folder_local + 'timerdata_objects/%i/c%i/'%(year,crop_no) +\
-                   'timerobject_g%d_c%d_y%d.pickle'%(grid, crop_no, year)
+        filename = os.path.join(CGMSdir,
+                   'timerdata_objects/%i/c%i/'%(year,crop_no),
+                   'timerobject_g%d_c%d_y%d.pickle'%(grid, crop_no, year))
         if os.path.exists(filename):
             pass
         else:
@@ -287,8 +290,8 @@ def retrieve_CGMS_input(grid):
 
         # If required by the user, we retrieve the weather data
         if retrieve_weather == True: 
-            filename = folder_local + 'weather_objects/' +\
-                       'weatherobject_g%d.pickle'%grid
+            filename = os.path.join(CGMSdir, 'weather_objects/',
+                       'weatherobject_g%d.pickle'%(grid))
             if os.path.exists(filename):
                 pass
             else:
@@ -296,8 +299,8 @@ def retrieve_CGMS_input(grid):
                 weatherdata._dump(filename)
 
         # We retrieve the soil data (soil_iterator)
-        filename = folder_local + 'soildata_objects/' +\
-                   'soilobject_g%d.pickle'%grid
+        filename = os.path.join(CGMSdir, 'soildata_objects/',
+                   'soilobject_g%d.pickle'%(grid))
         if os.path.exists(filename):
             soil_iterator = pickle_load(open(filename,'rb'))
         else:
@@ -305,8 +308,9 @@ def retrieve_CGMS_input(grid):
             pickle_dump(soil_iterator,open(filename,'wb'))       
 
         # We retrieve the crop variety info (crop_data)
-        filename = folder_local + 'cropdata_objects/%i/c%i/'%(year,crop_no) +\
-                   'cropobject_g%d_c%d_y%d.pickle'%(grid,crop_no,year)
+        filename = os.path.join(CGMSdir,
+                   'cropdata_objects/%i/c%i/'%(year,crop_no),
+                   'cropobject_g%d_c%d_y%d.pickle'%(grid,crop_no,year))
         if os.path.exists(filename):
             pass
         else:
@@ -327,10 +331,10 @@ def retrieve_CGMS_input(grid):
                     dum = str(grid)[0:2]
                 else:
                     dum = str(grid)[0]
-                filename = folder_local + 'sitedata_objects/' +\
-                           '%i/c%i/grid_%s/'%(year,crop_no,dum) +\
+                filename = os.path.join(CGMSdir,
+                           'sitedata_objects/%i/c%i/grid_%s/'%(year,crop_no,dum),
                            'siteobject_g%d_c%d_y%d_s%d.pickle'%(grid, crop_no,
-                                                                   year, stu_no)
+                                                                  year, stu_no))
                 if os.path.exists(filename):
                     pass
                 else:
@@ -342,8 +346,6 @@ def retrieve_CGMS_input(grid):
         print '        the crop was not grown that year in that grid cell'
     except Exception as e:
         print '        Unexpected error', e#sys.exc_info()[0]
-    finally:
-        print '        Done for this grid cell.'
 
     return None
 
