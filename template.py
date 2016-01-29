@@ -26,10 +26,22 @@ except:
 
 logging.debug("  Start date: %s"% rcitems['time.years'])
 logging.info("  Crop type : %s"% rcitems['crop.types'])
+logging.info("  Optimization type : %s"% rcitems['optimize.type'])
 
-years = rcitems['time.years'].split(',')
-crops = rcitems['crop.types'].split(',')
-print years[-1],crops[-1]
+years = rcitems['time.years'].split(',')  # the years to cover
+crops = rcitems['crop.types'].split(',')  # the crop types to consider
+opt_type = rcitems['optimize.type']       # opt_type = 'observed' or gap-filled' referring to the source of the yield-gap factor
+projectdir = rcitems['dir.project']
+
+if opt_type not in ['observed','gap-filled']:
+    logging.error('The specified optimization type (%s) in the rc-file is not recognized' % opt_type )
+    logging.error('Please use either "observed" or "gap-filled" as value')
+    sys.exit(2)
+
+rundir = os.path.join(projectdir,'exec')
+if not os.path.exists(rundir): os.makedirs(rundir)
+outputdir = os.path.join(projectdir,'output')
+if not os.path.exists(outputdir): os.makedirs(outputdir)
 
 # Next open platform class
 
@@ -42,9 +54,22 @@ pf = platform.CapeGrimPlatform()
 for year in years:
     for crop in crops:
 
+        # create directory structure for optimized output per crop and year
+       
+        dirname = os.path.join(outputdir,'%s'%year.strip(),crop.strip().replace(' ','_') )  
+        if not os.path.exists(dirname): 
+            os.makedirs(dirname)
+            logging.info('Created new folder: %s'%dirname)
+
+        jobrc = {'year' : year.strip(),'crop' : crop.strip() , 'dir.output' : dirname, 'optimize.type': opt_type}
+        filename = 'jobs/test_%s_%s.rc'%(year.strip(),crop.strip().replace(' ','_') )
+        rc.write(filename,jobrc)
+        logging.info('An rc-file was created (%s)' % filename )
+
         header= pf.get_job_header()
-        header += 'python ../../pcse++/_01_select_crops_n_regions.py %s %s\n' % (year , crop)
-        pf.write_job('jobs/test_%s_%s.jb'%(year.strip(),crop.strip(),), header, '999')
+        header += 'python ../py/carbon_cycle/_04_optimize_fgap.py rc=%s'%os.path.split(filename)[-1]
+        pf.write_job('jobs/test_%s_%s.jb'%(year.strip(),crop.strip().replace(' ','_') ), header, '999')  
+
 
 #exit
 sys.exit(0)

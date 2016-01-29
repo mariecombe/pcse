@@ -9,7 +9,7 @@ from py.tools.initexit import start_logger, parse_options
 # This script maps NUTS ids to EUROSTAT region names, and crop ids to crop names 
 
 #===============================================================================
-def main():
+def select_crops_regions(crops):
 #===============================================================================
     """
 	This scripts constructs a dictionary of NUTS_ids <--> NUTS names, of
@@ -47,20 +47,10 @@ def main():
 
     """
 #-------------------------------------------------------------------------------
-    from cPickle import load as pickle_load
-    from cPickle import dump as pickle_dump
 
     # Set up the basic logging style, start logging from DEBUG and higher
 
     _ = start_logger(level=logging.DEBUG)
-
-    opts, args = parse_options()
-
-    # First message from logger
-    logging.info('Python Code has started')
-    logging.info('Passed arguments:')
-    for arg,val in args.iteritems():
-        logging.info('         %s : %s'%(arg,val) )
 
 #-------------------------------------------------------------------------------
 # ================================= USER INPUT =================================
@@ -73,17 +63,6 @@ def main():
                     'MT':1,'NL':1,'NO':2,'PL':2,'PT':2,'RO':2,'SE':2,'SI':2,
                     'SK':2,'TR':2,'UK':1}
 
-    # list of selected crops of interest:
-    #crops = ['Potato']#'Grain maize','Spring wheat','Winter wheat',
-            # 'Spring barley','Winter barley','Spring rapeseed','Winter rapeseed',
-            # 'Rye','Potato','Sugar beet','Sunflower','Field beans']
-
-    # list of selected years to simulate the c cycle for:
-    #years = [2006]#,2001,2002,2003,2004,2005,2006,2007,2008,2009,2010]
-
-    crops = [args['crop']]
-    years = [int(args['year'])]
-
     # If you want to check if we match the crop and region names in the EUROSTAT
     # files, set the following files to true, it will print the result to screen
     check_eurostat_file = False
@@ -92,11 +71,9 @@ def main():
 #-------------------------------------------------------------------------------
 # Define general working directories
     currentdir    = os.getcwd()
-    EUROSTATdir   = '/Users/peters/Modeling/pcse/pcse++/EUROSTATobs/' # WP to change
+    inputdir = '/Users/peters/mnt/promise/CO2/wofost/'
+    EUROSTATdir   = os.path.join(inputdir,'EUROSTATobs')
 #-------------------------------------------------------------------------------
-# create a temporary directory if it doesn't exist
-    if not os.path.exists("../tmp"):
-        os.makedirs("../tmp")
 
 #-------------------------------------------------------------------------------
 # 1- WE CREATE A DICTIONARY OF REGIONS IDS AND NAMES TO LOOP OVER
@@ -107,36 +84,19 @@ def main():
 # Create a dictionary of NUTS region names, corresponding to the selected NUTS id
     NUTS_names_dict = map_NUTS_id_to_NUTS_name(NUTS_regions, EUROSTATdir)
 #-------------------------------------------------------------------------------
-# pickle the produced dictionary in the current directory:
-    pathname = os.path.join(currentdir, '../tmp/selected_NUTS_regions.pickle')
-    if os.path.exists(pathname): os.remove(pathname)
-    pickle_dump(NUTS_names_dict, open(pathname,'wb'))
-
 #-------------------------------------------------------------------------------
 # 2- WE CREATE A DICTIONARY OF CROP IDS AND NAMES TO LOOP OVER
 #-------------------------------------------------------------------------------
 # Create a dictionary of crop EUROSTAT names, corresponding to the selected crops
     crop_names_dict = map_crop_id_to_crop_name(crops)
 #-------------------------------------------------------------------------------
-# pickle the produced dictionary:
-    pathname = os.path.join(currentdir, '../tmp/selected_crops.pickle')
-    if os.path.exists(pathname): os.remove(pathname)
-    pickle_dump(crop_names_dict, open(pathname,'wb'))
-
-#-------------------------------------------------------------------------------
-# 3- WE CREATE A LIST OF YEARS TO LOOP OVER?
-#-------------------------------------------------------------------------------
-# pickle the produced dictionary:
-    logging.info( 'We select the following years: %s'% years )
-    pathname = os.path.join(currentdir, '../tmp/selected_years.pickle')
-    if os.path.exists(pathname): os.remove(pathname)
-    pickle_dump(years, open(pathname,'wb'))
-
 #-------------------------------------------------------------------------------
 # 4- FOR INFORMATION: WE CHECK IF WE MATCH THE EUROSTAT NAMES
 #-------------------------------------------------------------------------------
     if check_eurostat_file == True:
         check_EUROSTAT_names_match(NUTS_names_dict, crop_names_dict, EUROSTATdir)
+
+    return NUTS_names_dict,crop_names_dict
 
 
 #===============================================================================
@@ -529,7 +489,7 @@ def make_NUTS_composite(lands_levels, EUROSTATdir):
     path = EUROSTATdir
     filename = 'NUTS_RG_03M_2010'# NUTS regions 
     name = 'NUTS'
-    NUTS_info = map.readshapefile(path + filename, name, drawbounds=False) 
+    NUTS_info = map.readshapefile(os.path.join(path,filename), name, drawbounds=False) 
 
     # retrieve the list of patches to fill and its data to plot
     NUTS_ids_list = list()

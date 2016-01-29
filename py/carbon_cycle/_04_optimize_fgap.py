@@ -2,6 +2,13 @@
 
 # import modules needed in all the methods of this script:
 import sys, os, glob
+sys.path.append('../')  # all py* code
+sys.path.append('../../')
+sys.path.insert(0, "..")
+from py.tools.initexit import start_logger, parse_options
+from py.carbon_cycle._01_select_crops_n_regions import select_crops_regions
+import py.tools.rc as rc
+import logging
 import numpy as np
 
 from datetime import datetime
@@ -19,65 +26,80 @@ def main():
 
     """
 #-------------------------------------------------------------------------------
-    global currentdir, EUROSTATdir, inputdir, ecmwfdir, crop_dict,\
-           NUTS_regions, years, crop, crop_name, year, observed_data,\
+# all the directory names, lists of selected crop/NUTS/years, pre-processed
+# observations, and user input variables are converted to global variables
+    global inputdir, cwdir, CGMSdir, EUROSTATdir, ecmwfdir, outputdir, \
+           crop_dict, NUTS_regions, years, crop, crop_name, year, observed_data,\
            selec_method, ncells, nsoils, weather, opti_metric
 #-------------------------------------------------------------------------------
-# Temporarily add parent directory to python path, to be able to import pcse
-# modules
-    sys.path.insert(0, "..") 
-#-------------------------------------------------------------------------------
+
+
+    _ = start_logger(level=logging.DEBUG)
+
+    opts, args = parse_options()
+
+    # First message from logger
+    logging.info('Python Code has started')
+    logging.info('Passed arguments:')
+    for arg,val in args.iteritems():
+        logging.info('         %s : %s'%(arg,val) )
+
+    rcfilename = args['rc']
+    rcF = rc.read(rcfilename)
+    crops = [ rcF['crop'] ]
+    crops = [i.strip().replace(' ','_') for i in crops]
+    years = [int(rcF['year'])]
+    opt_type = rcF['optimize.type']
+    outputdir = rcF['dir.output']
+    outputdir = os.path.join(outputdir,'ygf')
+
+    if opt_type not in ['observed','gap-filled']:
+        logging.error('The specified optimization type (%s) in the call argument is not recognized' % opt_type )
+        logging.error('Please use either "observed" or "gap-filled" as value in the main rc-file')
+        sys.exit(2)
+
+
 # ================================= USER INPUT =================================
  
     # yield gap factor optimization:
     force_optimization = False # decides if we recalculate the optimum fgap, in
                                # case the results file already exists
     selec_method  = 'topn'    # can be 'topn' or 'randomn' or 'all'
-    ncells        = 3        # number of selected grid cells within a region
-    nsoils        = 3        # number of selected soil types within a grid cell
+    ncells        = 1        # number of selected grid cells within a region
+    nsoils        = 1        # number of selected soil types within a grid cell
     weather       = 'ECMWF'   # weather data to use for the optimization
                               # can be 'CGMS' or 'ECMWF'
 
-    process  = 'parallel'  # multiprocessing option: can be 'serial' or 'parallel'
+    process  = 'serial'  # multiprocessing option: can be 'serial' or 'parallel'
     nb_cores = 12          # number of cores used in case of a parallelization
 
     # input directory paths
     #inputdir = '/Users/mariecombe/Documents/Work/Research_project_3/'+\
     #           'model_input_data/'
-    inputdir = '/Users/mariecombe/mnt/promise/CO2/marie/'
+    inputdir = '/Users/peters/mnt/promise/CO2/wofost/'
 
 # ==============================================================================
 #-------------------------------------------------------------------------------
 # Define general working directories
     currentdir    = os.getcwd()
-    EUROSTATdir   = 'EUROSTATobs/'
-    ecmwfdir      = inputdir + 'CABO_weather_ECMWF/'
+    CGMSdir     = os.path.join(inputdir, 'CGMS')
+    EUROSTATdir = os.path.join(inputdir,'EUROSTATobs')
+    ecmwfdir    = os.path.join(inputdir,'CABO_weather_ECMWF')
 #-------------------------------------------------------------------------------
 # create an output directory if it doesn't exist
-    outputdir     = "../output/optimum_fgap/"
     if not os.path.exists(outputdir):
         os.makedirs(outputdir)
 #-------------------------------------------------------------------------------
 # we retrieve the crops, regions, and years to loop over:
-    try:
-        crop_dict    = pickle_load(open('../tmp/selected_crops.pickle','rb'))
-        years        = pickle_load(open('../tmp/selected_years.pickle','rb'))
-        NUTS_regions = pickle_load(open('../tmp/selected_NUTS_regions.pickle','rb'))
-    except IOError:
-        print '\nYou have not yet selected a shortlist of crops, regions and '+\
-              'years to loop over'
-        print 'Run the script 01_select_crops_n_regions.py first!\n'
-        sys.exit() 
+    NUTS_regions,crop_dict = select_crops_regions(crops)
 #-------------------------------------------------------------------------------
 # we retrieve the EUROSTAT pre-processed yield observations:
     try:
-        filename1 = inputdir + 'preprocessed_yields.pickle'
-        filename2 = inputdir + 'preprocessed_harvests.pickle'
+        filename1 = os.path.join(EUROSTATdir , 'preprocessed_yields.pickle' )
+        filename2 = os.path.join(EUROSTATdir , 'preprocessed_harvests.pickle' )
         yields_dict   = pickle_load(open(filename1,'rb'))
         harvests_dict = pickle_load(open(filename2,'rb'))
     except IOError:
-        print os.path.exists(inputdir + 'preprocessed_yields.pickle')
-        print os.path.exists(inputdir + 'preprocessed_harvests.pickle')
         print '\nYou have not preprocessed the EUROSTAT observations'
         print 'Run the script 03_preprocess_obs.py first!\n'
         sys.exit() 
@@ -92,107 +114,133 @@ def main():
         observed_data = harvests_dict
     elif (opti_metric == 'yield'):
         observed_data = yields_dict
+
 #-------------------------------------------------------------------------------
-# START OF THE OPTIMIZATION OF THE YIELD GAP FACTOR:
 #-------------------------------------------------------------------------------
-# LOOP OVER YEARS:
+# I - OPTIMIZE THE YIELD GAP FACTOR FOR THE CLIMATOLOGICAL PERIOD (2000-2010):
 #-------------------------------------------------------------------------------
     for year in years:
         print 'Year ', year
         print '================================================'
-
-        # create an output directory if it doesn't exist
-        if not os.path.exists(outputdir + '%i/'%year):
-            os.makedirs(outputdir + '%i/'%year)
-
-#-------------------------------------------------------------------------------
-# LOOP OVER CROPS:
 #-------------------------------------------------------------------------------
         for crop in sorted(crop_dict.keys()):
             crop_name  = crop_dict[crop][1]
             print '\nCrop no %i: %s / %s'%(crop_dict[crop][0],crop, crop_name)
             print '================================================'
-
-            # create an output directory if it doesn't exist
-            if not os.path.exists(outputdir + '%i/%s/'%(year,crop)):
-                os.makedirs(outputdir + '%i/%s/'%(year,crop))
-
-            # if the optimization has already been performed and we don't want
-            # to redo it, we skip that year x crop
-            filename = outputdir + '%i/%s/opti_fgap_dict.pickle'%(year,crop) 
-            if (os.path.exists(filename) and force_optimization == False):
-                print "We have already calculated the optimum fgap for that "+\
-                      "year and crop!"
-                continue
-
-            # otherwise, we just perform the optimization for that crop x year
-            else:
-                # we initialize the dictionary of fgap:
-                opti_fgap = dict()
-             
-                # remove old temporary fgap pickle files
-                for filepath in glob.glob('../tmp/fgap_*.pickle'):
-                    if os.path.isfile(filepath): os.remove(filepath)
+            if force_optimization == True:
+                filelist = [f for f in os.listdir(outputdir)]
+                for f in filelist:
+                    os.remove(os.path.join(outputdir,f))
+                print "We force the optimization: output directory just got emptied"
 
 #-------------------------------------------------------------------------------
-# LOOP OVER THE NUTS REGIONS:
+# loop over NUTS regions - this is the parallelized part of the script -
 #-------------------------------------------------------------------------------
-                # we add a timestamp to time the optimization
-                start_timestamp = datetime.utcnow()
-             
-                # if we do a serial iteration:
-                if (process == 'serial'):
-                    for NUTS_no in sorted(NUTS_regions):
-                        opti_fgap[NUTS_no] = optimize_fgap(NUTS_no)
-             
-                # if we do a parallelization
-                if (process == 'parallel'):
-                    import multiprocessing
-                    p = multiprocessing.Pool(nb_cores)
-                    data = p.map(optimize_fgap, sorted(NUTS_regions))
-                    p.close()
-                    # regroup the created temporary multiple files
-                    for NUTS_no in sorted(NUTS_regions):
-                        opti_fgap[NUTS_no] = pickle_load(open(
-                                          '../tmp/fgap_%s.pickle'%NUTS_no,'rb'))
-             
-                # we time the optimization
-                end_timestamp = datetime.utcnow()
-                print '\nFinished dynamic optimization at timestamp:',\
-                       end_timestamp-start_timestamp
-             
-                # we save the dictionary of optimum fgap in the output folder
-                print opti_fgap
-                pickle_dump(opti_fgap, open(filename,'wb'))
+            # we add a timestamp to time the optimization
+            start_timestamp = datetime.utcnow()
+         
+            # if we do a serial iteration:
+            if (process == 'serial'):
+                for NUTS_no in sorted(NUTS_regions):
+                    optimize_fgap(NUTS_no)
+         
+            # if we do a parallelization
+            if (process == 'parallel'):
+                import multiprocessing
+                p = multiprocessing.Pool(nb_cores)
+                data = p.map(optimize_fgap, sorted(NUTS_regions))
+                p.close()
+
+                # regroup the created temporary multiple files
+                #for NUTS_no in sorted(NUTS_regions):
+                #    opti_fgap[NUTS_no] = pickle_load(open(
+                #                      '../tmp/fgap_%s.pickle'%NUTS_no,'rb'))
+         
+            # we time the optimization
+            end_timestamp = datetime.utcnow()
+            print '\nFinished dynamic optimization at timestamp:',\
+                   end_timestamp-start_timestamp
+         
+            # we save the dictionary of optimum fgap in the output folder
+            print opti_fgap
+            pickle_dump(opti_fgap, open(filename,'wb'))
+
     sys.exit()
-
 #-------------------------------------------------------------------------------
-# GRIDDING OF THE FGAP:
 #-------------------------------------------------------------------------------
-# LOOP OVER YEARS:
+# II - READ THE 2000-2010 OPTIMIZED FGAP:
 #-------------------------------------------------------------------------------
-    for year in years:
-        print 'Year ', year
-        print '================================================'
+    opti_fgap = dict()
 #-------------------------------------------------------------------------------
-# LOOP OVER CROPS:
+# loop over years:
+#-------------------------------------------------------------------------------
+    for year in base_clim_years:
+        opti_fgap[year] = dict()
+#-------------------------------------------------------------------------------
+# loop over crops
 #-------------------------------------------------------------------------------
         for crop in sorted(crop_dict.keys()):
-            crop_name  = crop_dict[crop][1]
-            print '\nCrop no %i: %s / %s'%(crop_dict[crop][0],crop, crop_name)
-            print '================================================'
-
             # load the optimum fgap of that year:
             filename = outputdir + '%i/%s/opti_fgap_dict.pickle'%(year,crop) 
-            optimum = pickle_load(open(filename,'rb'))
+            opti_fgap[year][crop] = pickle_load(open(filename,'rb'))
+
 
 #-------------------------------------------------------------------------------
-            #for NUTS_no in sorted(NUTS_regions):
-	    		# we get the fgap of this NUTS region for all grid cells
-	    		# entirely contained in it
-#                for grid_no in whole_cells_in_region:
-#                    opti_fgap[crop][year][grid_no] = optimum[NUTS_no]
+# III - FILL THE GAPS OF THE 2000-2010 FGAP INFO:
+#-------------------------------------------------------------------------------
+    print "\nNow filling the gaps of the optimized fgap maps......"
+#-------------------------------------------------------------------------------
+# loop over years:
+#-------------------------------------------------------------------------------
+    for year in years:
+        print 'Year ', year
+        print '================================================'
+#-------------------------------------------------------------------------------
+# loop over crops:
+#-------------------------------------------------------------------------------
+        for crop in sorted(crop_dict.keys()):
+            crop_name  = crop_dict[crop][1]
+            print '\nCrop no %i: %s / %s'%(crop_dict[crop][0],crop, crop_name)
+            print '================================================'
+            # spatially and time averaged fgap for that crop:
+            crop_fgap = np.mean([[opti_fgap[y][crop][n] for n in NUTS] for y in 
+                        np.arange(2000,2011,1)])
+            # spatially averaged fgap for that crop and year:
+            euro_fgap = np.mean([opti_fgap[year][crop][n] for n in NUTS_regions])
+#-------------------------------------------------------------------------------
+# loop over NUTS regions:
+#-------------------------------------------------------------------------------
+            for NUTS_no in sorted(NUTS_regions):
+                # we skip the regions that have an optimum
+                if (opti_fgap[year][crop][NUTS_no] != np.nan): 
+                    continue
+                # for the regions that do not have an optimum, we try to fill 
+                # the gap using rules
+                else:
+                    prev_fgap = opti_fgap[year-1][crop][NUTS_no]
+                    next_fgap = opti_fgap[year+1][crop][NUTS_no]
+                    clim_fgap = np.mean([opti_fgap[y][crop][NUTS_no] for y in 
+                                np.arange(2000,2011,1)])
+                    # rule 1 - try to borrow fgap from previous year, same region 
+                    if (prev_fgap != np.nan):
+                        opti_fgap[year][crop][NUTS_no] = prev_fgap
+                    # rule 2 - try to borrow fgap from next year, same region
+                    elif (next_fgap != np.nan):
+                        opti_fgap[year][crop][NUTS_no] = next_fgap
+                    # rule 3 - try to borrow the 2000-2010 fgap mean of that region
+                    elif (clim_fgap != np.nan):
+                        opti_fgap[year][crop][NUTS_no] = clim_fgap
+                    # rule 4 - try to borrow the European fgap mean of that year
+                    elif (euro_fgap != np.nan):
+                        opti_fgap[year][crop][NUTS_no] = euro_fgap
+                    # rule 5 - borrow the European climatic mean fgap of that crop
+                    else:
+                        opti_fgap[year][crop][NUTS_no] = crop_fgap
 
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+# IV - GRID THE OPTIMUM FGAP INFORMATION ON THE CGMS GRID
 #-------------------------------------------------------------------------------
 # LOOP OVER THE CULTIVATED GRID CELLS:
 #-------------------------------------------------------------------------------
@@ -219,53 +267,67 @@ def optimize_fgap(NUTS_no):
     from maries_toolbox import define_opti_years,\
                                select_cells, select_soils, get_EUR_frac_crop
 #-------------------------------------------------------------------------------
+    # if the optimization has already been performed and we don't want
+    # to redo it, we skip that year x crop
+    filename = os.path.join(outputdir,'opti_fgap_%s.pickle'%NUTS_no)
+    if (os.path.exists(filename) and force_optimization == False):
+        print "We have already calculated the optimum fgap for that "+\
+              "year and crop!"
+        return None
+#-------------------------------------------------------------------------------
+    # Get the NUTS region name
     NUTS_name = NUTS_regions[NUTS_no][1]
     print "\nRegion: %s / %s"%(NUTS_no, NUTS_name)
 #-------------------------------------------------------------------------------
-# NB: we do NOT detrend the yields anymore, since fgap is not supposed to be
-# representative of multi-annual gap
+    # NB: we do NOT detrend the yields anymore, since fgap is not supposed to be
+    # representative of multi-annual gap
     detrend = observed_data[crop][NUTS_no]
 #-------------------------------------------------------------------------------
-# if there were no reported yields at all, or no reported yield for the year of
-# interest, we skip that region
+	# if there were no reported yields at all, or no reported yield for the
+	# year of interest, we skip that region
     if (len(detrend[1])==0) or (year not in detrend[1]):
         print 'No reported yield, optimum cannot be compiled'
-        optimum = np.nan
+        return None
     else:
 #-------------------------------------------------------------------------------
-# Select the grid cells to loop over for the optimization
+        # if there were no "non-shared" cells that were cultivated that year,
+        # we skip that region
         selected_grid_cells = select_cells(NUTS_no, crop_dict[crop][0], 
-                                       year, inputdir+'CGMS/', 
+                                       year, CGMSdir, 
                                        method=selec_method, n=ncells, 
                                        select_from='cultivated')
-#-------------------------------------------------------------------------------
-# if there were no cells cultivated that year, we skip that region
         if (selected_grid_cells == None):
-            print "No 'whole' grid cells are cultivated, optimum cannot be compiled"
-            optimum = np.nan
+            print "No 'whole' cultivated grid cells in region, optimum cannot"+\
+                  " be compiled"
+            return None
         else:
 #-------------------------------------------------------------------------------
-# Select the soil types to loop over for the optimization
+            # NB: in the optimization routine, we use the observed cultivation
+            # fraction of the crop to calculate the soil cultivated areas, and
+            # thus to compute the regional yields (= weighted average of yields
+            # using soil cultivated areas)
+
+            # if the observed cultivated fraction is zero, we skip that region
             selected_soil_types = select_soils(crop_dict[crop][0],
                                        [g for g,a in selected_grid_cells],
-                                       inputdir+'CGMS/',
+                                       CGMSdir,
                                        method=selec_method, 
                                        n=nsoils)
-#-------------------------------------------------------------------------------
-# we retrieve the EUROSTAT fraction of arable land cultivated into the crop
+
+			# we retrieve the EUROSTAT fraction of arable land cultivated into
+			# the crop
             frac_crop_over_years = get_EUR_frac_crop(crop_name, 
                                                          NUTS_name, EUROSTATdir)
  
             # the fraction of cultivation for year X:
-            index_year = np.abs(np.array(frac_crop_over_years[1]) - 
-                                                       float(year))
+            index_year = np.abs(np.array(frac_crop_over_years[1]) - float(year))
             index_year = index_year.argmin()
             frac_crop  = frac_crop_over_years[0][index_year]
-            print 'We use a cultivated fraction of %.2f'%frac_crop
+            print 'Soils are %.2f'%(frac_crop*100.)+' % cultivated as this crop'
   
-            if frac_crop == 0.:
+            if frac_crop <= 0.:
                 print 'Observed cultivated area = 0, optimum cannot be compiled'
-                optimum = np.nan
+                return None
             else:
 #-------------------------------------------------------------------------------
 # Count the area used to calculate the harvest
@@ -273,34 +335,41 @@ def optimize_fgap(NUTS_no):
                     areas = calc_cultivated_area_of_crop(selected_grid_cells, 
                                                             selected_soil_types)
 #-------------------------------------------------------------------------------
-# Perform optimization of the yield gap factor
-                output_tagname = 'crop%i_region%s_%s_%igx%is_%s_%i'%(
-                                  crop_dict[crop][0], NUTS_no, selec_method, 
-                                  ncells, nsoils, opti_metric, year)
- 
-                optimum = optimize_regional_yldgapf_dyn(detrend,
+                # we set the optimization code (gives us info on how we optimize)
+                opti_code = 1 # 1= observations are available for optimization
+                              # 2= no obs available 
+
+                # in all other cases, we optimize the yield gap factor
+                optimum = optimize_regional_yldgapf_dyn(NUTS_no, detrend,
                                                         crop_dict[crop][0],
                                                         frac_crop,
                                                         selected_grid_cells,
                                                         selected_soil_types,
-                                                        inputdir+'CGMS/',
-                                                        [year], output_tagname,
+                                                        CGMSdir,
+                                                        [year],
                                                         obs_type=opti_metric,
                                                         plot_rmse=False)
-#-------------------------------------------------------------------------------
-# create a temporary file
-    pickle_dump(optimum, open('../tmp/fgap_%s.pickle'%NUTS_no,'wb'))
 
-    return optimum
+                # we compute the list of whole grid cells contained in the region
+                shortlist_cells = select_cells(NUTS_no, crop_dict[crop][0], 
+                                  year, CGMSdir, method='all', 
+                                  select_from='cultivated')
+
+                # pickle the information per NUTS region
+                outlist = [NUTS_no, opti_code, optimum, shortlist_cells]
+                filename = os.path.join(outputdir,'fgap_%s.pickle'%NUTS_no)
+                pickle_dump(outlist, open(filename,'wb'))
+
+    return None
 
 #===============================================================================
 # Function to optimize the regional yield gap factor using the difference
 # between the regional simulated and the observed harvest or yield (ie. 1 gap to
 # optimize per NUTS region). This function iterates dynamically to find the
 # optimum YLDGAPF.
-def optimize_regional_yldgapf_dyn(detrend, crop_no_, frac_crop, selected_grid_cells_,
- selected_soil_types_, inputdir, opti_years_, output_tagname_, obs_type='yield',
-           plot_rmse=True):
+def optimize_regional_yldgapf_dyn(NUTS_no_, detrend, crop_no_, frac_crop_, 
+    selected_grid_cells_, selected_soil_types_, inputdir, opti_years_, 
+    obs_type='yield', plot_rmse=False):
 #===============================================================================
 
     import math
@@ -356,14 +425,16 @@ def optimize_regional_yldgapf_dyn(detrend, crop_no_, frac_crop, selected_grid_ce
             # Retrieve the weather data of one grid cell (all years are in one
             # file) 
             if (weather == 'CGMS'):
-                filename = inputdir+'weatherobject_g%d.pickle'%grid
+                filename = os.path.join(inputdir,'weather_objects/',
+                           'weatherobject_g%d.pickle'%grid)
                 weatherdata = WeatherDataProvider()
                 weatherdata._load(filename)
             if (weather == 'ECMWF'):
                 weatherdata = CABOWeatherDataProvider('%i'%grid,fpath=ecmwfdir)
                         
             # Retrieve the soil data of one grid cell (all possible soil types) 
-            filename = inputdir+'soilobject_g%d.pickle'%grid
+            filename = os.path.join(inputdir,'soildata_objects/',
+                       'soilobject_g%d.pickle'%grid)
             soil_iterator = pickle_load(open(filename,'rb'))
 
             for smu, stu_no, weight, soildata in selected_soil_types_[grid]:
@@ -377,14 +448,25 @@ def optimize_regional_yldgapf_dyn(detrend, crop_no_, frac_crop, selected_grid_ce
                 for y, year in enumerate(opti_years_): 
 
                     # Retrieve yearly data 
-                    filename = inputdir+'timerobject_g%d_c%d_y%d.pickle'\
-                                                           %(grid,crop_no_,year)
+                    filename = os.path.join(inputdir,
+                               'timerdata_objects/%i/c%i/'%(year,crop_no_),
+                               'timerobject_g%d_c%d_y%d.pickle'\
+                                                           %(grid,crop_no_,year))
                     timerdata = pickle_load(open(filename,'rb'))
-                    filename = inputdir+'cropobject_g%d_c%d_y%d.pickle'\
-                                                           %(grid,crop_no_,year)
+                    filename = os.path.join(inputdir,
+                               'cropdata_objects/%i/c%i/'%(year,crop_no_),
+                               'cropobject_g%d_c%d_y%d.pickle'\
+                                                           %(grid,crop_no_,year))
                     cropdata = pickle_load(open(filename,'rb'))
-                    filename = inputdir+'siteobject_g%d_c%d_y%d_s%d.pickle'\
-                                                    %(grid,crop_no_,year,stu_no)
+                    if str(grid).startswith('1'):
+                        dum = str(grid)[0:2]
+                    else:
+                        dum = str(grid)[0]
+                    filename = os.path.join(inputdir,
+                               'sitedata_objects/%i/c%i/grid_%s/'
+                                                          %(year,crop_no_,dum),
+                               'siteobject_g%d_c%d_y%d_s%d.pickle'\
+                                                   %(grid,crop_no_,year,stu_no))
                     sitedata = pickle_load(open(filename,'rb'))
 
                     for f,factor in enumerate(f_range):
@@ -400,7 +482,7 @@ def optimize_regional_yldgapf_dyn(detrend, crop_no_, frac_crop, selected_grid_ce
                         TSO[f,y] = wofost_object.get_variable('TWSO')
 
                     #print grid, smu, year, counter, TSO[-1]
-                RES = RES + [(grid, stu_no, weight*frac_arable*frac_crop, TSO)]
+                RES = RES + [(grid, stu_no, weight*frac_arable*frac_crop_, TSO)]
 
         # 4- we aggregate the yield or harvest into the regional one with array
         # operations
@@ -424,28 +506,13 @@ def optimize_regional_yldgapf_dyn(detrend, crop_no_, frac_crop, selected_grid_ce
 
         # 5- we compute the (sim-obs) differences.
         DIFF = TSO_regional - OBS
-        #assert (TSO_regional[-1][0] > 0.), 'Problem with the potential WOFOST simulation.'
-        #assert (TSO_regional[-1] > OBS[-1]), 'Observed yield too high! The DM '+\
-        #       'content is wrong. Check it again.'
+        if (TSO_regional[-1][0] <= 0.):
+            print 'WARNING: no simulated crop growth. We set the optimum fgap to 1.'
+            return 1.
         if (TSO_regional[-1] <= OBS[-1]):
-            print 'Observed yield larger than simulated yield. Optimum found: 1'
+            print 'WARNING: obs yield > sim yield. We set optimum to 1.'
             return 1.
         
-        # Writing more output
-#        print '\nIteration %i'%iter_no
-#        print 'OPTIMIZATION MATRICES'
-#        print 'rows = yldgapf values; cols = optimization years'
-#        print 'opti years:', opti_years_, ', yldgapf values:', f_range
-#        print 'matrix of regional yields:'
-#        print ' '.join(str(f) for f in TSO_regional)
-#        print 'matrix of observed yields:'
-#        print ' '.join(str(f) for f in OBS)
-#        print 'matrix of sim-obs differences:'
-#        if (obs_type == 'harvest'):
-#            print ' '.join(str(f) for f in DIFF)
-#            print 'cultivated area of region: %.2f (in 1000 ha)'%\
-#                                                             (sum_weights/1000.)
-
         # 6- we calculate the RMSE (root mean squared error) of the 3 yldgapf
         # The RMSE of each yldgapf is based on N obs-sim differences for the N
         # years looped over
@@ -457,9 +524,6 @@ def optimize_regional_yldgapf_dyn(detrend, crop_no_, frac_crop, selected_grid_ce
                 list_of_DIFF = list_of_DIFF + [DIFF[f,y]]
             RMSE[f] = np.sqrt(np.mean( [ math.pow(j,2) for j in
                                                            list_of_DIFF ] ))
-
-#        print 'Root Mean Square Error:'
-#        print ' '.join(str(f) for f in RMSE)
 
         # We store the value of the RMSE for plotting purposes
         RMSE_stored = RMSE_stored + [(f_range[1], RMSE[1]), (f_range[3], RMSE[3])]
@@ -490,22 +554,17 @@ def optimize_regional_yldgapf_dyn(detrend, crop_no_, frac_crop, selected_grid_ce
                 f2 = f_range[index_new_center+1]
                 f4 = f_range[index_new_center+2]
 
-	# when we are finished iterating on the yield gap factor range, we sort the
-	# (RMSE, YLDGAPF) tuples by values of YLDGAPF
-    #RMSE_stored  = sorted(RMSE_stored, key=operator_itemgetter(0))
-    #pickle_dump(RMSE_stored, open(os.path.join(currentdir,'pcse_summary_output',
-    #                               'RMSE_' + output_tagname_ + '.pickle'),'wb'))       
-
 	# when we are finished iterating on the yield gap factor range, we plot the
     # RMSE as a function of the yield gap factor
     if (plot_rmse == True):
+        RMSE_stored  = sorted(RMSE_stored, key=operator_itemgetter(0))
         x,y = zip(*RMSE_stored)
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5,5))
         fig.subplots_adjust(0.15,0.16,0.95,0.96,0.4,0.)
         ax.plot(x, y, c='k', marker='o')
         ax.set_xlabel('yldgapf (-)')
         ax.set_ylabel('RMSE')
-        fig.savefig('RMSE_'+output_tagname_+'_dyniter.png')
+        fig.savefig('%s_opti_fgap.png'%NUTS_no_)
 
     # 8- when we are finished iterating on the yield gap factor range, we return
     # the optimum value. We look for the yldgapf with the lowest RMSE

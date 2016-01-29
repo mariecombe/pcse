@@ -77,7 +77,7 @@ def parse_options():
             key, arg = item.split('=')
         else:
             logging.error('%s' % 'Argument passed without description (%s)' % item)
-            raise getopt.GetoptError, arg
+            raise getopt.GetoptError, item
 
         arguments[key] = arg
 
