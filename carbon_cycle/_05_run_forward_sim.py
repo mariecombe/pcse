@@ -125,14 +125,14 @@ def main():
                 # We add a timestamp at start of the forward runs
                 start_timestamp = datetime.utcnow()
                 
-				# if we do a serial iteration, we loop over the grid cells
-				# that contain arable land
+                # if we do a serial iteration, we loop over the grid cells
+                # that contain arable land
                 if (process == 'serial'):
                     for f in filelist:
                         forward_sim_per_region(f)
                 
-				# if we do a parallelization, we use the multiprocessor
-				# module to provide series of cells to the function
+                # if we do a parallelization, we use the multiprocessor
+                # module to provide series of cells to the function
                 if (process == 'parallel'):
                     import multiprocessing
                     p = multiprocessing.Pool(nb_cores)
@@ -178,8 +178,8 @@ def main():
                     for grid in sorted(grid_shortlist):
                         forward_sim_per_grid(grid)
                 
-				# if we do a parallelization, we use the multiprocessor module
-				# to provide series of cells to the function
+                # if we do a parallelization, we use the multiprocessor module
+                # to provide series of cells to the function
                 if (process == 'parallel'):
                     import multiprocessing
                     p = multiprocessing.Pool(nb_cores)
@@ -201,7 +201,7 @@ def forward_sim_per_region(fgap_filename):
 #===============================================================================
     global fgap
 
-	# get the optimum fgap and the grid cell list for these regions
+    # get the optimum fgap and the grid cell list for these regions
     optimi_info = pickle_load(open(os.path.join(yldgapfdir,fgap_filename),'rb')) 
     NUTS_no     = optimi_info[0]
     optimi_code = optimi_info[1]
