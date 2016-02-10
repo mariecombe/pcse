@@ -106,52 +106,52 @@ def map_crop_id_to_crop_name(crop_list):
     crop_names = dict()
 
     for nickname in crop_list:
-        if (nickname == 'Winter wheat'):
+        if (nickname.lower() == 'Winter wheat'.lower()):
             crop_names[nickname] = [1,'Common wheat and spelt',
                                       'Common winter wheat']
-        if (nickname == 'Spring wheat'):
+        if (nickname.lower() == 'Spring wheat'.lower()):
             crop_names[nickname] = [np.nan,'Common wheat and spelt',
                                       'Common spring wheat']
         #if (nickname == 'durum wheat'):
         #    crop_names[nickname] = [np.nan,'Durum wheat',
         #                               'Durum wheat']
-        if (nickname == 'Grain maize'):
+        if (nickname.lower() == 'Grain maize'.lower()):
             crop_names[nickname] = [2,'Grain maize',
                                       'Grain maize and corn-cob-mix']
-        if (nickname == 'Fodder maize'):
+        if (nickname.lower() == 'Fodder maize'.lower()):
             crop_names[nickname] = [12,'Green maize',
                                       'Green maize']
-        if (nickname == 'Spring barley'):
+        if (nickname.lower() == 'Spring barley.lower()'):
             crop_names[nickname] = [3,'Barley',
                                       'Barley']
-        if (nickname == 'Winter barley'):
+        if (nickname.lower() == 'Winter barley'.lower()):
             crop_names[nickname] = [13,'Barley',
                                       'Winter barley']
-        if (nickname == 'Rye'):
+        if (nickname.lower() == 'Rye'.lower()):
             crop_names[nickname] = [4,'Rye',
                                       'Rye']
         #if (nickname == 'Rice'):
         #    crop_names[nickname] = [np.nan,'Rice',
         #                              'Rice']
-        if (nickname == 'Sugar beet'):
+        if (nickname.lower() == 'Sugar beet'.lower()):
             crop_names[nickname] = [6,'Sugar beet (excluding seed)',
                                       'Sugar beet (excluding seed)']
-        if (nickname == 'Potato'):
+        if (nickname.lower() == 'Potato'.lower()):
             crop_names[nickname] = [7,'Potatoes (including early potatoes and'+\
                                       ' seed potatoes)','Potatoes (including '+\
                                       'early potatoes and seed potatoes)']
-        if (nickname == 'Field beans'):
+        if (nickname.lower() == 'Field beans'.lower()):
             crop_names[nickname] = [8,'Dried pulses and protein crops for the'+\
                                       ' production of grain (including seed ' +\
                                       'and mixtures of cereals and pulses)',
                                       'Broad and field beans']
-        if (nickname == 'Spring rapeseed'):
+        if (nickname.lower() == 'Spring rapeseed'.lower()):
             crop_names[nickname] = [np.nan,'Rape and turnip rape',
                                       'Spring rape']
-        if (nickname == 'Winter rapeseed'):
+        if (nickname.lower() == 'Winter rapeseed'.lower()):
             crop_names[nickname] = [10,'Rape and turnip rape',
                                       'Winter rape']
-        if (nickname == 'Sunflower'):
+        if (nickname.lower() == 'Sunflower'.lower()):
             crop_names[nickname] = [11,'Sunflower seed',
                                       'Sunflower seed']
 
@@ -570,3 +570,4 @@ def check_EUROSTAT_names_match(NUTS_names_dict, crop_names_dict, EUROSTATdir):
 if __name__=='__main__':
     main()
 #===============================================================================
+
