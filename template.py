@@ -33,9 +33,9 @@ crops = rcitems['crop.types'].split(',')  # the crop types to consider
 opt_type = rcitems['optimize.type']       # opt_type = 'observed' or gap-filled' referring to the source of the yield-gap factor
 projectdir = rcitems['dir.project']
 
-if opt_type not in ['observed','gap-filled']:
+if opt_type not in ['observed','gapfilled']:
     logging.error('The specified optimization type (%s) in the rc-file is not recognized' % opt_type )
-    logging.error('Please use either "observed" or "gap-filled" as value')
+    logging.error('Please use either "observed" or "gapfilled" as value')
     sys.exit(2)
 
 rundir = os.path.join(projectdir,'exec')
@@ -62,14 +62,31 @@ for year in years:
             logging.info('Created new folder: %s'%dirname)
 
         jobrc = {'year' : year.strip(),'crop' : crop.strip() , 'dir.output' : dirname, 'optimize.type': opt_type}
-        filename = 'jobs/test_%s_%s.rc'%(year.strip(),crop.strip().replace(' ','_') )
+        filename = 'jobs/step1_%s_%s.rc'%(year.strip(),crop.strip().replace(' ','_') )
         rc.write(filename,jobrc)
         logging.info('An rc-file was created (%s)' % filename )
 
-        header= pf.get_job_header()
-        header += 'python ../py/carbon_cycle/_04_optimize_fgap.py rc=%s'%os.path.split(filename)[-1]
-        pf.write_job('jobs/test_%s_%s.jb'%(year.strip(),crop.strip().replace(' ','_') ), header, '999')  
+        # We first run the ygf optimization and directly do the forward runs as well
 
+        runjobname = 'jobs/runopt-%s_%s.jb'%(year.strip(),crop.strip().replace(' ','_') )
+        header= pf.get_job_header()
+        header += 'python ../py/carbon_cycle/_04_optimize_fgap.py rc=%s\n'%os.path.split(filename)[-1]
+        header += 'python ../py/carbon_cycle/_05_run_forward_sim.py rc=%s\n'%os.path.split(filename)[-1]
+        pf.write_job(runjobname, header, '999')  
+
+        # Then we gapfill
+
+        runjobname = 'jobs/gapfill-%s_%s.jb'%(year.strip(),crop.strip().replace(' ','_') )
+        header= pf.get_job_header()
+        header += 'python ../py/carbon_cycle/gapfill.py rc=%s\n'%os.path.split(filename)[-1]
+        pf.write_job(runjobname, header, '999')  
+
+        # And finally we run the gapfilled NUTS regions forward
+
+        runjobname = 'jobs/rungap-%s_%s.jb'%(year.strip(),crop.strip().replace(' ','_') )
+        header= pf.get_job_header()
+        header += 'python ../py/carbon_cycle/_05_run_forward_sim.py rc=%s\n'%os.path.split(filename)[-1]
+        pf.write_job(runjobname, header, '999')  
 
 #exit
 sys.exit(0)

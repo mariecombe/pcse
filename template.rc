@@ -2,12 +2,13 @@
 !
 ! The time for which to start and end the data assimilation experiment in format YYYY-MM-DD HH:MM:SS
 
+steps.todo          : run-obs, gap-fill, run-gaps
+
 time.years          : 2001, 2002, 2003, 2004
 
-crop.types          : Potato, Winter Wheat, Winter Barley
+crop.types          : Potato, Winter wheat, Winter barley
 
 optimize.type       : observed
 
 dir.project         : /Storage/CO2/peters/template
 
-!testing
