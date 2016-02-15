@@ -52,9 +52,9 @@ def optimize():
     outputdir = rcF['dir.output']
     outputdir = os.path.join(outputdir,'ygf')
 
-    if opt_type not in ['observed','gap-filled']:
+    if opt_type not in ['observed','gapfilled']:
         logging.error('The specified optimization type (%s) in the call argument is not recognized' % opt_type )
-        logging.error('Please use either "observed" or "gap-filled" as value in the main rc-file')
+        logging.error('Please use either "observed" or "gapfilled" as value in the main rc-file')
         sys.exit(2)
 
 
@@ -182,6 +182,21 @@ def optimize_fgap(NUTS_no):
     NUTS_name = NUTS_regions[NUTS_no][1]
     print ( "Region: %s / %s"%(NUTS_no, NUTS_name) )
 #-------------------------------------------------------------------------------
+    # if there were no "non-shared" cells that were cultivated that year,
+    # we skip that region in all further calculations
+    selected_grid_cells = select_cells(NUTS_no, crop_dict[crop][0], 
+                                   year, CGMSdir, 
+                                   method=selec_method, n=ncells, 
+                                   select_from='cultivated')
+    if (selected_grid_cells == None):
+        logging.info( "No 'whole' cultivated grid cells for %s in region %s"%(crop,NUTS_no) )
+        logging.info( "This crop/NUTS combination will be skipped from now on")
+        filename = os.path.join(outputdir,'ygf_%s_noncultivated.pickle'% NUTS_no )
+        outlist = [NUTS_no, 'noncultivated', np.NaN, [] ]
+        pickle_dump(outlist, open(filename,'wb'))
+        return None
+
+#-------------------------------------------------------------------------------
     # NB: we do NOT detrend the yields anymore, since fgap is not supposed to be
     # representative of multi-annual gap
     detrend = observed_data[crop][NUTS_no]
@@ -189,78 +204,70 @@ def optimize_fgap(NUTS_no):
 	# if there were no reported yields at all, or no reported yield for the
 	# year of interest, we skip that region
     if (len(detrend[1])==0) or (year not in detrend[1]):
-        logging.info( 'No reported yield, optimum cannot be compiled' )
+        logging.info( 'No reported yield of %s in %s in %s, optimum cannot be compiled'%(crop,NUTS_no, year) )
+        logging.info( 'This region will need to be gapfilled')
+        filename = os.path.join(outputdir,'ygf_%s_togapfill.pickle'% NUTS_no )
+        outlist = [NUTS_no, 'togapfill', np.NaN, [] ]
+        pickle_dump(outlist, open(filename,'wb'))
+        return None
+#-------------------------------------------------------------------------------
+    # NB: in the optimization routine, we use the observed cultivation
+    # fraction of the crop to calculate the soil cultivated areas, and
+    # thus to compute the regional yields (= weighted average of yields
+    # using soil cultivated areas)
+
+    # if the observed cultivated fraction is zero, we skip that region
+    selected_soil_types = select_soils(crop_dict[crop][0],
+                               [g for g,a in selected_grid_cells],
+                               CGMSdir,
+                               method=selec_method, 
+                               n=nsoils)
+
+    # we retrieve the EUROSTAT fraction of arable land cultivated into
+    # the crop
+    frac_crop_over_years = get_EUR_frac_crop(crop_name, 
+                                                 NUTS_name, EUROSTATdir)
+
+    # the fraction of cultivation for year X:
+    index_year = np.abs(np.array(frac_crop_over_years[1]) - float(year))
+    index_year = index_year.argmin()
+    frac_crop  = frac_crop_over_years[0][index_year]
+    logging.info( 'Soils are %.2f'%(frac_crop*100.)+' % cultivated as this crop' )
+
+    if frac_crop <= 0.:
+        logging.info( 'Observed cultivated area = 0, optimum cannot be compiled' )
         return None
     else:
 #-------------------------------------------------------------------------------
-        # if there were no "non-shared" cells that were cultivated that year,
-        # we skip that region
-        selected_grid_cells = select_cells(NUTS_no, crop_dict[crop][0], 
-                                       year, CGMSdir, 
-                                       method=selec_method, n=ncells, 
-                                       select_from='cultivated')
-        if (selected_grid_cells == None):
-            logging.info( "No 'whole' cultivated grid cells in region, optimum cannot be compiled" )
-            return None
-        else:
-#-------------------------------------------------------------------------------
-            # NB: in the optimization routine, we use the observed cultivation
-            # fraction of the crop to calculate the soil cultivated areas, and
-            # thus to compute the regional yields (= weighted average of yields
-            # using soil cultivated areas)
-
-            # if the observed cultivated fraction is zero, we skip that region
-            selected_soil_types = select_soils(crop_dict[crop][0],
-                                       [g for g,a in selected_grid_cells],
-                                       CGMSdir,
-                                       method=selec_method, 
-                                       n=nsoils)
-
-			# we retrieve the EUROSTAT fraction of arable land cultivated into
-			# the crop
-            frac_crop_over_years = get_EUR_frac_crop(crop_name, 
-                                                         NUTS_name, EUROSTATdir)
- 
-            # the fraction of cultivation for year X:
-            index_year = np.abs(np.array(frac_crop_over_years[1]) - float(year))
-            index_year = index_year.argmin()
-            frac_crop  = frac_crop_over_years[0][index_year]
-            logging.info( 'Soils are %.2f'%(frac_crop*100.)+' % cultivated as this crop' )
-  
-            if frac_crop <= 0.:
-                logging.info( 'Observed cultivated area = 0, optimum cannot be compiled' )
-                return None
-            else:
-#-------------------------------------------------------------------------------
 # Count the area used to calculate the harvest
-                if (opti_metric == 'harvest'):
-                    areas = calc_cultivated_area_of_crop(selected_grid_cells, 
-                                                            selected_soil_types)
+        if (opti_metric == 'harvest'):
+            areas = calc_cultivated_area_of_crop(selected_grid_cells, 
+                                                    selected_soil_types)
 #-------------------------------------------------------------------------------
-                # we set the optimization code (gives us info on how we optimize)
-                opti_code = 1 # 1= observations are available for optimization
-                              # 2= no obs available 
+        # we set the optimization code (gives us info on how we optimize)
+        opti_code = 1 # 1= observations are available for optimization
+                      # 2= no obs available 
 
-                # in all other cases, we optimize the yield gap factor
-                optimum = optimize_regional_yldgapf_dyn(NUTS_no, detrend,
-                                                        crop_dict[crop][0],
-                                                        frac_crop,
-                                                        selected_grid_cells,
-                                                        selected_soil_types,
-                                                        CGMSdir,
-                                                        [year],
-                                                        obs_type=opti_metric,
-                                                        plot_rmse=False)
+        # in all other cases, we optimize the yield gap factor
+        optimum = optimize_regional_yldgapf_dyn(NUTS_no, detrend,
+                                                crop_dict[crop][0],
+                                                frac_crop,
+                                                selected_grid_cells,
+                                                selected_soil_types,
+                                                CGMSdir,
+                                                [year],
+                                                obs_type=opti_metric,
+                                                plot_rmse=False)
 
-                # we compute the list of whole grid cells contained in the region
-                shortlist_cells = select_cells(NUTS_no, crop_dict[crop][0], 
-                                  year, CGMSdir, method='all', 
-                                  select_from='cultivated')
+        # we compute the list of whole grid cells contained in the region
+        shortlist_cells = select_cells(NUTS_no, crop_dict[crop][0], 
+                          year, CGMSdir, method='all', 
+                          select_from='cultivated')
 
-                # pickle the information per NUTS region
-                outlist = [NUTS_no, opti_code, optimum, shortlist_cells]
-                filename = os.path.join(outputdir,'ygf_%s_%s.pickle'% (NUTS_no, opt_type))
-                pickle_dump(outlist, open(filename,'wb'))
+        # pickle the information per NUTS region
+        outlist = [NUTS_no, opti_code, optimum, shortlist_cells]
+        filename = os.path.join(outputdir,'ygf_%s_%s.pickle'% (NUTS_no, opt_type))
+        pickle_dump(outlist, open(filename,'wb'))
 
     return None
 

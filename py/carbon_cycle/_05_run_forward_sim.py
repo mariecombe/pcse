@@ -38,15 +38,15 @@ def main():
 # modules
     sys.path.insert(0, "..") 
 
-    _ = start_logger(level=logging.DEBUG)
+    mlogger = start_logger(level=logging.DEBUG)
 
     opts, args = parse_options()
 
     # First message from logger
-    logging.info('Python Code has started')
-    logging.info('Passed arguments:')
+    mlogger.info('Python Code has started')
+    mlogger.info('Passed arguments:')
     for arg,val in args.iteritems():
-        logging.info('         %s : %s'%(arg,val) )
+        mlogger.info('         %s : %s'%(arg,val) )
 
     rcfilename = args['rc']
     rcF = rc.read(rcfilename)
@@ -57,9 +57,9 @@ def main():
     outputdir = rcF['dir.output']
     outputdir = os.path.join(outputdir,'wofost')
 
-    if opt_type not in ['observed','gap-filled']:
-        logging.error('The specified optimization type (%s) in the call argument is not recognized' % opt_type )
-        logging.error('Please use either "observed" or "gap-filled" as value in the main rc-file')
+    if opt_type not in ['observed','gapfilled']:
+        mlogger.error('The specified optimization type (%s) in the call argument is not recognized' % opt_type )
+        mlogger.error('Please use either "observed" or "gapfilled" as value in the main rc-file')
         sys.exit(2)
 
 #-------------------------------------------------------------------------------
@@ -114,7 +114,7 @@ def main():
             # create output folder if needed
             if not os.path.exists(wofostdir):
                 os.makedirs(wofostdir)
-                logging.info("Created new folder for output (%s)"%wofostdir)
+                mlogger.info("Created new folder for output (%s)"%wofostdir)
             # empty folder if required by user
             if (os.path.exists(wofostdir) and force_sim == True):
                 filelist = [f for f in os.listdir(wofostdir)]
@@ -124,19 +124,19 @@ def main():
 # OPTIMIZED FORWARD RUNS:
 #-------------------------------------------------------------------------------
             if not potential_sim:
-                logging.info( 'OPTIMIZED MODE: we use the available optimum ygf' )
+                mlogger.info( 'OPTIMIZED MODE: we use the available optimum ygf' )
 #-------------------------------------------------------------------------------
                 # print out some information to user
                 if force_sim:
-                    logging.info( 'FORCE MODE: we just wiped the wofost output directory' )
+                    mlogger.info( 'FORCE MODE: we just wiped the wofost output directory' )
                 else:
-                    logging.info( 'SKIP MODE: we skip any simulation already performed' )
+                    mlogger.info( 'SKIP MODE: we skip any simulation already performed' )
 
                 # we retrieve the optimum yield gap factor output files
                 yldgapfdir = os.path.join(outputdir.replace('wofost','ygf') )
                 if not os.path.exists(yldgapfdir):
-                    logging.error( "You haven't optimized the yield gap factor!!" )
-                    logging.error( "Run the script _04_optimize_fgap.py first!" )
+                    mlogger.error( "You haven't optimized the yield gap factor!!" )
+                    mlogger.error( "Run the script _04_optimize_fgap.py first!" )
                     sys.exit(2)
                     continue
              
@@ -155,7 +155,6 @@ def main():
                 # that contain arable land
                 if (process == 'serial'):
                     for f in filelist:
-                        print f
                         forward_sim_per_region(f)
                 
                 # if we do a parallelization, we use the multiprocessor
@@ -168,19 +167,19 @@ def main():
             
                 # We add an end timestamp to time the process
                 end_timestamp = datetime.utcnow()
-                logging.info( 'Duration of the optimized runs: %s '% (end_timestamp - start_timestamp) )
+                mlogger.info( 'Duration of the optimized runs: %s '% (end_timestamp - start_timestamp) )
 
 #-------------------------------------------------------------------------------
 # POTENTIAL FORWARD RUNS:
 #-------------------------------------------------------------------------------
             if potential_sim:
-                logging.info( 'POTENTIAL MODE: we use a yield gap factor of 1.' )
+                mlogger.info( 'POTENTIAL MODE: we use a yield gap factor of 1.' )
 #-------------------------------------------------------------------------------
                 # print out some more information to user
                 if force_sim:
-                    logging.info( 'FORCE MODE: we just wiped the wofost output directory' )
+                    mlogger.info( 'FORCE MODE: we just wiped the wofost output directory' )
                 else:
-                    logging.info( 'SKIP MODE: we skip any simulation already performed' )
+                    mlogger.info( 'SKIP MODE: we skip any simulation already performed' )
 
                 # we retrieve the list of cultivated grid cells:
                 filename = os.path.join(CGMSdir, 'cropdata_objects', 
@@ -228,14 +227,17 @@ def forward_sim_per_region(fgap_filename):
     import logging
     global fgap
 
+    mlogger = start_logger(level=logging.DEBUG)
+
     # get the optimum fgap and the grid cell list for these regions
     optimi_info = pickle_load(open(os.path.join(yldgapfdir,fgap_filename),'rb')) 
     NUTS_no     = optimi_info[0]
     optimi_code = optimi_info[1]
     fgap        = optimi_info[2]
     grid_shortlist = list(set([ g for g,a in optimi_info[3] ]))
-    logging.info( '    NUTS region: %s'%NUTS_no )
+    mlogger.info( '    NUTS region: %s'%NUTS_no )
 
+    print grid_shortlist
     for grid in sorted(grid_shortlist):
         forward_sim_per_grid(grid)
 
@@ -248,21 +250,18 @@ def forward_sim_per_grid(grid_no):
     Function to do forward simulations of crop yield for a given grid cell no
 
     """
-    import logging
     import glob
+    import logging
     from maries_toolbox import select_soils
     from pcse.models import Wofost71_WLP_FD
     from pcse.base_classes import WeatherDataProvider
     from pcse.fileinput.cabo_weather import CABOWeatherDataProvider
 
-    _ = start_logger(level=logging.DEBUG)
-    logging.info( '    - grid cell %i, yield gap factor of %.2f'%(grid_no, fgap) )
+    mlogger = start_logger(level=logging.DEBUG)
 
-    # skipping already performed forward runs if required by user
-    outlist = glob.glob(os.path.join(wofostdir,'wofost_g%i*'%grid_no))
-    if (len(outlist)==nsoils and force_sim == False):
-        logging.info( "        We have already done that forward run! Skipping." )
-        return None
+    mlogger.info( '    - grid cell %i, yield gap factor of %.2f'%(grid_no, fgap) )
+    print '    - grid cell %i, yield gap factor of %.2f'%(grid_no, fgap) 
+
     # Retrieve the weather data of one grid cell
     if (weather == 'CGMS'):
         filename = os.path.join(CGMSdir,'weather_objects/',
@@ -298,10 +297,15 @@ def forward_sim_per_grid(grid_no):
                                        method=selec_method, n=nsoils)
  
     for smu, stu_no, stu_area, soildata in selected_soil_types[grid_no]:
-        logging.info( '        soil type no %i'%stu_no )
+        mlogger.info( '        soil type no %i'%stu_no )
+        print  '        soil type no %i'%stu_no 
         
         wofostfile = os.path.join(wofostdir, "wofost_g%i_s%i_%s.txt"\
                      %(grid_no,stu_no,opt_type))
+        if os.path.exists(wofostfile):
+            mlogger.info('Skipping calculation, output file already exists')
+            print 'Skipping calculation, output file already exists (%s)'%wofostfile
+            continue
  
         # Retrieve the site data of one year, one grid cell, one soil type
         if str(grid_no).startswith('1'):
