@@ -42,19 +42,19 @@ def main():
     dir_sfc     = '/Storage/TM5/METEO/tm5-nc/ec/ei/fc012up2tr3/sfc/glb100x100/'
     dir_tropo   = '/Storage/TM5/METEO/tm5-nc/ec/ei/fc012up2tr3/tropo25/'+\
                   'eur100x100/'
-    EUROSTATdir = 'EUROSTATobs/'
-    weatherdir  = '/Users/mariecombe/mnt/promise/CO2/marie/CABO_weather_ECMWF/'
+    CGMSdir     = '/Users/mariecombe/mnt/promise/CO2/wofost/CGMS/'
+    weatherdir  = '/Users/mariecombe/mnt/promise/CO2/wofost/CABO_weather_ECMWF/'
 #-------------------------------------------------------------------------------
 # we retrieve the years to loop over:
     try:
-        years     = pickle_load(open('selected_years.pickle','rb'))
+        years     = pickle_load(open('../tmp/selected_years.pickle','rb'))
     except IOError:
         print '\nYou have not yet selected a shortlist of years to loop over'
         print 'Run the script 01_select_crops_n_regions.py first!\n'
         sys.exit() 
 #-------------------------------------------------------------------------------
 # we read the CGMS grid cells coordinates from file
-    CGMS_cells = open_csv(EUROSTATdir, ['CGMS_grid_list.csv'])
+    CGMS_cells = open_csv(CGMSdir, ['CGMS_grid_list.csv'])
     all_grids  = CGMS_cells['CGMS_grid_list.csv']['GRID_NO']
     lons       = CGMS_cells['CGMS_grid_list.csv']['LONGITUDE']
     lats       = CGMS_cells['CGMS_grid_list.csv']['LATITUDE']
@@ -62,7 +62,7 @@ def main():
 # we select the subset of grid cells located in Europe that contain arable land
 # (no need to create weather data where there are no crops!)
 
-    pathname = os.path.join('../model_input_data/europe_arable_CGMS_cellids.pickle')
+    pathname = os.path.join(CGMSdir,'europe_arable_CGMS_cellids.pickle')
     try:
         europ_arable = pickle_load(open(pathname,'rb'))
     except IOError:
