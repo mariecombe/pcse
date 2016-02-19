@@ -668,87 +668,99 @@ def get_country_dict():
 
 #===============================================================================
 # Function to detrend the observed EUROSTAT yields or harvests
-def detrend_obs( _start_year, _end_year, _NUTS_name, _crop_name, 
-                uncorrected_yields_dict, _DM_content, base_year,
+def detrend_obs( _NUTS_no, _crop_name, 
+                uncorrected_yields, _DM_content, base_year=2000,
                 obs_type='yield', detrend=True, prod_fig=False, verbose=True):
 #===============================================================================
 
-    from matplotlib import pyplot as plt
-
-    nb_years = int(_end_year - _start_year + 1.)
-    campaign_years = np.linspace(int(_start_year), int(_end_year), nb_years)
-    OBS = {}
-    TREND = {}
-    
-    # search for the index of base_year item in the campaign_years array
-    for i,val in enumerate(campaign_years): 
-        if val == base_year:
-            indref = i
+    years = np.array(sorted([float(y) for y in set(uncorrected_yields['Year'])]))
 
     # select if to detrend yields or harvest:
     if (obs_type == 'yield'):
-        header_to_search = 'Yields (100 kg/ha)'
+        header_to_search = 'Yield (100 kg/ha)'
         conversion_factor = 100.*_DM_content
         obs_unit = 'kgDM ha-1'
     elif (obs_type == 'harvest'):
         header_to_search = 'Harvested production (1000 t)'
         conversion_factor = _DM_content
         obs_unit = '1000 tDM'
-    elif (obs_type == 'area'):
-        header_to_search = 'Area (1 000 ha)'
+    elif (obs_type == 'culti_area'):
+        header_to_search = 'Area (cultivation/harvested/production) (1000 ha)'
         conversion_factor = 1.
         obs_unit = '1000 ha'
-    elif (obs_type == 'area_bis'):
-        header_to_search = 'Total'
-        conversion_factor = 1./1000.
+    elif (obs_type == 'arable_area'):
+        header_to_search = 'Main area (1000 ha)'
+        conversion_factor = 1.
         obs_unit = '1000 ha'
    
     # select yields for the required region, crop and period of time
     # and convert them from kg_humid_matter/ha to kg_dry_matter/ha 
-    TARGET = np.array([-9999.]*nb_years)
-    if (verbose==True): print 'searching for:', _NUTS_name
-    for j,year in enumerate(campaign_years):
-        for i,region in enumerate(uncorrected_yields_dict['GEO']):
-            if (region.lower()==_NUTS_name.lower()):
-                if uncorrected_yields_dict['CROP_PRO'][i]==_crop_name:
-                    if (uncorrected_yields_dict['TIME'][i]==str(int(year))):
-                        if (uncorrected_yields_dict['STRUCPRO'][i]==
+    TARGET = np.array([-9999.]*len(years))
+    if (verbose==True): print 'searching for:', _NUTS_no
+    print obs_type
+
+    # we preprocess ALL data available from the files
+    for j,year in enumerate(sorted(set(uncorrected_yields['Year']))):
+
+        # loop over all the lines of the file:
+        for i,region in enumerate(uncorrected_yields['NUTS_id']):
+
+            # if we match the NUTS region code
+            if (region == _NUTS_no):
+                # if we match the year
+                if (uncorrected_yields['Year'][i] == year):
+                   # print uncorrected_yields['Crop_name'][i], _crop_name
+                    # if we match the crop name
+                    if uncorrected_yields['Crop_name'][i] == _crop_name:
+                        #print uncorrected_yields['Variable'][i], header_to_search
+                        # if we match the variable to search
+                        if (uncorrected_yields['Variable'][i]==
                                                       header_to_search):
-                            if (verbose==True): 
-                                print year, _NUTS_name, uncorrected_yields_dict['Value'][i]
-                            TARGET[j] = float(uncorrected_yields_dict['Value'][i])\
+                            if (verbose==True): print year,\
+                            _NUTS_no, uncorrected_yields['Value'][i]
+                            TARGET[j] = float(uncorrected_yields['Value'][i])\
                                               *conversion_factor
 
     if (detrend==True):
+
+        # search for the index of base_year item in the years array
+        for r,val in enumerate(years): 
+            if val == base_year:
+                indref = r
+
         # fit a linear trend line in the record of observed yields
+        OBS = {}
+        TREND = {}
         mask = ~np.isnan(TARGET)
-        z = np.polyfit(campaign_years[mask], TARGET[mask], 1)
+        z = np.polyfit(years[mask], TARGET[mask], 1)
         p = np.poly1d(z)
         OBS['ORIGINAL'] = TARGET[mask]
-        TREND['ORIGINAL'] = p(campaign_years)
+        TREND['ORIGINAL'] = p(years)
         
         # calculate the anomalies to the trend line
-        ANOM = TARGET - (z[0]*campaign_years + z[1])
+        ANOM = TARGET - (z[0]*years + z[1])
         
         # Detrend the observed yield data
         OBS['DETRENDED'] = ANOM[mask] + p(base_year)
-        z2 = np.polyfit(campaign_years[mask], OBS['DETRENDED'], 1)
+        z2 = np.polyfit(years[mask], OBS['DETRENDED'], 1)
         p2 = np.poly1d(z2)
-        TREND['DETRENDED'] = p2(campaign_years)
+        TREND['DETRENDED'] = p2(years)
     else:
         # no detrending, but we apply a mask still?
+        OBS = {}
         mask = ~np.isnan(TARGET)
         OBS['ORIGINAL'] = TARGET[mask]
         
     
     # if needed plot a figure showing the yields before and after de-trending
     if prod_fig==True:
+        from matplotlib import pyplot as plt
         plt.close('all')
         fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(10,8))
         fig.subplots_adjust(0.15,0.16,0.85,0.96,0.4,0.)
         for var, ax in zip(["ORIGINAL", "DETRENDED"], axes.flatten()):
-            ax.scatter(campaign_years[mask], OBS[var], c='b')
-       	    ax.plot(campaign_years,TREND[var],'r-')
+            ax.scatter(years[mask], OBS[var], c='b')
+       	    ax.plot(years,TREND[var],'r-')
        	    ax.set_ylabel('%s %s (%s)'%(var,obs_type,obs_unit), fontsize=14)
             ax.set_xlabel('time (year)', fontsize=14)
         fig.savefig('observed_%ss.png'%obs_type)
@@ -760,9 +772,9 @@ def detrend_obs( _start_year, _end_year, _NUTS_name, _crop_name,
         if (verbose==True): print '\nsuccesfully detrended the %ss!'%obs_type, obstoreturn
     else: 
         obstoreturn = OBS['ORIGINAL']
-        print '\nno detrending! returning the original %s'%obs_type, obstoreturn
+        print '\nno detrending! returning the original %s'%obs_type, obstoreturn, years[mask]
 
-    return obstoreturn, campaign_years[mask]
+    return obstoreturn, years[mask]
 
 #===============================================================================
 # Function to retrieve the dry matter content of a given crop in a given
@@ -895,7 +907,8 @@ def open_csv(inpath,filelist,convert_to_float=False):
 
 #===============================================================================
 # Function to open EUROSTAT csv files
-def open_csv_EUROSTAT(inpath,filelist,convert_to_float=False,verbose=True):
+def open_csv_EUROSTAT(inpath,filelist,convert_to_float=False,verbose=True,
+                                                                data_year=2015):
 #===============================================================================
 
     from csv import reader as csv_reader
@@ -928,11 +941,18 @@ def open_csv_EUROSTAT(inpath,filelist,convert_to_float=False,verbose=True):
             # transforming data from string to float type
             converted_data=[]
             for line in lines:
-                if (line[4] != ':'): 
-                    a = (line[0:4] + [float(string_replace(line[4], ' ', ''))] 
-                                   + [line[5]])
-                else:
-                    a = line[0:4] + [float('NaN')] + [line[5]]
+                if data_year == 2015:
+                    if (line[4] != ':'): 
+                        a = (line[0:4] + [float(string_replace(line[4], ' ', ''))] 
+                                       + [line[5]])
+                    else:
+                        a = line[0:4] + [float('NaN')] + [line[5]]
+                elif data_year == 2016:
+                    if (line[5] != ':'): 
+                        a = (line[0:5] + [float(string_replace(line[5], ' ', ''))] 
+                                       + [line[6]])
+                    else:
+                        a = line[0:5] + [float('NaN')] + [line[6]]
                 converted_data.append(a)
             data = np.array(converted_data)
         else:
@@ -954,41 +974,43 @@ def open_csv_EUROSTAT(inpath,filelist,convert_to_float=False,verbose=True):
     return Dict
 
 #===============================================================================
-def all_crop_names():
+def get_crop_names(crop_list, method='short'):
 #===============================================================================
     """
-    This creates a dictionary of ALL WOFOST crops to read the EUROSTAT csv files:
-    crops[crop_short_name] = [CGMS_id, 'EUROSTAT_name_1', 'EUROSTAT_name_2']
+    This creates a dictionary 
+    - either of ALL WOFOST crops to read the EUROSTAT csv files (method 'all')
+    - or of a selected shortlist (method 'short')
 
-    EUROSTAT_name_1 can be used to retrieve information in the yield, harvest and
-    area csv files. 
-    EUROSTAT_name_2 should be used in the crop humidity content file only.
+    The script will associate CGMS crop names with a CGMS_id and EUROSTAT crop name
+    crops[CGMS_name] = [CGMS_id, EUROSTAT_name]
+
+    NB: these EUROSTAT crop names are only valid to use with the EUROSTAT files 
+    that were updated on feb 2016 (stored in download_2016/ folder)
 
     """
     crops = dict()
-    crops['Winter wheat']    = [1,'Common wheat and spelt','Common winter wheat']
-    crops['Spring wheat']    = [np.nan,'Common wheat and spelt','Common spring wheat']
-    #crops['Durum wheat']     = [np.nan,'Durum wheat','Durum wheat']
-    crops['Grain maize']     = [2,'Grain maize','Grain maize and corn-cob-mix']
-    crops['Fodder maize']    = [12,'Green maize','Green maize']
-    crops['Spring barley']   = [3,'Barley','Barley']
-    crops['Winter barley']   = [13,'Barley','Winter barley']
-    crops['Rye']             = [4,'Rye','Rye']
-    #crops['Rice']            = [np.nan,'Rice','Rice']
-    crops['Sugar beet']      = [6,'Sugar beet (excluding seed)','Sugar beet (excluding seed)']
-    crops['Potato']          = [7,'Potatoes (including early potatoes and seed potatoes)',
-                                'Potatoes (including early potatoes and seed potatoes)']
-    crops['Field beans']     = [8,'Dried pulses and protein crops for the production '\
-                              + 'of grain (including seed and mixtures of cereals '\
-                              + 'and pulses)',
-                                'Broad and field beans']
-    crops['Spring rapeseed'] = [np.nan,'Rape and turnip rape','Spring rape']
-    crops['Winter rapeseed'] = [10,'Rape and turnip rape','Winter rape']
-    crops['Sunflower']       = [11,'Sunflower seed','Sunflower seed']
-    #crops['Linseed']         = [np.nan, 'Linseed (oil flax)', '']
-    #crops['Soya']            = [np.nan, 'Soya', '']
-    #crops['Cotton']          = [np.nan, 'Cotton seed', '']
-    #crops['Tobacco']         = [np.nan, 'Tobacco', '']
+    crops['Winter wheat']    = [1,'Common winter wheat and spelt']
+    crops['Spring wheat']    = [np.nan,'Common spring wheat and spelt']
+    crops['Grain maize']     = [2,'Grain maize and corn-cob-mix']
+    crops['Fodder maize']    = [12,'Green maize']
+    crops['Spring barley']   = [3,'Spring barley']
+    crops['Winter barley']   = [13,'Winter barley']
+    crops['Rye']             = [4,'Rye']
+    #crops['Rice']            = [np.nan,'Rice','Rice'] # this crop can't be simulated
+    crops['Sugar beet']      = [6,'Sugar beet (excluding seed)']
+    crops['Potato']          = [7,'Potatoes (including seed potatoes)']
+    crops['Field beans']     = [8,'Broad and field beans']
+    crops['Spring rapeseed'] = [np.nan,'Spring rape and turnip rape seeds']
+    crops['Winter rapeseed'] = [10,'Winter rape and turnip rape seeds']
+    crops['Sunflower']       = [11,'Sunflower seed']
+    crops['Durum wheat']     = [41,'Durum wheat']
+    crops['Triticale']       = [43,'Triticale']
+    crops['Rapeseed and turnips'] = [46,'Rape and turnip rape seeds']
+
+    if method=='short':
+        for key in crops.keys():
+            if key not in crop_list:
+                del crops[key]
 
     return crops
 

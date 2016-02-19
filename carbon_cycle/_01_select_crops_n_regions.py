@@ -46,6 +46,7 @@ def main():
 #-------------------------------------------------------------------------------
     from cPickle import load as pickle_load
     from cPickle import dump as pickle_dump
+    from maries_toolbox import get_crop_names
 #-------------------------------------------------------------------------------
 # ================================= USER INPUT =================================
 
@@ -63,7 +64,7 @@ def main():
             # 'Rye','Potato','Sugar beet','Sunflower','Field beans']
 
     # list of selected years to simulate the c cycle for:
-    years = [2006]#,2001,2002,2003,2004,2005,2006,2007,2008,2009,2010]
+    years = list(np.arange(2000,2015,1))#[2006]#,2001,2002,2003,2004,2005,2006,2007,2008,2009,2010]
 
     # input directory path
     inputdir = '/Users/mariecombe/mnt/promise/CO2/wofost/'
@@ -100,7 +101,8 @@ def main():
 # 2- WE CREATE A DICTIONARY OF CROP IDS AND NAMES TO LOOP OVER
 #-------------------------------------------------------------------------------
 # Create a dictionary of crop EUROSTAT names, corresponding to the selected crops
-    crop_names_dict = map_crop_id_to_crop_name(crops)
+    crop_names_dict = get_crop_names(crops, method='short')
+    print '\nWe select the following crops:\n', sorted(crop_names_dict.keys())
 #-------------------------------------------------------------------------------
 # pickle the produced dictionary:
     pathname = os.path.join(currentdir, '../tmp/selected_crops.pickle')
@@ -122,66 +124,6 @@ def main():
     if check_eurostat_file == True:
         check_EUROSTAT_names_match(NUTS_names_dict, crop_names_dict, EUROSTATdir)
 
-
-#===============================================================================
-def map_crop_id_to_crop_name(crop_list):
-#===============================================================================
-    # dict[crop_short_name] = [CGMS_id_nb, EUROSTAT_name1, EUROSTAT_name2]
-    crop_names = dict()
-
-    for nickname in crop_list:
-        if (nickname == 'Winter wheat'):
-            crop_names[nickname] = [1,'Common wheat and spelt',
-                                      'Common winter wheat']
-        if (nickname == 'Spring wheat'):
-            crop_names[nickname] = [np.nan,'Common wheat and spelt',
-                                      'Common spring wheat']
-        #if (nickname == 'durum wheat'):
-        #    crop_names[nickname] = [np.nan,'Durum wheat',
-        #                               'Durum wheat']
-        if (nickname == 'Grain maize'):
-            crop_names[nickname] = [2,'Grain maize',
-                                      'Grain maize and corn-cob-mix']
-        if (nickname == 'Fodder maize'):
-            crop_names[nickname] = [12,'Green maize',
-                                      'Green maize']
-        if (nickname == 'Spring barley'):
-            crop_names[nickname] = [3,'Barley',
-                                      'Barley']
-        if (nickname == 'Winter barley'):
-            crop_names[nickname] = [13,'Barley',
-                                      'Winter barley']
-        if (nickname == 'Rye'):
-            crop_names[nickname] = [4,'Rye',
-                                      'Rye']
-        #if (nickname == 'Rice'):
-        #    crop_names[nickname] = [np.nan,'Rice',
-        #                              'Rice']
-        if (nickname == 'Sugar beet'):
-            crop_names[nickname] = [6,'Sugar beet (excluding seed)',
-                                      'Sugar beet (excluding seed)']
-        if (nickname == 'Potato'):
-            crop_names[nickname] = [7,'Potatoes (including early potatoes and'+\
-                                      ' seed potatoes)','Potatoes (including '+\
-                                      'early potatoes and seed potatoes)']
-        if (nickname == 'Field beans'):
-            crop_names[nickname] = [8,'Dried pulses and protein crops for the'+\
-                                      ' production of grain (including seed ' +\
-                                      'and mixtures of cereals and pulses)',
-                                      'Broad and field beans']
-        if (nickname == 'Spring rapeseed'):
-            crop_names[nickname] = [np.nan,'Rape and turnip rape',
-                                      'Spring rape']
-        if (nickname == 'Winter rapeseed'):
-            crop_names[nickname] = [10,'Rape and turnip rape',
-                                      'Winter rape']
-        if (nickname == 'Sunflower'):
-            crop_names[nickname] = [11,'Sunflower seed',
-                                      'Sunflower seed']
-
-    print '\nWe select the following crops:\n', sorted(crop_names.keys())
-
-    return crop_names
 
 #===============================================================================
 def map_NUTS_id_to_NUTS_name(list_of_NUTS_ids, EUROSTATdir):
