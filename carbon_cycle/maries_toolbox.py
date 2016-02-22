@@ -467,31 +467,27 @@ def select_soils(crop_no, grid_cells, folder_pickle, method='topn', n=3):
 
 #===============================================================================
 # retrieve the crop fraction from EUROSTAT data
-def get_EUR_frac_crop(crop_name, NUTS_name, EUROSTATdir_, prod_fig=False):
+def get_EUR_frac_crop(crop_name, NUTS_no, EUROSTATdir_, campaign_years):
 #===============================================================================
 
     import math
-    from matplotlib import pyplot as plt
+    from cPickle import load as pickle_load
 
-    name1       = 'agri_croparea_NUTS1-2-3_1975-2014.csv'
-    name2       = 'agri_landuse_NUTS1-2-3_2000-2013.csv'
-    NUTS_data   =  open_csv_EUROSTAT(EUROSTATdir_, [name1, name2],
-                                     convert_to_float=True, verbose=False)
-    # retrieve the region's crop area and arable area for the years 2000-2013
-    # NB: by specifying obs_type='area', we do not remove a long term trend in
-    # the observations 
-    crop_area   = detrend_obs(2000, 2013, NUTS_name, crop_name,
-                              NUTS_data[name1], 1., 2000, obs_type='area',
-                              prod_fig=False, verbose=False)
-    arable_area = detrend_obs(2000, 2013, NUTS_name, 'Arable land', 
-                              NUTS_data[name2], 1., 2000, obs_type='area',
-                              prod_fig=False, verbose=False)
+    # retrieve the region's crop area and arable area for the years specified by
+    # the user (i.e. campaign_years)
+    cultiareas = pickle_load(open(os.path.join(EUROSTATdir_,
+                                      'preprocessed_culti_areas.pickle'),'rb'))
+    arablareas = pickle_load(open(os.path.join(EUROSTATdir_,
+                                     'preprocessed_arable_areas.pickle'),'rb'))
+    crop_area   = cultiareas[crop_name][NUTS_no]
+    arable_area = arablareas[crop_name][NUTS_no]
+
     # we calculate frac_crop for the years where we both have observations of 
     # arable land AND crop area
     frac_crop = np.array([])
     years     = np.array([])
-    for year in range(2000, 2015):
-        if ((year in crop_area[1]) and (year in arable_area[1])):
+    for year in campaign_years:
+        if ((float(year) in crop_area[1]) and (float(year) in arable_area[1])):
             indx_crop = np.array([math.pow(j,2) for j in \
                                                   (crop_area[1]-year)]).argmin()
             indx_arab = np.array([math.pow(j,2) for j in \
@@ -503,18 +499,51 @@ def get_EUR_frac_crop(crop_name, NUTS_name, EUROSTATdir_, prod_fig=False):
             years     = np.append(years, np.nan)
             frac_crop = np.append(frac_crop, np.nan)
 
-    # for years without data, we fit a linear trend line in the record of 
-    # observed frac
-    all_years = range(2000, 2015)
-    mask = ~np.isnan(np.array(years))
-    z = np.polyfit(years[mask], frac_crop[mask], 1)
-    p = np.poly1d(z)
-    for y,year in enumerate(years):
-        if np.isnan(year):
-            frac_crop[y] = p(all_years[y])
+    # for years without data, we try to gap-fill the record of cultivated fractions
+    # using different methods
+    non_masked_len = np.ma.MaskedArray.count(np.ma.masked_invalid(years))
+    if non_masked_len < len(campaign_years) and non_masked_len > 4:
+        # if we have 5 points or more, we use a linear trend
+        print 'we gap fill the cultivated fraction with a linear trend over years'
+        mask = ~np.isnan(np.array(years))
+        z = np.polyfit(years[mask], frac_crop[mask], 1)
+        p = np.poly1d(z)
+        for y,year in enumerate(years):
+            if np.isnan(year):
+                frac_crop[y] = p(campaign_years[y])
+        return frac_crop, campaign_years
 
-    # return the yearly ratio of crop / arable land, and the list of years 
-    return frac_crop, all_years
+    elif non_masked_len <= 4 and non_masked_len > 0:
+        # if we have 4 points or less, we use the mean
+        clim_mean = np.ma.mean(np.ma.masked_invalid(frac_crop))
+        print 'we gap fill the cultivated fraction with the mean over years:'+\
+              ' %.4f'%clim_mean
+        frac_crop = np.array([clim_mean]*len(campaign_years))
+        return frac_crop, campaign_years
+
+    elif non_masked_len == 0:
+        # if we have no points at all, we use the upper level of NUTS records
+        # (i.e. NUTS1 instead of NUTS2, or NUTS0 instead of NUTS1)
+        if len(NUTS_no)>2:
+            if len(NUTS_no)==3:  level=1
+            elif len(NUTS_no)>3: level=2
+            print 'NUTS%i records are empty. We use NUTS%i '%(level,level-1) +\
+                  'records instead.'
+            upper_NUTS_frac = get_EUR_frac_crop(crop_name, NUTS_no[0:level+1],
+                  EUROSTATdir_, campaign_years)
+            return upper_NUTS_frac
+        else:
+        # if all gap-filling has failed, we signal the user to skip this entire 
+        # country for the optimization, by returning None 
+            print 'This country (%s) has no reported cultivated '%NUTS_no+\
+                  'fraction in the EUROSTAT records'
+            return None
+
+    # if all the years of data are available, return the yearly ratio of crop to 
+    # arable land, and the full list of years 
+    else:
+        print 'all observed years are available in the cultivated area records'
+        return frac_crop, campaign_years
 
 #===============================================================================
 # Select the list of years over which we optimize the yldgapf
@@ -559,35 +588,6 @@ def find_consecutive_years(years, nyears):
     return consecutive_years[-nyears:len(consecutive_years)]
 
 #===============================================================================
-# Function that will fetch the crop name from the crop number. Returns a list
-# with two items: first is the CGMS crop name, second is the EUROSTAT crop name
-def get_crop_name(list_of_CGMS_crop_no):
-#===============================================================================
-
-    list_of_crops_EUR = ['Barley','Beans','Common spring wheat',
-                        'Common winter wheat','Grain maize and corn-cob-mix',
-                        'Green maize',
-                        'Potatoes (including early potatoes and seed potatoes)',
-                        'Rye','Spring rape','Sugar beet (excluding seed)',
-                        'Sunflower seed','Winter barley','Winter rape']
-    list_of_crops_CGMS = ['Spring barley','Field beans','Spring wheat',
-                          'Winter wheat','Grain maize','Fodder maize',
-                          'Potato','Rye','Spring rapeseed','Sugar beets',
-                          'Sunflower','Winter barley','Winter rapeseed']
-    list_of_crop_ids_CGMS = [3,8,'sw',1,2,12,7,4,'sr',6,11,13,10]
-
-    dict_names = dict()
-    for item in list_of_CGMS_crop_no:
-        crop_name = list(['',''])
-        for i,crop_id in enumerate(list_of_crop_ids_CGMS):
-            if (crop_id == item):
-                crop_name[0] = list_of_crops_CGMS[i]
-                crop_name[1] = list_of_crops_EUR[i]
-        dict_names[item]=crop_name
-
-    return dict_names
-
-#===============================================================================
 def fetch_EUROSTAT_NUTS_name(NUTS_no, EUROSTATdir):
 #===============================================================================
    
@@ -621,50 +621,6 @@ def fetch_EUROSTAT_NUTS_name(NUTS_no, EUROSTATdir):
     #print "EUROSTAT region name of %s:"%NUTS_no, dictnames[NUTS_no]
     
     return dictnames
-
-#===============================================================================
-def get_country_dict():
-#===============================================================================
-
-    country_dict = {'AT': ['austria','#408040'], 		# 3 regions		
-                    'BE': ['belgium','#FFBA3F'],
-	                'BG': ['bulgaria','#FF0000'],
-	                'CH': ['switzerland','#00FF00'],
-	                'CY': ['cyprus','#000080'],
-	                'CZ': ['czech republic','#FFFF00'],
-	                'DE': ['germany','#FF4040'],
-	                'DK': ['danemark','#FF00FF'],
-	                'EE': ['estonia','#808080'],
-	                'EL': ['greece','#FF8080'],
-	                'ES': ['spain','#80FF80'],
-	                'FI': ['finland','#8080FF'],
-	                'FR': ['france','#8000FF'],		# 26 regions
-	                'HR': ['croatia','#800080'],
-	                'HU': ['hungaria','#804040'],
-	                'IE': ['ireland','#404040'],
-	                'IS': ['iceland','#FFFF80'],
-	                'IT': ['italy','#80FFFF'],
-	                'LI': ['liechtenstein','#FF80FF'],
-	                'LT': ['lithuania','#FF0080'],
-	                'LU': ['luxembourg','#80FF00'],
-	                'LV': ['latvia','#0080FF'],
-	                'ME': ['montenegro','#004040'],
-	                'MK': ['macedonia','#008080'], 
-	                'MT': ['malta','#FF8000'],
-	                'NL': ['netherlands','#00FFFF'],
-	                'NO': ['norway','#800000'],
-	                'PL': ['poland','#0000FF'],
-	                'PT': ['portugal','#808000'],
-	                'RO': ['romania','#008000'],
-	                'SE': ['sweden','#40FF40'],
-	                'SI': ['slovenia','#4040FF'],
-	                'SK': ['slovakia','#00FF80'],
-	                'TR': ['turkey','#7F00FF'],		# 19
-	                'UK': ['united kingdoms','#FF5FC0']}	# 106
-
-    #country_name = country_dict[NUTS_no[0:2]][0]
-
-    return country_dict
 
 #===============================================================================
 # Function to detrend the observed EUROSTAT yields or harvests
@@ -981,8 +937,8 @@ def get_crop_names(crop_list, method='short'):
     - either of ALL WOFOST crops to read the EUROSTAT csv files (method 'all')
     - or of a selected shortlist (method 'short')
 
-    The script will associate CGMS crop names with a CGMS_id and EUROSTAT crop name
-    crops[CGMS_name] = [CGMS_id, EUROSTAT_name]
+	The script will associate CGMS crop names with a CGMS_id and EUROSTAT crop
+    name crops[CGMS_name] = [CGMS_id, EUROSTAT_name]
 
     NB: these EUROSTAT crop names are only valid to use with the EUROSTAT files 
     that were updated on feb 2016 (stored in download_2016/ folder)
@@ -996,7 +952,6 @@ def get_crop_names(crop_list, method='short'):
     crops['Spring barley']   = [3,'Spring barley']
     crops['Winter barley']   = [13,'Winter barley']
     crops['Rye']             = [4,'Rye']
-    #crops['Rice']            = [np.nan,'Rice','Rice'] # this crop can't be simulated
     crops['Sugar beet']      = [6,'Sugar beet (excluding seed)']
     crops['Potato']          = [7,'Potatoes (including seed potatoes)']
     crops['Field beans']     = [8,'Broad and field beans']

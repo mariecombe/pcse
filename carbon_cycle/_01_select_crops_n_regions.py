@@ -50,13 +50,20 @@ def main():
 #-------------------------------------------------------------------------------
 # ================================= USER INPUT =================================
 
+    levels_method = 'all' # can be 'all' or 'composite'
+                             # if == composite: the script makes a composite of
+                             # NUTS 1 and 2 regions to select, as specified 
+                             # by the user with variable 'lands_levels'
+                             # if == 'all': all NUTS 0-1-2 regions will be 
+                             # selected
+
     # for each country code, we say which NUTS region level we want to 
     # consider (for some countries: level 1, for some others: level 2)
     lands_levels = {'AT':1,'BE':1,'BG':2,'CH':1,'CY':2,'CZ':1,'DE':1,'DK':2,
                     'EE':2,'EL':2,'ES':2,'FI':2,'FR':2,'HR':2,'HU':2,'IE':2,
                     'IS':2,'IT':2,'LI':1,'LT':2,'LU':1,'LV':2,'ME':1,'MK':2,
                     'MT':1,'NL':1,'NO':2,'PL':2,'PT':2,'RO':2,'SE':2,'SI':2,
-                    'SK':2,'TR':2,'UK':1}
+                    'SK':2,'TR':2,'UK':1} # NB: only works with levels_method = 'composite'
 
     # list of selected crops of interest:
     crops = ['Potato']#,'Spring wheat','Winter wheat',
@@ -87,10 +94,20 @@ def main():
 # 1- WE CREATE A DICTIONARY OF REGIONS IDS AND NAMES TO LOOP OVER
 #-------------------------------------------------------------------------------
 # Select the regions ID in which we are interested in
-    NUTS_regions = make_NUTS_composite(lands_levels, EUROSTATdir)
-#-------------------------------------------------------------------------------
-# Create a dictionary of NUTS region names, corresponding to the selected NUTS id
-    NUTS_names_dict = map_NUTS_id_to_NUTS_name(NUTS_regions, EUROSTATdir)
+    # we read the NUTS 0-1-2 codes from pre-processed yield file
+    dum = pickle_load(open(os.path.join(EUROSTATdir,'preprocessed_yields.pickle'),'rb'))
+    all_NUTS_regions = sorted(dum['Winter wheat'].keys())
+
+    # we select a subset of regions to work with:
+    if (levels_method == 'all'):
+        NUTS_regions = all_NUTS_regions
+        print '\nWe select all NUTS levels (0-1-2):'
+    if (levels_method == 'composite'):
+        NUTS_regions = make_NUTS_composite(lands_levels, all_NUTS_regions)
+        print '\nWe select a shortlist of NUTS 0/1/2 regions (user-defined):'
+    
+    print sorted(NUTS_regions)
+    NUTS_names_dict = NUTS_regions
 #-------------------------------------------------------------------------------
 # pickle the produced dictionary in the current directory:
     pathname = os.path.join(currentdir, '../tmp/selected_NUTS_regions.pickle')
@@ -442,31 +459,16 @@ def map_NUTS_id_to_NUTS_name(list_of_NUTS_ids, EUROSTATdir):
     return dict_geo_units
 
 #===============================================================================
-def make_NUTS_composite(lands_levels, EUROSTATdir):
+def make_NUTS_composite(NUTS_levels, all_regions):
 #===============================================================================
 
-    from mpl_toolkits.basemap import Basemap
-
-    map = Basemap(projection='laea', lat_0=48, lon_0=16, llcrnrlat=30, 
-                      llcrnrlon=-10, urcrnrlat=65, urcrnrlon=45)
-    # Read a shapefile and its metadata
-    # read the shapefile data WITHOUT plotting its shapes
-
-    path = EUROSTATdir
-    filename = 'NUTS_RG_03M_2010'# NUTS regions 
-    name = 'NUTS'
-    NUTS_info = map.readshapefile(os.path.join(path,filename), name, drawbounds=False) 
-
-    # retrieve the list of patches to fill and its data to plot
     NUTS_ids_list = list()
-    # for each polygon of the shapefile
-    for info, shape in zip(map.NUTS_info, map.NUTS):
-        # we get the NUTS number of this polygon:
-        NUTS_no = info['NUTS_ID']
-        # if the NUTS level of the polygon corresponds to the desired one:
-        if (info['STAT_LEVL_'] == lands_levels[NUTS_no[0:2]]):
-            if NUTS_no not in NUTS_ids_list:
-                NUTS_ids_list += [NUTS_no]
+
+    for country in sorted(NUTS_levels.keys()):
+        level = NUTS_levels[country]
+        subset_NUTS = [id for id in all_regions if (id[0:2]==country) and 
+                       (len(id)<=(level+2))]
+        NUTS_ids_list += subset_NUTS
 
     return NUTS_ids_list
 
