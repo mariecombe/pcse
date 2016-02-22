@@ -110,14 +110,21 @@ def find_grids_with_arable_land(connection, grids, threshold=None, largest_n=Non
         thr = float(threshold)
         sql = """
             select
-                grid_no, area
+              s.grid_no, s.sum_area
             from
-                link_region_grid_landcover
+                (select
+                    grid_no, sum(area) as sum_area
+                from
+                    link_region_grid_landcover
+                where
+                    landcover_id = {lc} and
+                    grid_no in {grids}
+                group by
+                    grid_no) s
             where
-                area > {threshold}f and
-                landcover_id = {lc} and
-                grid_no in {gridl}
-            order by area desc
+                s.sum_area > {threshold}f
+            order by
+              s.sum_area desc
         """.format(gridl=gridlist, threshold=thr, lc=landcover)
         cursor.execute(sql)
         rows = cursor.fetchall()
@@ -126,27 +133,39 @@ def find_grids_with_arable_land(connection, grids, threshold=None, largest_n=Non
         ln = int(largest_n)
         sql = """
             select
-                grid_no, area
+              s.grid_no, s.sum_area
             from
-                link_region_grid_landcover
-            where
-                landcover_id = {lc} and
-                grid_no in {grids}
-            order by area desc
-        """.format(grids=gridlist, nrows=ln, lc=landcover)
+                (select
+                    grid_no, sum(area) as sum_area
+                from
+                    link_region_grid_landcover
+                where
+                    landcover_id = {lc} and
+                    grid_no in {grids}
+                group by
+                    grid_no) s
+            order by
+              s.sum_area desc
+        """.format(grids=gridlist, lc=landcover)
         cursor.execute(sql)
         rows = cursor.fetchall()
         return rows[0:ln]
     else:
         sql = """
             select
-                grid_no, area
+              s.grid_no, s.sum_area
             from
-                link_region_grid_landcover
-            where
-                landcover_id = {lc} and
-                grid_no in {grids}
-            order by area desc
+                (select
+                    grid_no, sum(area) as sum_area
+                from
+                    link_region_grid_landcover
+                where
+                    landcover_id = {lc} and
+                    grid_no in {grids}
+                group by
+                    grid_no) s
+            order by
+              s.sum_area desc
         """.format(grids=gridlist, lc=landcover)
         cursor.execute(sql)
         rows = cursor.fetchall()
