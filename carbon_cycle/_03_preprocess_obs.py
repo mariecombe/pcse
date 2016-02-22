@@ -307,10 +307,14 @@ def preprocess_EUROSTAT_data():
             print 'final yields:', yields[crop][NUTS_no][0], yields[crop][NUTS_no][1], '\n'
             print '--------------------------------------'
 
-    pickle_dump(cultia,  open(EUROSTATdir+'preprocessed_culti_areas.pickle','wb'))
-    pickle_dump(arable,  open(EUROSTATdir+'preprocessed_arable_areas.pickle','wb'))
-    pickle_dump(yields,  open(EUROSTATdir+'preprocessed_yields.pickle','wb'))
-    pickle_dump(harvest, open(EUROSTATdir+'preprocessed_harvests.pickle','wb'))
+    pickle_dump(cultia,  open(os.path.join(EUROSTATdir,
+                                       'preprocessed_culti_areas.pickle'),'wb'))
+    pickle_dump(arable,  open(os.path.join(EUROSTATdir,
+                                      'preprocessed_arable_areas.pickle'),'wb'))
+    pickle_dump(yields,  open(os.path.join(EUROSTATdir,
+                                            'preprocessed_yields.pickle'),'wb'))
+    pickle_dump(harvest, open(os.path.join(EUROSTATdir,
+                                          'preprocessed_harvests.pickle'),'wb'))
 
     # We add a timestamp at end of the retrieval, to time the process
     end_timestamp = datetime.utcnow()
