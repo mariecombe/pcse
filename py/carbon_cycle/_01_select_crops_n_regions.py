@@ -5,6 +5,9 @@ sys.path.append('../')
 import numpy as np
 import logging
 from py.tools.initexit import start_logger, parse_options
+from py.carbon_cycle.maries_toolbox import *
+from cPickle import load as pickle_load
+from cPickle import dump as pickle_dump
 
 # This script maps NUTS ids to EUROSTAT region names, and crop ids to crop names 
 
@@ -62,6 +65,7 @@ def select_crops_regions(crops):
                     'IS':2,'IT':2,'LI':1,'LT':2,'LU':1,'LV':2,'ME':1,'MK':2,
                     'MT':1,'NL':1,'NO':2,'PL':2,'PT':2,'RO':2,'SE':2,'SI':2,
                     'SK':2,'TR':2,'UK':1}
+    levels_method='all'
 
     # If you want to check if we match the crop and region names in the EUROSTAT
     # files, set the following files to true, it will print the result to screen
@@ -79,16 +83,25 @@ def select_crops_regions(crops):
 # 1- WE CREATE A DICTIONARY OF REGIONS IDS AND NAMES TO LOOP OVER
 #-------------------------------------------------------------------------------
 # Select the regions ID in which we are interested in
-    NUTS_regions = make_NUTS_composite(lands_levels, EUROSTATdir)
-#-------------------------------------------------------------------------------
-# Create a dictionary of NUTS region names, corresponding to the selected NUTS id
-    NUTS_names_dict = map_NUTS_id_to_NUTS_name(NUTS_regions, EUROSTATdir)
+    # we read the NUTS 0-1-2 codes from pre-processed yield file
+    dum = pickle_load(open(os.path.join(EUROSTATdir,'preprocessed_yields.pickle'),'rb'))
+    all_NUTS_regions = sorted(dum['Winter wheat'].keys())
+
+    # we select a subset of regions to work with:
+    if (levels_method == 'all'):
+        NUTS_regions = all_NUTS_regions
+        logging.info('We selected all NUTS levels (0-1-2): %d'%len(NUTS_regions))
+    if (levels_method == 'composite'):
+        NUTS_regions = make_NUTS_composite(lands_levels, all_NUTS_regions)
+        logging.info('We select a shortlist of NUTS 0/1/2 regions (user-defined): %s'%len(NUTS_regions))
+    
+    NUTS_names_dict = NUTS_regions
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
 # 2- WE CREATE A DICTIONARY OF CROP IDS AND NAMES TO LOOP OVER
 #-------------------------------------------------------------------------------
 # Create a dictionary of crop EUROSTAT names, corresponding to the selected crops
-    crop_names_dict = map_crop_id_to_crop_name(crops)
+    crop_names_dict = get_crop_names(crops, method='short')
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
 # 4- FOR INFORMATION: WE CHECK IF WE MATCH THE EUROSTAT NAMES
@@ -97,67 +110,7 @@ def select_crops_regions(crops):
         check_EUROSTAT_names_match(NUTS_names_dict, crop_names_dict, EUROSTATdir)
 
     return NUTS_names_dict,crop_names_dict
-
-
 #===============================================================================
-def map_crop_id_to_crop_name(crop_list):
-#===============================================================================
-    # dict[crop_short_name] = [CGMS_id_nb, EUROSTAT_name1, EUROSTAT_name2]
-    crop_names = dict()
-
-    for nickname in crop_list:
-        if (nickname.lower() == 'Winter wheat'.lower()):
-            crop_names[nickname] = [1,'Common wheat and spelt',
-                                      'Common winter wheat']
-        if (nickname.lower() == 'Spring wheat'.lower()):
-            crop_names[nickname] = [np.nan,'Common wheat and spelt',
-                                      'Common spring wheat']
-        #if (nickname == 'durum wheat'):
-        #    crop_names[nickname] = [np.nan,'Durum wheat',
-        #                               'Durum wheat']
-        if (nickname.lower() == 'Grain maize'.lower()):
-            crop_names[nickname] = [2,'Grain maize',
-                                      'Grain maize and corn-cob-mix']
-        if (nickname.lower() == 'Fodder maize'.lower()):
-            crop_names[nickname] = [12,'Green maize',
-                                      'Green maize']
-        if (nickname.lower() == 'Spring barley.lower()'):
-            crop_names[nickname] = [3,'Barley',
-                                      'Barley']
-        if (nickname.lower() == 'Winter barley'.lower()):
-            crop_names[nickname] = [13,'Barley',
-                                      'Winter barley']
-        if (nickname.lower() == 'Rye'.lower()):
-            crop_names[nickname] = [4,'Rye',
-                                      'Rye']
-        #if (nickname == 'Rice'):
-        #    crop_names[nickname] = [np.nan,'Rice',
-        #                              'Rice']
-        if (nickname.lower() == 'Sugar beet'.lower()):
-            crop_names[nickname] = [6,'Sugar beet (excluding seed)',
-                                      'Sugar beet (excluding seed)']
-        if (nickname.lower() == 'Potato'.lower()):
-            crop_names[nickname] = [7,'Potatoes (including early potatoes and'+\
-                                      ' seed potatoes)','Potatoes (including '+\
-                                      'early potatoes and seed potatoes)']
-        if (nickname.lower() == 'Field beans'.lower()):
-            crop_names[nickname] = [8,'Dried pulses and protein crops for the'+\
-                                      ' production of grain (including seed ' +\
-                                      'and mixtures of cereals and pulses)',
-                                      'Broad and field beans']
-        if (nickname.lower() == 'Spring rapeseed'.lower()):
-            crop_names[nickname] = [np.nan,'Rape and turnip rape',
-                                      'Spring rape']
-        if (nickname.lower() == 'Winter rapeseed'.lower()):
-            crop_names[nickname] = [10,'Rape and turnip rape',
-                                      'Winter rape']
-        if (nickname.lower() == 'Sunflower'.lower()):
-            crop_names[nickname] = [11,'Sunflower seed',
-                                      'Sunflower seed']
-
-    logging.info( 'We select the following crops: %s'% sorted(crop_names.keys()) )
-
-    return crop_names
 
 #===============================================================================
 def map_NUTS_id_to_NUTS_name(list_of_NUTS_ids, EUROSTATdir):
@@ -476,31 +429,16 @@ def map_NUTS_id_to_NUTS_name(list_of_NUTS_ids, EUROSTATdir):
     return dict_geo_units
 
 #===============================================================================
-def make_NUTS_composite(lands_levels, EUROSTATdir):
+def make_NUTS_composite(NUTS_levels, all_regions):
 #===============================================================================
 
-    from mpl_toolkits.basemap import Basemap
-
-    map = Basemap(projection='laea', lat_0=48, lon_0=16, llcrnrlat=30, 
-                      llcrnrlon=-10, urcrnrlat=65, urcrnrlon=45)
-    # Read a shapefile and its metadata
-    # read the shapefile data WITHOUT plotting its shapes
-
-    path = EUROSTATdir
-    filename = 'NUTS_RG_03M_2010'# NUTS regions 
-    name = 'NUTS'
-    NUTS_info = map.readshapefile(os.path.join(path,filename), name, drawbounds=False) 
-
-    # retrieve the list of patches to fill and its data to plot
     NUTS_ids_list = list()
-    # for each polygon of the shapefile
-    for info, shape in zip(map.NUTS_info, map.NUTS):
-        # we get the NUTS number of this polygon:
-        NUTS_no = info['NUTS_ID']
-        # if the NUTS level of the polygon corresponds to the desired one:
-        if (info['STAT_LEVL_'] == lands_levels[NUTS_no[0:2]]):
-            if NUTS_no not in NUTS_ids_list:
-                NUTS_ids_list += [NUTS_no]
+
+    for country in sorted(NUTS_levels.keys()):
+        level = NUTS_levels[country]
+        subset_NUTS = [id for id in all_regions if (id[0:2]==country) and 
+                       (len(id)<=(level+2))]
+        NUTS_ids_list += subset_NUTS
 
     return NUTS_ids_list
 
@@ -570,4 +508,3 @@ def check_EUROSTAT_names_match(NUTS_names_dict, crop_names_dict, EUROSTATdir):
 if __name__=='__main__':
     main()
 #===============================================================================
-

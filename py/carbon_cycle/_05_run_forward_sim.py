@@ -32,21 +32,21 @@ def main():
 # variables/constants passed between functions
     global cwdir, CGMSdir, EUROSTATdir, ecmwfdir, yldgapfdir, wofostdir,\
            potential_sim, force_sim, selec_method, nsoils, weather,\
-           crop, crop_no, year, start_timestamp, optimi_code, fgap, opt_type
+           crop, crop_no, year, start_timestamp, optimi_code, fgap, opt_type, pickle_load
 #-------------------------------------------------------------------------------
 # Temporarily add the parent directory to python path, to be able to import pcse
 # modules
     sys.path.insert(0, "..") 
 
-    mlogger = start_logger(level=logging.DEBUG)
+    _ = start_logger(level=logging.DEBUG)
 
     opts, args = parse_options()
 
     # First message from logger
-    mlogger.info('Python Code has started')
-    mlogger.info('Passed arguments:')
+    logging.info('Python Code has started')
+    logging.info('Passed arguments:')
     for arg,val in args.iteritems():
-        mlogger.info('         %s : %s'%(arg,val) )
+        logging.info('         %s : %s'%(arg,val) )
 
     rcfilename = args['rc']
     rcF = rc.read(rcfilename)
@@ -58,8 +58,8 @@ def main():
     outputdir = os.path.join(outputdir,'wofost')
 
     if opt_type not in ['observed','gapfilled']:
-        mlogger.error('The specified optimization type (%s) in the call argument is not recognized' % opt_type )
-        mlogger.error('Please use either "observed" or "gapfilled" as value in the main rc-file')
+        logging.error('The specified optimization type (%s) in the call argument is not recognized' % opt_type )
+        logging.error('Please use either "observed" or "gapfilled" as value in the main rc-file')
         sys.exit(2)
 
 #-------------------------------------------------------------------------------
@@ -114,7 +114,7 @@ def main():
             # create output folder if needed
             if not os.path.exists(wofostdir):
                 os.makedirs(wofostdir)
-                mlogger.info("Created new folder for output (%s)"%wofostdir)
+                logging.info("Created new folder for output (%s)"%wofostdir)
             # empty folder if required by user
             if (os.path.exists(wofostdir) and force_sim == True):
                 filelist = [f for f in os.listdir(wofostdir)]
@@ -124,25 +124,24 @@ def main():
 # OPTIMIZED FORWARD RUNS:
 #-------------------------------------------------------------------------------
             if not potential_sim:
-                mlogger.info( 'OPTIMIZED MODE: we use the available optimum ygf' )
+                logging.info( 'OPTIMIZED MODE: we use the available optimum ygf' )
 #-------------------------------------------------------------------------------
                 # print out some information to user
                 if force_sim:
-                    mlogger.info( 'FORCE MODE: we just wiped the wofost output directory' )
+                    logging.info( 'FORCE MODE: we just wiped the wofost output directory' )
                 else:
-                    mlogger.info( 'SKIP MODE: we skip any simulation already performed' )
+                    logging.info( 'SKIP MODE: we skip any simulation already performed' )
 
                 # we retrieve the optimum yield gap factor output files
                 yldgapfdir = os.path.join(outputdir.replace('wofost','ygf') )
                 if not os.path.exists(yldgapfdir):
-                    mlogger.error( "You haven't optimized the yield gap factor!!" )
-                    mlogger.error( "Run the script _04_optimize_fgap.py first!" )
+                    logging.error( "You haven't optimized the yield gap factor!!" )
+                    logging.error( "Run the script _04_optimize_fgap.py first!" )
                     sys.exit(2)
                     continue
              
                 # list the regions for which we have been able to optimize fgap
                 filelist = [ f for f in os.listdir(yldgapfdir) if opt_type in f]  #WP Selection for only observed, or only gap-filled NUTS
-                print filelist
 
                 #---------------------------------------------------------------
                 # loop over NUTS regions - this is the parallelized part -
@@ -167,19 +166,19 @@ def main():
             
                 # We add an end timestamp to time the process
                 end_timestamp = datetime.utcnow()
-                mlogger.info( 'Duration of the optimized runs: %s '% (end_timestamp - start_timestamp) )
+                logging.info( 'Duration of the optimized runs: %s '% (end_timestamp - start_timestamp) )
 
 #-------------------------------------------------------------------------------
 # POTENTIAL FORWARD RUNS:
 #-------------------------------------------------------------------------------
             if potential_sim:
-                mlogger.info( 'POTENTIAL MODE: we use a yield gap factor of 1.' )
+                logging.info( 'POTENTIAL MODE: we use a yield gap factor of 1.' )
 #-------------------------------------------------------------------------------
                 # print out some more information to user
                 if force_sim:
-                    mlogger.info( 'FORCE MODE: we just wiped the wofost output directory' )
+                    logging.info( 'FORCE MODE: we just wiped the wofost output directory' )
                 else:
-                    mlogger.info( 'SKIP MODE: we skip any simulation already performed' )
+                    logging.info( 'SKIP MODE: we skip any simulation already performed' )
 
                 # we retrieve the list of cultivated grid cells:
                 filename = os.path.join(CGMSdir, 'cropdata_objects', 
@@ -225,9 +224,11 @@ def main():
 def forward_sim_per_region(fgap_filename):
 #===============================================================================
     import logging
-    global fgap
+    import tarfile
 
-    mlogger = start_logger(level=logging.DEBUG)
+    global fgap, tarf
+
+    _ = start_logger(level=logging.DEBUG)
 
     # get the optimum fgap and the grid cell list for these regions
     optimi_info = pickle_load(open(os.path.join(yldgapfdir,fgap_filename),'rb')) 
@@ -235,16 +236,27 @@ def forward_sim_per_region(fgap_filename):
     optimi_code = optimi_info[1]
     fgap        = optimi_info[2]
     grid_shortlist = list(set([ g for g,a in optimi_info[3] ]))
-    mlogger.info( '    NUTS region: %s'%NUTS_no )
+    logging.info( '    NUTS region: %s'%NUTS_no )
 
-    print grid_shortlist
+    outputfile = os.path.join(wofostdir, "wofost_%s_results.tgz" %NUTS_no)
+    if os.path.exists(outputfile):
+        logging.debug('tar output file already exists, opening for writing')
+        tarf = tarfile.TarFile(outputfile,mode='a')
+    else:
+        logging.debug('tar output file does not exist, creating')
+        tarf = tarfile.TarFile(outputfile,mode='w')
+
     for grid in sorted(grid_shortlist):
-        forward_sim_per_grid(grid)
+        wofostfile = forward_sim_per_grid(grid, NUTS_no)
+        tarf.add(wofostfile, recursive=False)
+        os.remove(wofostfile)
+
+    tarf.close()
 
     return None
 
 #===============================================================================
-def forward_sim_per_grid(grid_no):
+def forward_sim_per_grid(grid_no, NUTS_no):
 #===============================================================================
     """
     Function to do forward simulations of crop yield for a given grid cell no
@@ -257,10 +269,10 @@ def forward_sim_per_grid(grid_no):
     from pcse.base_classes import WeatherDataProvider
     from pcse.fileinput.cabo_weather import CABOWeatherDataProvider
 
-    mlogger = start_logger(level=logging.DEBUG)
+    _ = start_logger(level=logging.DEBUG)
 
-    mlogger.info( '    - grid cell %i, yield gap factor of %.2f'%(grid_no, fgap) )
-    print '    - grid cell %i, yield gap factor of %.2f'%(grid_no, fgap) 
+    logging.info( '    - grid cell %i, yield gap factor of %.2f'%(grid_no, fgap) )
+    print '    - grid cell %i, yield gap factor of %.2f'%(grid_no, fgap)
 
     # Retrieve the weather data of one grid cell
     if (weather == 'CGMS'):
@@ -297,13 +309,14 @@ def forward_sim_per_grid(grid_no):
                                        method=selec_method, n=nsoils)
  
     for smu, stu_no, stu_area, soildata in selected_soil_types[grid_no]:
-        mlogger.info( '        soil type no %i'%stu_no )
+        logging.info( '        soil type no %i'%stu_no )
         print  '        soil type no %i'%stu_no 
         
-        wofostfile = os.path.join(wofostdir, "wofost_g%i_s%i_%s.txt"\
-                     %(grid_no,stu_no,opt_type))
-        if os.path.exists(wofostfile):
-            mlogger.info('Skipping calculation, output file already exists')
+        wofostfile = os.path.join(wofostdir, "wofost_%s_g%i_s%i_%s.txt"\
+                     %(NUTS_no,grid_no,stu_no,opt_type))
+
+        if wofostfile in tarf.getnames():
+            logging.info('Skipping calculation, output file already exists')
             print 'Skipping calculation, output file already exists (%s)'%wofostfile
             continue
  
@@ -356,7 +369,7 @@ def forward_sim_per_grid(grid_no):
         #    os.remove(os.path.join(pcseoutputdir, filename))
         #pickle_dump(output_string,open(os.path.join(pcseoutputdir,filename),'wb'))
 
-    return None
+    return wofostfile
 
 #===============================================================================
 def regroup_summary_output():
@@ -394,4 +407,5 @@ def regroup_summary_output():
 if __name__=='__main__':
     main()
 #===============================================================================
+
 

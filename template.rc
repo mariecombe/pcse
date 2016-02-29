@@ -8,7 +8,5 @@ time.years          : 2001, 2002, 2003, 2004
 
 crop.types          : Potato, Winter wheat, Winter barley
 
-optimize.type       : observed
-
-dir.project         : /Storage/CO2/peters/template
+dir.project         : template
 

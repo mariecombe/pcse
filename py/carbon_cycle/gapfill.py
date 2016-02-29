@@ -36,15 +36,15 @@ import cPickle
 
 def gapfill():
 
-    mlogger = start_logger(level=logging.DEBUG)
+    _ = start_logger(level=logging.DEBUG)
 
     opts, args = parse_options()
 
     # First message from logger
-    mlogger.info('Python Code has started')
-    mlogger.info('Passed arguments:')
+    logging.info('Python Code has started')
+    logging.info('Passed arguments:')
     for arg,val in args.iteritems():
-        mlogger.info('         %s : %s'%(arg,val) )
+        logging.info('         %s : %s'%(arg,val) )
 
     rcfilename = args['rc']
     rcF = rc.read(rcfilename)
@@ -55,8 +55,8 @@ def gapfill():
     outputdir = os.path.join(outputdir,'ygf')
     opt_type = rcF['optimize.type']
     if opt_type not in ['observed','gapfilled']:
-        mlogger.error('The specified optimization type (%s) in the call argument is not recognized' % opt_type )
-        mlogger.error('Please use either "observed" or "gapfilled" as value in the main rc-file')
+        logging.error('The specified optimization type (%s) in the call argument is not recognized' % opt_type )
+        logging.error('Please use either "observed" or "gapfilled" as value in the main rc-file')
         sys.exit(2)
 
 #-------------------------------------------------------------------------------
@@ -66,7 +66,7 @@ def gapfill():
     for year in years:
         for crop in sorted(crop_dict.keys()):  # this will normally only give one crop, but let's leave it like this
             crop_name  = crop_dict[crop][1]
-            mlogger.info( '\nCrop no %i: %s / %s'%(crop_dict[crop][0],crop, crop_name) )
+            logging.info( '\nCrop no %i: %s / %s'%(crop_dict[crop][0],crop, crop_name) )
             observed_nuts  = [f.split('_')[1] for f in os.listdir(outputdir) if "_observed" in f]  # code _01 refers to a ygf from observed values
             gapfilled_nuts = [f.split('_')[1] for f in os.listdir(outputdir) if not "_observed" in f]  # code _01 refers to a ygf from observed values
             gapfilled_nuts_code2  = [f.split('_')[1] for f in os.listdir(outputdir) if "gapfilled02" in f]  # code _01 refers to a ygf from observed values
@@ -75,15 +75,16 @@ def gapfill():
             gapfilled_nuts_code5  = [f.split('_')[1] for f in os.listdir(outputdir) if "gapfilled05" in f]  # code _01 refers to a ygf from observed values
             nonculti  = [f.split('_')[1] for f in os.listdir(outputdir) if "noncultivated" in f]  # code _01 refers to a ygf from observed values
             tofill  = [f.split('_')[1] for f in os.listdir(outputdir) if "togapfill" in f]  # code _01 refers to a ygf from observed values
+
             for nut in sorted(NUTS_regions)[0:10]:
                 # Check if this region was not already done
                 if nut not in tofill: 
-                    mlogger.debug('NUTS region %s does not need gapfilling, skipping' % nut)
+                    logging.debug('NUTS region %s does not need gapfilling, skipping' % nut)
                     continue # skippping, already done
 
                 else: # these are all the files missing, or the code 4 and code 5 gap-filled regions
 
-                    mlogger.debug('NUTS region %s will now be gapfilled ' % nut)
+                    logging.debug('NUTS region %s will now be gapfilled ' % nut)
 
                     # Find if there is a previous year
                     prevyear = os.path.join(outputdir.replace('%04d'%year, '%04d'% (year-1 )),'ygf_%s_observed.pickle' % nut)
@@ -95,10 +96,10 @@ def gapfill():
                             availfiles.append(searchyear)
                         #else:
 
-                    mlogger.info("%d years found for gap filling" %len(availfiles) )
+                    logging.info("%d years found for gap filling" %len(availfiles) )
 
                     if prevyear in availfiles and nextyear in availfiles:  # Use average from y-1 and y+1
-                        mlogger.info("Choosing gapfill method 02")
+                        logging.info("Choosing gapfill method 02")
                         optimi_info= cPickle.load(open(prevyear,'rb'))
                         ygf_prev        = optimi_info[2]
                         optimi_info= cPickle.load(open(nextyear,'rb'))
@@ -107,20 +108,20 @@ def gapfill():
                         opt_code='gapfilled02'
                         shortlist_cells = optimi_info[3]
                     elif prevyear in availfiles: # Use previous years value
-                        mlogger.info("Choosing gapfill method 03a")
+                        logging.info("Choosing gapfill method 03a")
                         optimi_info= cPickle.load(open(prevyear,'rb'))
                         ygf = optimi_info[2]
                         opt_code='gapfilled03'
                         shortlist_cells = optimi_info[3]
                         print shortlist_cells
                     elif nextyear in availfiles:  # Use nextyears value
-                        mlogger.info("Choosing gapfill method 03b")
+                        logging.info("Choosing gapfill method 03b")
                         optimi_info= cPickle.load(open(nextyear,'rb'))
                         ygf = optimi_info[2]
                         opt_code='gapfilled03'
                         shortlist_cells = optimi_info[3]
                     elif len(availfiles) > 2:  # Use climatological average from other years if nyear > 2
-                        mlogger.info("Choosing gapfill method 04")
+                        logging.info("Choosing gapfill method 04")
                         ygf=0.0
                         for filename in availfiles:
                             optimi_info= cPickle.load(open(filename,'rb'))
@@ -129,12 +130,14 @@ def gapfill():
                         opt_code='gapfilled04'
                         shortlist_cells = optimi_info[3]
                     else:
-                        mlogger.info("Choosing gapfill method 05")
+                        logging.info("Choosing gapfill method 05")
+                        fillyear =  os.path.join(outputdir,'ygf_%s_togapfill.pickle' % nut)
+                        optimi_info= cPickle.load(open(fillyear,'rb'))
+                        shortlist_cells = optimi_info[3]
                         ygf = 0.75
                         opt_code='gapfilled05'
-                        shortlist_cells = []
 
-                    mlogger.info("Using ygf of %5.2f and code of %s"%(ygf, opt_code))
+                    logging.info("Using ygf of %5.2f and code of %s"%(ygf, opt_code))
                     currentyear = os.path.join(outputdir,'ygf_%s_%s.pickle' % (nut, opt_code) )
                     cPickle.dump([nut,opt_code,ygf,shortlist_cells],open(currentyear,'wb') )
                     _ = os.remove(os.path.join(outputdir,'ygf_%s_togapfill.pickle' % nut) )

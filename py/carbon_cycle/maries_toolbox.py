@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys, os
+import sys, os, logging
 import numpy as np
 
 # This script gathers a few useful general functions used by several scripts
@@ -110,14 +110,21 @@ def find_grids_with_arable_land(connection, grids, threshold=None, largest_n=Non
         thr = float(threshold)
         sql = """
             select
-                grid_no, area
+              s.grid_no, s.sum_area
             from
-                link_region_grid_landcover
+                (select
+                    grid_no, sum(area) as sum_area
+                from
+                    link_region_grid_landcover
+                where
+                    landcover_id = {lc} and
+                    grid_no in {grids}
+                group by
+                    grid_no) s
             where
-                area > {threshold}f and
-                landcover_id = {lc} and
-                grid_no in {gridl}
-            order by area desc
+                s.sum_area > {threshold}f
+            order by
+              s.sum_area desc
         """.format(gridl=gridlist, threshold=thr, lc=landcover)
         cursor.execute(sql)
         rows = cursor.fetchall()
@@ -126,27 +133,39 @@ def find_grids_with_arable_land(connection, grids, threshold=None, largest_n=Non
         ln = int(largest_n)
         sql = """
             select
-                grid_no, area
+              s.grid_no, s.sum_area
             from
-                link_region_grid_landcover
-            where
-                landcover_id = {lc} and
-                grid_no in {grids}
-            order by area desc
-        """.format(grids=gridlist, nrows=ln, lc=landcover)
+                (select
+                    grid_no, sum(area) as sum_area
+                from
+                    link_region_grid_landcover
+                where
+                    landcover_id = {lc} and
+                    grid_no in {grids}
+                group by
+                    grid_no) s
+            order by
+              s.sum_area desc
+        """.format(grids=gridlist, lc=landcover)
         cursor.execute(sql)
         rows = cursor.fetchall()
         return rows[0:ln]
     else:
         sql = """
             select
-                grid_no, area
+              s.grid_no, s.sum_area
             from
-                link_region_grid_landcover
-            where
-                landcover_id = {lc} and
-                grid_no in {grids}
-            order by area desc
+                (select
+                    grid_no, sum(area) as sum_area
+                from
+                    link_region_grid_landcover
+                where
+                    landcover_id = {lc} and
+                    grid_no in {grids}
+                group by
+                    grid_no) s
+            order by
+              s.sum_area desc
         """.format(grids=gridlist, lc=landcover)
         cursor.execute(sql)
         rows = cursor.fetchall()
@@ -322,37 +341,25 @@ def select_cells(NUTS_no, crop_no, year, folder_pickle, method='topn', n=3,
     from cPickle import dump as pickle_dump
     from random import sample as random_sample
 
+    filename = os.path.join(folder_pickle,'gridlist_objects', 'nutstogrids_filled.pickle')
+    all_NUTS_arable = pickle_load(open(filename, 'rb'))
+
     if (select_from == 'arable'):    
-        # we first read the list of all 'whole' grid cells of that region
-        # NB: list_of_tuples is a list of (grid_cell_id, arable_land_area)
-        # tuples, which are already sorted by decreasing amount of arable land
-        filename = os.path.join(folder_pickle,'gridlist_objects',\
-                   'gridlistobject_all_r%s.pickle'%NUTS_no )
-        try:
-            NUTS_arable = pickle_load(open(filename, 'rb'))
-        except IOError:
-            NUTS_arable = querie_arable_cells_in_NUTS_region(NUTS_no)
-            pickle_dump(NUTS_arable, open(os.path.join(filename), 'wb'))
+
         # we select the first item from the file, which is the actual list of tuples
-        list_of_tuples = NUTS_arable[0]
+        NUTS_arable = all_NUTS_arable[NUTS_no]
 
     elif (select_from == 'cultivated'):
-        # first get the arable cells contained in NUTS region
-        filename = os.path.join(folder_pickle,'gridlist_objects',\
-                   'gridlistobject_all_r%s.pickle'%NUTS_no)
-        try:
-            NUTS_arable = pickle_load(open(filename, 'rb'))
-        except IOError:
-            NUTS_arable = querie_arable_cells_in_NUTS_region(NUTS_no)
-            pickle_dump(NUTS_arable, open(os.path.join(filename), 'wb'))
+        NUTS_arable = all_NUTS_arable[NUTS_no]
+
         # then read the European cultivated cells for that year and crop
         filename = os.path.join(folder_pickle,'cropdata_objects',\
                    'cropmask_c%i.pickle'%crop_no)
         culti_cells = pickle_load(open(filename,'rb'))
         # get only the intersection, i.e. the cultivated cells in NUTS region:
         list_of_tuples = list()
-        if (NUTS_arable[0] != None):
-            for cell in NUTS_arable[0]:
+        if (NUTS_arable):
+            for cell in NUTS_arable:
                 if cell[0] in [c for c,a in culti_cells[year]]:
                     list_of_tuples += [cell]
         else:
@@ -467,31 +474,27 @@ def select_soils(crop_no, grid_cells, folder_pickle, method='topn', n=3):
 
 #===============================================================================
 # retrieve the crop fraction from EUROSTAT data
-def get_EUR_frac_crop(crop_name, NUTS_name, EUROSTATdir_, prod_fig=False):
+def get_EUR_frac_crop(crop_name, NUTS_no, EUROSTATdir_, campaign_years):
 #===============================================================================
 
     import math
-    from matplotlib import pyplot as plt
+    from cPickle import load as pickle_load
 
-    name1       = 'agri_croparea_NUTS1-2-3_1975-2014.csv'
-    name2       = 'agri_landuse_NUTS1-2-3_2000-2013.csv'
-    NUTS_data   =  open_csv_EUROSTAT(EUROSTATdir_, [name1, name2],
-                                     convert_to_float=True, verbose=False)
-    # retrieve the region's crop area and arable area for the years 2000-2013
-    # NB: by specifying obs_type='area', we do not remove a long term trend in
-    # the observations 
-    crop_area   = detrend_obs(2000, 2013, NUTS_name, crop_name,
-                              NUTS_data[name1], 1., 2000, obs_type='area',
-                              prod_fig=False, verbose=False)
-    arable_area = detrend_obs(2000, 2013, NUTS_name, 'Arable land', 
-                              NUTS_data[name2], 1., 2000, obs_type='area',
-                              prod_fig=False, verbose=False)
+    # retrieve the region's crop area and arable area for the years specified by
+    # the user (i.e. campaign_years)
+    cultiareas = pickle_load(open(os.path.join(EUROSTATdir_,
+                                      'preprocessed_culti_areas.pickle'),'rb'))
+    arablareas = pickle_load(open(os.path.join(EUROSTATdir_,
+                                     'preprocessed_arable_areas.pickle'),'rb'))
+    crop_area   = cultiareas[crop_name][NUTS_no]
+    arable_area = arablareas[crop_name][NUTS_no]
+
     # we calculate frac_crop for the years where we both have observations of 
     # arable land AND crop area
     frac_crop = np.array([])
     years     = np.array([])
-    for year in range(2000, 2015):
-        if ((year in crop_area[1]) and (year in arable_area[1])):
+    for year in campaign_years:
+        if ((float(year) in crop_area[1]) and (float(year) in arable_area[1])):
             indx_crop = np.array([math.pow(j,2) for j in \
                                                   (crop_area[1]-year)]).argmin()
             indx_arab = np.array([math.pow(j,2) for j in \
@@ -503,18 +506,52 @@ def get_EUR_frac_crop(crop_name, NUTS_name, EUROSTATdir_, prod_fig=False):
             years     = np.append(years, np.nan)
             frac_crop = np.append(frac_crop, np.nan)
 
-    # for years without data, we fit a linear trend line in the record of 
-    # observed frac
-    all_years = range(2000, 2015)
-    mask = ~np.isnan(np.array(years))
-    z = np.polyfit(years[mask], frac_crop[mask], 1)
-    p = np.poly1d(z)
-    for y,year in enumerate(years):
-        if np.isnan(year):
-            frac_crop[y] = p(all_years[y])
+    # for years without data, we try to gap-fill the record of cultivated fractions
+    # using different methods
+    non_masked_len = np.ma.MaskedArray.count(np.ma.masked_invalid(years))
+    if non_masked_len < len(campaign_years) and non_masked_len > 4:
+        # if we have 5 points or more, we use a linear trend
+        print 'we gap fill the cultivated fraction with a linear trend over years'
+        mask = ~np.isnan(np.array(years))
+        z = np.polyfit(years[mask], frac_crop[mask], 1)
+        p = np.poly1d(z)
+        for y,year in enumerate(years):
+            if np.isnan(year):
+                frac_crop[y] = p(campaign_years[y])
+        return frac_crop, campaign_years
 
-    # return the yearly ratio of crop / arable land, and the list of years 
-    return frac_crop, all_years
+    elif non_masked_len <= 4 and non_masked_len > 0:
+        # if we have 4 points or less, we use the mean
+        clim_mean = np.ma.mean(np.ma.masked_invalid(frac_crop))
+        print 'we gap fill the cultivated fraction with the mean over years:'+\
+              ' %.4f'%clim_mean
+        frac_crop = np.array([clim_mean]*len(campaign_years))
+        return frac_crop, campaign_years
+
+    elif non_masked_len == 0:
+        # if we have no points at all, we use the upper level of NUTS records
+        # (i.e. NUTS1 instead of NUTS2, or NUTS0 instead of NUTS1)
+        if len(NUTS_no)>2:
+            if len(NUTS_no)==3:  level=1
+            elif len(NUTS_no)>3: level=2
+            print 'NUTS%i records are empty. We use NUTS%i '%(level,level-1) +\
+                  'records instead.'
+            upper_NUTS_frac = get_EUR_frac_crop(crop_name, NUTS_no[0:level+1],
+                  EUROSTATdir_, campaign_years)
+            return upper_NUTS_frac
+        else:
+        # if all gap-filling has failed, we signal the user to skip this entire 
+        # country for the optimization, by returning None 
+            print 'This country (%s) has no reported cultivated '%NUTS_no+\
+                  'fraction in the EUROSTAT records'
+            return None
+
+    # if all the years of data are available, return the yearly ratio of crop to 
+    # arable land, and the full list of years 
+    else:
+        print 'all observed years are available in the cultivated area records'
+        return frac_crop, campaign_years
+
 
 #===============================================================================
 # Select the list of years over which we optimize the yldgapf
@@ -559,196 +596,120 @@ def find_consecutive_years(years, nyears):
     return consecutive_years[-nyears:len(consecutive_years)]
 
 #===============================================================================
-# Function that will fetch the crop name from the crop number. Returns a list
-# with two items: first is the CGMS crop name, second is the EUROSTAT crop name
-def get_crop_name(list_of_CGMS_crop_no):
-#===============================================================================
-
-    list_of_crops_EUR = ['Barley','Beans','Common spring wheat',
-                        'Common winter wheat','Grain maize and corn-cob-mix',
-                        'Green maize',
-                        'Potatoes (including early potatoes and seed potatoes)',
-                        'Rye','Spring rape','Sugar beet (excluding seed)',
-                        'Sunflower seed','Winter barley','Winter rape']
-    list_of_crops_CGMS = ['Spring barley','Field beans','Spring wheat',
-                          'Winter wheat','Grain maize','Fodder maize',
-                          'Potato','Rye','Spring rapeseed','Sugar beets',
-                          'Sunflower','Winter barley','Winter rapeseed']
-    list_of_crop_ids_CGMS = [3,8,'sw',1,2,12,7,4,'sr',6,11,13,10]
-
-    dict_names = dict()
-    for item in list_of_CGMS_crop_no:
-        crop_name = list(['',''])
-        for i,crop_id in enumerate(list_of_crop_ids_CGMS):
-            if (crop_id == item):
-                crop_name[0] = list_of_crops_CGMS[i]
-                crop_name[1] = list_of_crops_EUR[i]
-        dict_names[item]=crop_name
-
-    return dict_names
-
-#===============================================================================
-def fetch_EUROSTAT_NUTS_name(NUTS_no, EUROSTATdir):
+def fetch_EUROSTAT_NUTS_name(EUROSTATdir):
 #===============================================================================
    
-    from csv import reader as csv_reader
+    import pickle
 
 # read the EUROSTAT file containing the NUTS codes and names
 
     # open file, read all lines
-    inputpath = os.path.join(EUROSTATdir,'NUTS_codes_2013.csv')
-    f=open(inputpath,'rU') 
-    reader=csv_reader(f, delimiter=',', skipinitialspace=True)
-    lines=[]
-    for row in reader:
-        lines.append(row)
-    f.close()
+    inputpath = os.path.join(EUROSTATdir,'nutscodes.pickle')
+    try:
+        dictnames = pickle.load(open(inputpath,'rb'))
+        logging.info("Read %03d NUTS region codes/names in a dictionary, from file %s"% (len(dictnames),inputpath) )
+    except:
+        logging.error("Unable to read NUTS region codes/names from file %s"% (inputpath) )
+        sys.exit(2)
 
-    # storing headers in list headerow
-    headerow=lines[0]
-
-    # deleting rows that are not data
-    del lines[0]
-
-    # we keep the string format, we just separate the string items
-    dictnames = dict()
-    for row in lines:
-        #dictnames[row[2]] = row[3]
-        dictnames[row[0]] = row[1]
-
-# we fetch the NUTS region name corresponding to the code
-
-    #print "EUROSTAT region name of %s:"%NUTS_no, dictnames[NUTS_no]
     
     return dictnames
 
 #===============================================================================
-def get_country_dict():
-#===============================================================================
-
-    country_dict = {'AT': ['austria','#408040'], 		# 3 regions		
-                    'BE': ['belgium','#FFBA3F'],
-	                'BG': ['bulgaria','#FF0000'],
-	                'CH': ['switzerland','#00FF00'],
-	                'CY': ['cyprus','#000080'],
-	                'CZ': ['czech republic','#FFFF00'],
-	                'DE': ['germany','#FF4040'],
-	                'DK': ['danemark','#FF00FF'],
-	                'EE': ['estonia','#808080'],
-	                'EL': ['greece','#FF8080'],
-	                'ES': ['spain','#80FF80'],
-	                'FI': ['finland','#8080FF'],
-	                'FR': ['france','#8000FF'],		# 26 regions
-	                'HR': ['croatia','#800080'],
-	                'HU': ['hungaria','#804040'],
-	                'IE': ['ireland','#404040'],
-	                'IS': ['iceland','#FFFF80'],
-	                'IT': ['italy','#80FFFF'],
-	                'LI': ['liechtenstein','#FF80FF'],
-	                'LT': ['lithuania','#FF0080'],
-	                'LU': ['luxembourg','#80FF00'],
-	                'LV': ['latvia','#0080FF'],
-	                'ME': ['montenegro','#004040'],
-	                'MK': ['macedonia','#008080'], 
-	                'MT': ['malta','#FF8000'],
-	                'NL': ['netherlands','#00FFFF'],
-	                'NO': ['norway','#800000'],
-	                'PL': ['poland','#0000FF'],
-	                'PT': ['portugal','#808000'],
-	                'RO': ['romania','#008000'],
-	                'SE': ['sweden','#40FF40'],
-	                'SI': ['slovenia','#4040FF'],
-	                'SK': ['slovakia','#00FF80'],
-	                'TR': ['turkey','#7F00FF'],		# 19
-	                'UK': ['united kingdoms','#FF5FC0']}	# 106
-
-    #country_name = country_dict[NUTS_no[0:2]][0]
-
-    return country_dict
-
-#===============================================================================
 # Function to detrend the observed EUROSTAT yields or harvests
-def detrend_obs( _start_year, _end_year, _NUTS_name, _crop_name, 
-                uncorrected_yields_dict, _DM_content, base_year,
+def detrend_obs( _NUTS_no, _crop_name, 
+                uncorrected_yields, _DM_content, base_year=2000,
                 obs_type='yield', detrend=True, prod_fig=False, verbose=True):
 #===============================================================================
 
-    from matplotlib import pyplot as plt
-
-    nb_years = int(_end_year - _start_year + 1.)
-    campaign_years = np.linspace(int(_start_year), int(_end_year), nb_years)
-    OBS = {}
-    TREND = {}
-    
-    # search for the index of base_year item in the campaign_years array
-    for i,val in enumerate(campaign_years): 
-        if val == base_year:
-            indref = i
+    years = np.array(sorted([float(y) for y in set(uncorrected_yields['Year'])]))
 
     # select if to detrend yields or harvest:
     if (obs_type == 'yield'):
-        header_to_search = 'Yields (100 kg/ha)'
+        header_to_search = 'Yield (100 kg/ha)'
         conversion_factor = 100.*_DM_content
         obs_unit = 'kgDM ha-1'
     elif (obs_type == 'harvest'):
         header_to_search = 'Harvested production (1000 t)'
         conversion_factor = _DM_content
         obs_unit = '1000 tDM'
-    elif (obs_type == 'area'):
-        header_to_search = 'Area (1 000 ha)'
+    elif (obs_type == 'culti_area'):
+        header_to_search = 'Area (cultivation/harvested/production) (1000 ha)'
         conversion_factor = 1.
         obs_unit = '1000 ha'
-    elif (obs_type == 'area_bis'):
-        header_to_search = 'Total'
-        conversion_factor = 1./1000.
+    elif (obs_type == 'arable_area'):
+        header_to_search = 'Main area (1000 ha)'
+        conversion_factor = 1.
         obs_unit = '1000 ha'
    
     # select yields for the required region, crop and period of time
     # and convert them from kg_humid_matter/ha to kg_dry_matter/ha 
-    TARGET = np.array([-9999.]*nb_years)
-    if (verbose==True): print 'searching for:', _NUTS_name
-    for j,year in enumerate(campaign_years):
-        for i,region in enumerate(uncorrected_yields_dict['GEO']):
-            if (region.lower()==_NUTS_name.lower()):
-                if uncorrected_yields_dict['CROP_PRO'][i]==_crop_name:
-                    if (uncorrected_yields_dict['TIME'][i]==str(int(year))):
-                        if (uncorrected_yields_dict['STRUCPRO'][i]==
+    TARGET = np.array([-9999.]*len(years))
+    if (verbose==True): print 'searching for:', _NUTS_no
+    print obs_type
+
+    # we preprocess ALL data available from the files
+    for j,year in enumerate(sorted(set(uncorrected_yields['Year']))):
+
+        # loop over all the lines of the file:
+        for i,region in enumerate(uncorrected_yields['NUTS_id']):
+
+            # if we match the NUTS region code
+            if (region == _NUTS_no):
+                # if we match the year
+                if (uncorrected_yields['Year'][i] == year):
+                   # print uncorrected_yields['Crop_name'][i], _crop_name
+                    # if we match the crop name
+                    if uncorrected_yields['Crop_name'][i] == _crop_name:
+                        #print uncorrected_yields['Variable'][i], header_to_search
+                        # if we match the variable to search
+                        if (uncorrected_yields['Variable'][i]==
                                                       header_to_search):
-                            if (verbose==True): 
-                                print year, _NUTS_name, uncorrected_yields_dict['Value'][i]
-                            TARGET[j] = float(uncorrected_yields_dict['Value'][i])\
+                            if (verbose==True): print year,\
+                            _NUTS_no, uncorrected_yields['Value'][i]
+                            TARGET[j] = float(uncorrected_yields['Value'][i])\
                                               *conversion_factor
 
     if (detrend==True):
+
+        # search for the index of base_year item in the years array
+        for r,val in enumerate(years): 
+            if val == base_year:
+                indref = r
+
         # fit a linear trend line in the record of observed yields
+        OBS = {}
+        TREND = {}
         mask = ~np.isnan(TARGET)
-        z = np.polyfit(campaign_years[mask], TARGET[mask], 1)
+        z = np.polyfit(years[mask], TARGET[mask], 1)
         p = np.poly1d(z)
         OBS['ORIGINAL'] = TARGET[mask]
-        TREND['ORIGINAL'] = p(campaign_years)
+        TREND['ORIGINAL'] = p(years)
         
         # calculate the anomalies to the trend line
-        ANOM = TARGET - (z[0]*campaign_years + z[1])
+        ANOM = TARGET - (z[0]*years + z[1])
         
         # Detrend the observed yield data
         OBS['DETRENDED'] = ANOM[mask] + p(base_year)
-        z2 = np.polyfit(campaign_years[mask], OBS['DETRENDED'], 1)
+        z2 = np.polyfit(years[mask], OBS['DETRENDED'], 1)
         p2 = np.poly1d(z2)
-        TREND['DETRENDED'] = p2(campaign_years)
+        TREND['DETRENDED'] = p2(years)
     else:
         # no detrending, but we apply a mask still?
+        OBS = {}
         mask = ~np.isnan(TARGET)
         OBS['ORIGINAL'] = TARGET[mask]
         
     
     # if needed plot a figure showing the yields before and after de-trending
     if prod_fig==True:
+        from matplotlib import pyplot as plt
         plt.close('all')
         fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(10,8))
         fig.subplots_adjust(0.15,0.16,0.85,0.96,0.4,0.)
         for var, ax in zip(["ORIGINAL", "DETRENDED"], axes.flatten()):
-            ax.scatter(campaign_years[mask], OBS[var], c='b')
-       	    ax.plot(campaign_years,TREND[var],'r-')
+            ax.scatter(years[mask], OBS[var], c='b')
+       	    ax.plot(years,TREND[var],'r-')
        	    ax.set_ylabel('%s %s (%s)'%(var,obs_type,obs_unit), fontsize=14)
             ax.set_xlabel('time (year)', fontsize=14)
         fig.savefig('observed_%ss.png'%obs_type)
@@ -760,9 +721,9 @@ def detrend_obs( _start_year, _end_year, _NUTS_name, _crop_name,
         if (verbose==True): print '\nsuccesfully detrended the %ss!'%obs_type, obstoreturn
     else: 
         obstoreturn = OBS['ORIGINAL']
-        print '\nno detrending! returning the original %s'%obs_type, obstoreturn
+        print '\nno detrending! returning the original %s'%obs_type, obstoreturn, years[mask]
 
-    return obstoreturn, campaign_years[mask]
+    return obstoreturn, years[mask]
 
 #===============================================================================
 # Function to retrieve the dry matter content of a given crop in a given
@@ -895,7 +856,8 @@ def open_csv(inpath,filelist,convert_to_float=False):
 
 #===============================================================================
 # Function to open EUROSTAT csv files
-def open_csv_EUROSTAT(inpath,filelist,convert_to_float=False,verbose=True):
+def open_csv_EUROSTAT(inpath,filelist,convert_to_float=False,verbose=True,
+                                                                data_year=2015):
 #===============================================================================
 
     from csv import reader as csv_reader
@@ -928,11 +890,18 @@ def open_csv_EUROSTAT(inpath,filelist,convert_to_float=False,verbose=True):
             # transforming data from string to float type
             converted_data=[]
             for line in lines:
-                if (line[4] != ':'): 
-                    a = (line[0:4] + [float(string_replace(line[4], ' ', ''))] 
-                                   + [line[5]])
-                else:
-                    a = line[0:4] + [float('NaN')] + [line[5]]
+                if data_year == 2015:
+                    if (line[4] != ':'): 
+                        a = (line[0:4] + [float(string_replace(line[4], ' ', ''))] 
+                                       + [line[5]])
+                    else:
+                        a = line[0:4] + [float('NaN')] + [line[5]]
+                elif data_year == 2016:
+                    if (line[5] != ':'): 
+                        a = (line[0:5] + [float(string_replace(line[5], ' ', ''))] 
+                                       + [line[6]])
+                    else:
+                        a = line[0:5] + [float('NaN')] + [line[6]]
                 converted_data.append(a)
             data = np.array(converted_data)
         else:
@@ -954,41 +923,42 @@ def open_csv_EUROSTAT(inpath,filelist,convert_to_float=False,verbose=True):
     return Dict
 
 #===============================================================================
-def all_crop_names():
+def get_crop_names(crop_list, method='short'):
 #===============================================================================
     """
-    This creates a dictionary of ALL WOFOST crops to read the EUROSTAT csv files:
-    crops[crop_short_name] = [CGMS_id, 'EUROSTAT_name_1', 'EUROSTAT_name_2']
+    This creates a dictionary 
+    - either of ALL WOFOST crops to read the EUROSTAT csv files (method 'all')
+    - or of a selected shortlist (method 'short')
 
-    EUROSTAT_name_1 can be used to retrieve information in the yield, harvest and
-    area csv files. 
-    EUROSTAT_name_2 should be used in the crop humidity content file only.
+	The script will associate CGMS crop names with a CGMS_id and EUROSTAT crop
+    name crops[CGMS_name] = [CGMS_id, EUROSTAT_name]
+
+    NB: these EUROSTAT crop names are only valid to use with the EUROSTAT files 
+    that were updated on feb 2016 (stored in download_2016/ folder)
 
     """
     crops = dict()
-    crops['Winter wheat']    = [1,'Common wheat and spelt','Common winter wheat']
-    crops['Spring wheat']    = [np.nan,'Common wheat and spelt','Common spring wheat']
-    #crops['Durum wheat']     = [np.nan,'Durum wheat','Durum wheat']
-    crops['Grain maize']     = [2,'Grain maize','Grain maize and corn-cob-mix']
-    crops['Fodder maize']    = [12,'Green maize','Green maize']
-    crops['Spring barley']   = [3,'Barley','Barley']
-    crops['Winter barley']   = [13,'Barley','Winter barley']
-    crops['Rye']             = [4,'Rye','Rye']
-    #crops['Rice']            = [np.nan,'Rice','Rice']
-    crops['Sugar beet']      = [6,'Sugar beet (excluding seed)','Sugar beet (excluding seed)']
-    crops['Potato']          = [7,'Potatoes (including early potatoes and seed potatoes)',
-                                'Potatoes (including early potatoes and seed potatoes)']
-    crops['Field beans']     = [8,'Dried pulses and protein crops for the production '\
-                              + 'of grain (including seed and mixtures of cereals '\
-                              + 'and pulses)',
-                                'Broad and field beans']
-    crops['Spring rapeseed'] = [np.nan,'Rape and turnip rape','Spring rape']
-    crops['Winter rapeseed'] = [10,'Rape and turnip rape','Winter rape']
-    crops['Sunflower']       = [11,'Sunflower seed','Sunflower seed']
-    #crops['Linseed']         = [np.nan, 'Linseed (oil flax)', '']
-    #crops['Soya']            = [np.nan, 'Soya', '']
-    #crops['Cotton']          = [np.nan, 'Cotton seed', '']
-    #crops['Tobacco']         = [np.nan, 'Tobacco', '']
+    crops['Winter wheat']    = [1,'Common winter wheat and spelt']
+    crops['Spring wheat']    = [np.nan,'Common spring wheat and spelt']
+    crops['Grain maize']     = [2,'Grain maize and corn-cob-mix']
+    crops['Fodder maize']    = [12,'Green maize']
+    crops['Spring barley']   = [3,'Spring barley']
+    crops['Winter barley']   = [13,'Winter barley']
+    crops['Rye']             = [4,'Rye']
+    crops['Sugar beet']      = [6,'Sugar beet (excluding seed)']
+    crops['Potato']          = [7,'Potatoes (including seed potatoes)']
+    crops['Field beans']     = [8,'Broad and field beans']
+    crops['Spring rapeseed'] = [np.nan,'Spring rape and turnip rape seeds']
+    crops['Winter rapeseed'] = [10,'Winter rape and turnip rape seeds']
+    crops['Sunflower']       = [11,'Sunflower seed']
+    crops['Durum wheat']     = [41,'Durum wheat']
+    crops['Triticale']       = [43,'Triticale']
+    crops['Rapeseed and turnips'] = [46,'Rape and turnip rape seeds']
+
+    if method=='short':
+        for key in crops.keys():
+            if key not in crop_list:
+                del crops[key]
 
     return crops
 
