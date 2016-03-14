@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 
 # import modules needed in all the methods of this script:
-import sys, os, glob
-sys.path.append('../')  # all py* code
-sys.path.append('../../') # all pcse code
+import sys
+from os import path
+sys.path.append( path.dirname(path.dirname( path.dirname( path.abspath(__file__) ) ) ))
+sys.path.append( path.dirname( path.dirname( path.abspath(__file__) ) ) )
+import glob, os
 import numpy as np
 from py.tools.initexit import start_logger, parse_options
 from py.carbon_cycle._01_select_crops_n_regions import select_crops_regions
@@ -78,7 +80,8 @@ def main():
     nb_cores = 12          # number of cores used in case of a parallelization
 
     # input data directory path
-    inputdir = os.path.join('/Users',os.environ["USER"],'mnt/promise/CO2/wofost')
+    #inputdir = os.path.join('/Users',os.environ["USER"],'mnt/promise/CO2/wofost')
+    inputdir = os.path.join('/projects/0/ctdas/input/wofost')
 
 # ==============================================================================
 #-------------------------------------------------------------------------------
@@ -142,6 +145,7 @@ def main():
              
                 # list the regions for which we have been able to optimize fgap
                 filelist = [ f for f in os.listdir(yldgapfdir) if opt_type in f]  #WP Selection for only observed, or only gap-filled NUTS
+                logging.info( "Found %d optimized yield gap factor files"%len(filelist) )
 
                 #---------------------------------------------------------------
                 # loop over NUTS regions - this is the parallelized part -
@@ -241,17 +245,18 @@ def forward_sim_per_region(fgap_filename):
     outputfile = os.path.join(wofostdir, "wofost_%s_results.tgz" %NUTS_no)
     if os.path.exists(outputfile):
         logging.debug('tar output file already exists, opening for writing')
-        tarf = tarfile.TarFile(outputfile,mode='a')
+        tarmode = 'a'
     else:
         logging.debug('tar output file does not exist, creating')
-        tarf = tarfile.TarFile(outputfile,mode='w')
+        tarmode = 'w'
 
-    for grid in sorted(grid_shortlist):
-        wofostfile = forward_sim_per_grid(grid, NUTS_no)
-        tarf.add(wofostfile, recursive=False)
-        os.remove(wofostfile)
+    with tarfile.TarFile(outputfile,mode=tarmode) as tarf:
 
-    tarf.close()
+        for grid in sorted(grid_shortlist):
+            wofostfile = forward_sim_per_grid(grid, NUTS_no)
+            tarf.add(wofostfile, recursive=False)
+            os.remove(wofostfile)
+
 
     return None
 

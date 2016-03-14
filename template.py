@@ -38,9 +38,9 @@ if not os.path.exists(outputdir): os.makedirs(outputdir)
 
 # Next open platform class
 
-import py.platforms.capegrim as platform
+import py.platforms.cartesius as platform
 
-pf = platform.CapeGrimPlatform()
+pf = platform.CartesiusPlatform()
 
 # And create a loop over years and crop types
 
@@ -62,29 +62,33 @@ for year in years:
         # We first run the ygf optimization and directly do the forward runs as well
 
         runjobname = 'jobs/runopt-%s_%s.jb'%(year.strip(),crop.strip().replace(' ','_') )
-        header= pf.get_job_header()
-        header += 'python ../py/carbon_cycle/_04_optimize_fgap.py rc=%s\n'%os.path.split(rcfilename)[-1]
-        header += 'python ../py/carbon_cycle/_05_run_forward_sim.py rc=%s\n'%os.path.split(rcfilename)[-1]
+        jobopts={'jobname':'%s_%s'%(year.strip(),crop.strip().replace(' ','_')),
+                 'jobqueue' : 'normal',
+                 'joblog' : '%s'% runjobname.replace('jb','log') }
+        header= pf.get_job_header(joboptions=jobopts)
+        header += 'python py/carbon_cycle/_04_optimize_fgap.py rc=%s\n'%rcfilename
+        header += 'python py/carbon_cycle/_05_run_forward_sim.py rc=%s\n'%rcfilename
         pf.write_job(runjobname, header, '999')  
+        pf.submit_job(runjobname)
 
         # Then we gapfill
 
-        runjobname = 'jobs/gapfill-%s_%s.jb'%(year.strip(),crop.strip().replace(' ','_') )
-        header= pf.get_job_header()
-        header += 'python ../py/carbon_cycle/gapfill.py rc=%s\n'%os.path.split(rcfilename)[-1]
-        pf.write_job(runjobname, header, '999')  
+        #runjobname = 'jobs/gapfill-%s_%s.jb'%(year.strip(),crop.strip().replace(' ','_') )
+        #header= pf.get_job_header()
+        #header += 'python ../py/carbon_cycle/gapfill.py rc=%s\n'%os.path.split(rcfilename)[-1]
+        #pf.write_job(runjobname, header, '999')  
 
         # And finally we run the gapfilled NUTS regions forward, note that we have to use a different rc-file now
 
-        jobrc = {'year' : year.strip(),'crop' : crop.strip() , 'dir.output' : dirname, 'optimize.type': 'gapfilled'}
-        rcfilename = 'jobs/rungap-%s_%s.rc'%(year.strip(),crop.strip().replace(' ','_') )
-        rc.write(rcfilename,jobrc)
-        logging.debug('An rc-file was created (%s)' % rcfilename )
+        #jobrc = {'year' : year.strip(),'crop' : crop.strip() , 'dir.output' : dirname, 'optimize.type': 'gapfilled'}
+        #rcfilename = 'jobs/rungap-%s_%s.rc'%(year.strip(),crop.strip().replace(' ','_') )
+        #rc.write(rcfilename,jobrc)
+        #logging.debug('An rc-file was created (%s)' % rcfilename )
 
-        runjobname = 'jobs/rungap-%s_%s.jb'%(year.strip(),crop.strip().replace(' ','_') )
-        header= pf.get_job_header()
-        header += 'python ../py/carbon_cycle/_05_run_forward_sim.py rc=%s\n'%os.path.split(rcfilename)[-1]
-        pf.write_job(runjobname, header, '999')  
+        #runjobname = 'jobs/rungap-%s_%s.jb'%(year.strip(),crop.strip().replace(' ','_') )
+        #header= pf.get_job_header()
+        #header += 'python ../py/carbon_cycle/_05_run_forward_sim.py rc=%s\n'%os.path.split(rcfilename)[-1]
+        #pf.write_job(runjobname, header, '999')  
 
 #exit
 sys.exit(0)

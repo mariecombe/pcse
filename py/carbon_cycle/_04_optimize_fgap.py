@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 
 # import modules needed in all the methods of this script:
-import sys, os, glob
-sys.path.append('../')  # all py* code
-sys.path.append('../../') # all pcse code
+import sys
+from os import path
+sys.path.append( path.dirname(path.dirname( path.dirname( path.abspath(__file__) ) ) ))
+sys.path.append( path.dirname( path.dirname( path.abspath(__file__) ) ) )
+import os,glob
 from py.tools.initexit import start_logger, parse_options
 from py.carbon_cycle._01_select_crops_n_regions import select_crops_regions
 import py.tools.rc as rc
@@ -76,6 +78,7 @@ def optimize():
     #inputdir = '/Users/mariecombe/Documents/Work/Research_project_3/'+\
     #           'model_input_data/'
     inputdir = os.path.join('/Users',os.environ["USER"],'mnt/promise/CO2/wofost/')
+    inputdir = os.path.join('/projects/0/ctdas/input/wofost')
 
 # ==============================================================================
 #-------------------------------------------------------------------------------

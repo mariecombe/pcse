@@ -25,7 +25,7 @@ import os
 import logging
 import subprocess
 
-std_joboptions = {'jobname':'test', 'jobaccount':'co2', 'jobnodes':'nserial 1', 'jobshell':'/bin/sh', 'depends':'', 'jobtime':'01:00:00'}
+std_joboptions = {'jobname':'wofost', 'jobaccount':'co2', 'jobnodes':'1', 'jobshell':'/bin/sh', 'depends':'', 'jobtime':'01:00:00'}
 
 class Platform(object):
     """ 

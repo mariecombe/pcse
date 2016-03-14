@@ -1,9 +1,7 @@
 #!/bin/sh
 #$ cropopt.py
 
-source /usr/local/Modules/3.2.8/init/sh
-export HOST='capegrim'
-module load python
+module load python/2.7.11
 
 echo "All output piped to file template.log"
 
