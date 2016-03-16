@@ -58,6 +58,7 @@ def main():
     opt_type = rcF['optimize.type']
     outputdir = rcF['dir.output']
     outputdir = os.path.join(outputdir,'wofost')
+    inputdir = rcF['dir.wofost.input']
 
     if opt_type not in ['observed','gapfilled']:
         logging.error('The specified optimization type (%s) in the call argument is not recognized' % opt_type )
@@ -81,7 +82,6 @@ def main():
 
     # input data directory path
     #inputdir = os.path.join('/Users',os.environ["USER"],'mnt/promise/CO2/wofost')
-    inputdir = os.path.join('/projects/0/ctdas/input/wofost')
 
 # ==============================================================================
 #-------------------------------------------------------------------------------
@@ -92,7 +92,7 @@ def main():
     ecmwfdir    = os.path.join(inputdir, 'CABO_weather_ECMWF')
 #-------------------------------------------------------------------------------
 # we retrieve the crops and years to loop over:
-    NUTS_regions,crop_dict = select_crops_regions(crops)
+    NUTS_regions,crop_dict = select_crops_regions(crops, EUROSTATdir)
 #-------------------------------------------------------------------------------
 # PERFORM FORWARD RUNS:
 #-------------------------------------------------------------------------------

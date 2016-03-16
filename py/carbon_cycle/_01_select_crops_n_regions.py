@@ -12,7 +12,7 @@ from cPickle import dump as pickle_dump
 # This script maps NUTS ids to EUROSTAT region names, and crop ids to crop names 
 
 #===============================================================================
-def select_crops_regions(crops):
+def select_crops_regions(crops,EUROSTATdir):
 #===============================================================================
     """
 	This scripts constructs a dictionary of NUTS_ids <--> NUTS names, of
@@ -75,8 +75,7 @@ def select_crops_regions(crops):
 #-------------------------------------------------------------------------------
 # Define general working directories
     currentdir    = os.getcwd()
-    inputdir = '/Users/peters/mnt/promise/CO2/wofost/'
-    EUROSTATdir   = os.path.join(inputdir,'EUROSTATobs')
+    #inputdir = '/Users/peters/mnt/promise/CO2/wofost/'
 #-------------------------------------------------------------------------------
 
 #-------------------------------------------------------------------------------

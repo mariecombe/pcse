@@ -53,6 +53,7 @@ def optimize():
     opt_type = rcF['optimize.type']
     outputdir = rcF['dir.output']
     outputdir = os.path.join(outputdir,'ygf')
+    inputdir = rcF['dir.wofost.input']
 
     if opt_type not in ['observed','gapfilled']:
         logging.error('The specified optimization type (%s) in the call argument is not recognized' % opt_type )
@@ -77,8 +78,7 @@ def optimize():
     # input directory paths
     #inputdir = '/Users/mariecombe/Documents/Work/Research_project_3/'+\
     #           'model_input_data/'
-    inputdir = os.path.join('/Users',os.environ["USER"],'mnt/promise/CO2/wofost/')
-    inputdir = os.path.join('/projects/0/ctdas/input/wofost')
+    #inputdir = os.path.join('/projects/0/ctdas/input/wofost')
 
 # ==============================================================================
 #-------------------------------------------------------------------------------
@@ -93,7 +93,7 @@ def optimize():
         os.makedirs(outputdir)
 #-------------------------------------------------------------------------------
 # we retrieve the crops, regions, and years to loop over:
-    NUTS_regions,crop_dict = select_crops_regions(crops)
+    NUTS_regions,crop_dict = select_crops_regions(crops,EUROSTATdir)
 #-------------------------------------------------------------------------------
 # we retrieve the EUROSTAT pre-processed yield observations:
     try:

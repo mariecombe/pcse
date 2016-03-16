@@ -30,6 +30,11 @@ logging.info("  Crop type : %s"% rcitems['crop.types'])
 years = rcitems['time.years'].split(',')  # the years to cover
 crops = rcitems['crop.types'].split(',')  # the crop types to consider
 projectdir = rcitems['dir.project']
+inputdir = rcitems['dir.wofost.input']
+if not os.path.exists(inputdir):
+    logging.error('Input path specified in the rc-file does not exist, exiting...')
+    logging.error('rc-file path: %s'%inputdir)
+    sys.exit(2)
 
 rundir = os.path.join(projectdir,'exec')
 if not os.path.exists(rundir): os.makedirs(rundir)
@@ -54,7 +59,7 @@ for year in years:
             os.makedirs(dirname)
             logging.info('Created new folder: %s'%dirname)
 
-        jobrc = {'year' : year.strip(),'crop' : crop.strip() , 'dir.output' : dirname, 'optimize.type': 'observed'}
+        jobrc = {'year' : year.strip(),'crop' : crop.strip() , 'dir.output' : dirname, 'optimize.type': 'observed', 'dir.wofost.input': inputdir }
         rcfilename = 'jobs/runopt-%s_%s.rc'%(year.strip(),crop.strip().replace(' ','_') )
         rc.write(rcfilename,jobrc)
         logging.debug('An rc-file was created (%s)' % rcfilename )

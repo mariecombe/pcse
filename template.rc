@@ -10,3 +10,5 @@ crop.types          : Potato, Winter wheat, Winter barley
 
 dir.project         : template
 
+dir.wofost.input    : /Storage/CO2/wofost/
+
