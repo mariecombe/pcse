@@ -26,7 +26,8 @@ def main():
 # variables/constants passed between functions
     global cwdir, CGMSdir, EUROSTATdir, ecmwfdir, yldgapfdir, wofostdir,\
            potential_sim, force_sim, selec_method, nsoils, weather,\
-           crop, crop_no, year, start_timestamp, optimi_code, fgap
+           crop, crop_no, year, start_timestamp, optimi_code, fgap,\
+           CGMSsoil, CGMScrop, CGMStimer, CGMSsite
 #-------------------------------------------------------------------------------
 # Temporarily add the parent directory to python path, to be able to import pcse
 # modules
@@ -66,6 +67,12 @@ def main():
               'to loop over'
         print 'Run the script _01_select_crops_n_regions.py first!\n'
         sys.exit() 
+#-------------------------------------------------------------------------------
+# open the pickle files containing the CGMS input data
+    CGMSsoil  = pickle_load(open(os.path.join(CGMSdir,'CGMSsoil.pickle'),'rb'))
+    CGMScrop  = pickle_load(open(os.path.join(CGMSdir,'CGMScrop.pickle'),'rb'))
+    CGMStimer = pickle_load(open(os.path.join(CGMSdir,'CGMStimer.pickle'),'rb'))
+    CGMSsite  = pickle_load(open(os.path.join(CGMSdir,'CGMSsite.pickle'),'rb'))
 #-------------------------------------------------------------------------------
 # PERFORM FORWARD RUNS:
 #-------------------------------------------------------------------------------
@@ -157,9 +164,7 @@ def main():
                     print 'SKIP MODE: we skip any simulation already performed\n'
 
                 # we retrieve the list of cultivated grid cells:
-                filename = os.path.join(CGMSdir, 'cropdata_objects', 
-                           'cropmask_c%i.pickle'%(crop_no))
-                culti_grid = pickle_load(open(filename,'rb'))
+                culti_grid = CGMScrop['cropmask_c%i'%crop_no]
                 grid_shortlist = list(set([g for g,a in culti_grid[year]]))
 
                 # we set the yield gap factor to 1
@@ -245,28 +250,14 @@ def forward_sim_per_grid(grid_no):
         weatherdata = CABOWeatherDataProvider('%i'%(grid_no),fpath=ecmwfdir)
     #print weatherdata(datetime.date(datetime(2006,4,1)))
  
-    # Retrieve the soil data of one grid cell 
-    filename = os.path.join(CGMSdir,'soildata_objects/',
-               'soilobject_g%d.pickle'%grid_no)
-    soil_iterator = pickle_load(open(filename,'rb'))
- 
-    # Retrieve calendar data of one year for one grid cell
-    filename = os.path.join(CGMSdir,
-               'timerdata_objects/%i/c%i/'%(year,crop_no),
-               'timerobject_g%d_c%d_y%d.pickle'%(grid_no,crop_no,year))
-    timerdata = pickle_load(open(filename,'rb'))
-                    
-    # Retrieve crop data of one year for one grid cell
-    filename = os.path.join(CGMSdir,
-               'cropdata_objects/%i/c%i/'%(year,crop_no),
-               'cropobject_g%d_c%d_y%d.pickle'%(grid_no,crop_no,year))
-    cropdata = pickle_load(open(filename,'rb'))
- 
-    # retrieve the fgap data of one year and one grid cell
+    # Retrieve the soil types, crop calendar, crop species
+    soil_iterator = ['soilobject_g%d'%grid_no]
+    timerdata = CGMStimer['timerobject_g%d_c%d_y%d'%(grid_no,crop_no,year)]
+    cropdata  = CGMScrop['cropobject_g%d_c%d_y%d'%(grid_no,crop_no,year)]
     cropdata['YLDGAPF'] = fgap
  
     # Select soil types to loop over for the forward runs
-    selected_soil_types = select_soils(crop_no, [grid_no], CGMSdir, 
+    selected_soil_types = select_soils(crop_no, [grid_no], CGMSsoil, 
                                        method=selec_method, n=nsoils)
  
     for smu, stu_no, stu_area, soildata in selected_soil_types[grid_no]:
@@ -276,15 +267,7 @@ def forward_sim_per_grid(grid_no):
                      %(grid_no,stu_no))
  
         # Retrieve the site data of one year, one grid cell, one soil type
-        if str(grid_no).startswith('1'):
-            dum = str(grid_no)[0:2]
-        else:
-            dum = str(grid_no)[0]
-        filename = os.path.join(CGMSdir,
-                   'sitedata_objects/%i/c%i/grid_%s/'%(year,crop_no,dum),
-                   'siteobject_g%d_c%d_y%d_s%d.pickle'%(grid_no,crop_no,year,
-                                                                    stu_no))
-        sitedata = pickle_load(open(filename,'rb'))
+        sitedata = CGMSsite['siteobject_g%d_c%d_y%d_s%d'%(grid_no,crop_no,year,stu_no)]
  
         # run WOFOST
         wofost_object = Wofost71_WLP_FD(sitedata, timerdata, soildata, 

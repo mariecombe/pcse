@@ -306,8 +306,8 @@ def find_complete_grid_cells_in_regions(connection, regions):
 
 #===============================================================================
 # Function to select a subset of grid cells within a NUTS region
-def select_cells(NUTS_no, crop_no, year, folder_pickle, method='topn', n=3, 
-                                                          select_from='arable'):
+def select_cells(NUTS_no, crop_no, year, CGMSgriddata, CGMScropdata, 
+                                      method='topn', n=3, select_from='arable'):
 #===============================================================================
     '''
     This function selects a subset of grid cells contained in a NUTS region
@@ -321,10 +321,12 @@ def select_cells(NUTS_no, crop_no, year, folder_pickle, method='topn', n=3,
     ------------------
     NUTS_no        is a string and is the NUTS region code number
 
-    folder_pickle  is a string and is the path to the folder where the CGMS 
-                   input pickle files are located (the pickled lists of 
-                   available grid cells). To produce these input files, use the
-                   script CGMS_input_files_retrieval.py
+    CGMSgriddata   is a dictionary of grid cell lists, with keys being the NUTS
+                   region code: example of a key: "BE35"
+
+    CGMScropdata   is a dictionary of crop parameter sets, with keys being a 
+                   combination of grid nb, crop nb, and year:
+                   example of a key: "cropobject_g54987_c7_y2005"
 
     method         is a string specifying how we select our subset of grid cells.
                    if 'all': we select all grid cells from the list.
@@ -336,44 +338,37 @@ def select_cells(NUTS_no, crop_no, year, folder_pickle, method='topn', n=3,
     n              is an integer specifying the number of grid cells to select 
                    for the method 'topn' and 'randomn'. n=3 by default.
 
+    select_from    is a string specifying which type of grid cells we select.
+                   if 'arable', we select from the entire list of arable CGMS
+                   cells contained in a given NUTS region.
+                   if 'cultivated', we select the intersection of grid cells 
+                   that (a) are contained in a NUTS region and (b) that are
+                   actually cultivated
+                   NB: cultivated cells were determined by checking if we have 
+                   timer data available for a WOFOST simulation for a given 
+                   cell (i.e. there is crop cultivation scheduled in the CGMS 
+                   calendars)
+
     '''
-    from cPickle import load as pickle_load
-    from cPickle import dump as pickle_dump
     from random import sample as random_sample
 
     if (select_from == 'arable'):    
         # we first read the list of all 'whole' grid cells of that region
         # NB: list_of_tuples is a list of (grid_cell_id, arable_land_area)
         # tuples, which are already sorted by decreasing amount of arable land
-        filename = os.path.join(folder_pickle,'gridlist_objects/',
-                   'gridlistobject_all_r%s.pickle'%NUTS_no)
-        try:
-            NUTS_arable = pickle_load(open(filename, 'rb'))
-        except IOError:
-            NUTS_arable = querie_arable_cells_in_NUTS_region(NUTS_no)
-            pickle_dump(NUTS_arable, open(os.path.join(filename), 'wb'))
-        # we select the first item from the file, which is the actual list of tuples
-        list_of_tuples = NUTS_arable[0]
+        NUTS_arable = CGMSgriddata['nutstogrids_filled'][NUTS_no]
 
     elif (select_from == 'cultivated'):
-        # first get the arable cells contained in NUTS region
-        filename = os.path.join(folder_pickle,'gridlist_objects/',
-                   'gridlistobject_all_r%s.pickle'%NUTS_no)
-        try:
-            NUTS_arable = pickle_load(open(filename, 'rb'))
-        except IOError:
-            NUTS_arable = querie_arable_cells_in_NUTS_region(NUTS_no)
-            pickle_dump(NUTS_arable, open(os.path.join(filename), 'wb'))
-        # then read the European cultivated cells for that year and crop
-        filename = os.path.join(folder_pickle,'cropdata_objects/',
-                   'cropmask_c%i.pickle'%crop_no)
-        culti_cells = pickle_load(open(filename,'rb'))
+        # first get the CGMS cells with arable land contained in the NUTS region
+        NUTS_arable = CGMSgriddata['nutstogrids_filled'][NUTS_no]
+        # then get the subset of cultivated cells for that year and crop
+        culti_cells = CGMScropdata['cropmask_c%i'%crop_no]
         # get only the intersection, i.e. the cultivated cells in NUTS region:
         list_of_tuples = list()
-        if (NUTS_arable[0] != None):
-            for cell in NUTS_arable[0]:
-                if cell[0] in [c for c,a in culti_cells[year]]:
-                    list_of_tuples += [cell]
+        if (NUTS_arable != None):
+            for celltuple in NUTS_arable:
+                if celltuple[0] in [c for c,a in culti_cells[year]]:
+                    list_of_tuples += [celltuple]
         else:
             return None
 
@@ -385,9 +380,9 @@ def select_cells(NUTS_no, crop_no, year, folder_pickle, method='topn', n=3,
         subset_list   = list_of_tuples[0:n]
     # second option: we select a random set of n grid cells
     elif (method == 'randomn'):
-        try: # try to sample n random soil types:
+        try:
             subset_list   = random_sample(list_of_tuples,n)
-        except: # if an error is raised ie. sample size bigger than population 
+        except: # if sample size is bigger than population 
             subset_list   = list_of_tuples
     # last option: we select all available grid cells of the region
     else:
@@ -400,7 +395,7 @@ def select_cells(NUTS_no, crop_no, year, folder_pickle, method='topn', n=3,
 
 #===============================================================================
 # Function to select a subset of suitable soil types for a list of grid cells
-def select_soils(crop_no, grid_cells, folder_pickle, method='topn', n=3):
+def select_soils(crop_no, grid_cells, CGMSsoildata, method='topn', n=3):
 #===============================================================================
     '''
     This function selects a subset of suitable soil types for a given crop from 
@@ -418,10 +413,10 @@ def select_soils(crop_no, grid_cells, folder_pickle, method='topn', n=3):
     grid_cells     is the list of selected (grid_cell_id, arable_land_area)
                    tuples for which we want to select a subset of soil types.
 
-    folder_pickle  is a string and is the path to the folder where the CGMS 
-                   input pickle files are located (the pickled lists of 
-                   suitable soil types and lists of soil type data). To produce
-                   these input files, use the script CGMS_input_files_retrieval.py
+    CGMSsoildata   is a dictionary of soil parameters sets, with keys being
+                   either related to the crop nb, or the grid nb:
+                   ex1: "suitablesoilsobject_c7"
+                   ex2: "soilobject_g54763"
 
     method         is a string specifying how we select our subset of soil types.
                    if 'all': we select all suitable soil types from the list.
@@ -436,12 +431,9 @@ def select_soils(crop_no, grid_cells, folder_pickle, method='topn', n=3):
 
     from random import sample as random_sample
     from operator import itemgetter as operator_itemgetter
-    from cPickle import load as pickle_load
 
     # we first read the list of suitable soil types for our chosen crop 
-    filename = os.path.join(folder_pickle,'soildata_objects/',
-               'suitablesoilsobject_c%d.pickle'%crop_no)
-    suitable_soils = pickle_load(open(filename,'rb')) 
+    suitable_soils = CGMSsoildata['suitablesoilsobject_c%d'%crop_no]
  
     dict_soil_types = {}
  
@@ -449,9 +441,7 @@ def select_soils(crop_no, grid_cells, folder_pickle, method='topn', n=3):
     for grid in grid_cells:
  
         # we read the list of soil types contained within the grid cell
-        filename = os.path.join(folder_pickle,'soildata_objects/',
-                   'soilobject_g%d.pickle'%grid)
-        soil_iterator_ = pickle_load(open(filename,'rb'))
+        soil_iterator_ = CGMSsoildata['soilobject_g%d'%grid]
  
         # Rank soils by decreasing area
         sorted_soils = []

@@ -27,7 +27,8 @@ def main():
 # variables/constants passed between functions
     global ecmwfdir_ssrd, ecmwfdir_tsurf, wofostdir, analysisdir, CGMSdir,\
            prod_figure, R10, Eact0, selec_method, nsoils,\
-           mmC, mmCO2, mmCH2O, all_grids, lons, lats, crop_no, crop, year 
+           mmC, mmCO2, mmCH2O, all_grids, lons, lats, crop_no, crop, year,\
+           CGMSsoil, CGMScrop, CGMStimer, CGMSsite
 #-------------------------------------------------------------------------------
 # constant molar masses for unit conversion of carbon fluxes
     mmC    = 12.01
@@ -72,6 +73,12 @@ def main():
               'to loop over'
         print 'Run the script _01_select_crops_n_regions.py first!\n'
         sys.exit() 
+#-------------------------------------------------------------------------------
+# open the pickle files containing the CGMS input data
+    CGMSsoil  = pickle_load(open(os.path.join(CGMSdir,'CGMSsoil.pickle'),'rb'))
+    CGMScrop  = pickle_load(open(os.path.join(CGMSdir,'CGMScrop.pickle'),'rb'))
+    CGMStimer = pickle_load(open(os.path.join(CGMSdir,'CGMStimer.pickle'),'rb'))
+    CGMSsite  = pickle_load(open(os.path.join(CGMSdir,'CGMSsite.pickle'),'rb'))
 #-------------------------------------------------------------------------------
 # we read the coordinates of all possible CGMS grid cells from file
     CGMS_cells = open_csv(CGMSdir, ['CGMS_grid_list.csv'])
@@ -197,8 +204,8 @@ def compute_timeseries_fluxes(grid_no):
         fig1.subplots_adjust(0.1,0.1,0.98,0.9,0.2,0.2)
 
     # Select soil types to loop over
-    soilist = select_soils(crop_no, [grid_no],
-                            CGMSdir, method=selec_method, n=nsoils)
+    soilist = select_soils(crop_no, [grid_no], CGMSsoil
+                           method=selec_method, n=nsoils)
 
     #---------------------------------------------------------------
     # loop over soil types
