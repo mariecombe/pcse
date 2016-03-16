@@ -56,7 +56,6 @@ def main():
     inputdir = '/Users/mariecombe/mnt/promise/CO2/wofost/'
     ecmwfdir_tsurf = '/Storage/TM5/METEO/tm5-nc/ec/ei/fc012up2tr3/tropo25/'+\
                      'eur100x100/'
-    ecmwfdir_ssrd = '/Storage/TM5/METEO/tm5-nc/ec/ei/fc012up2tr3/sfc/glb100x100/'
 
 # ==============================================================================
 #-------------------------------------------------------------------------------

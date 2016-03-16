@@ -365,7 +365,7 @@ def optimize_regional_yldgapf_dyn(NUTS_no_, detrend, crop_no_, frac_crop_,
     row = [] # this list will become the row of the 2D array
     for y,year in enumerate(opti_years_):
         index_year = np.argmin(np.absolute(detrend[1]-year))
-        row = row + [detrend[0][y]]
+        row = row + [detrend[0][index_year]]
     OBS = np.tile(row, (5,1)) # repeats the list as a row 3 times, to get a 
                               # 2D array
 
@@ -516,21 +516,20 @@ def optimize_regional_yldgapf_dyn(NUTS_no_, detrend, crop_no_, frac_crop_,
         # smallest interpolated RMSE
 
         index_new_center = RMSE.argmin()
-        try:
+        # if the optimum is close to 1:
+        if index_new_center == len(f_range)-1:
+            f0 = f_range[index_new_center-2]
+            f2 = f_range[index_new_center-1]
+            f4 = f_range[index_new_center]
+        # if the optimum is close to 0:
+        elif index_new_center == 0:
+            f0 = f_range[index_new_center]
+            f2 = f_range[index_new_center+1]
+            f4 = f_range[index_new_center+2]
+        else:
             f0 = f_range[index_new_center-1]
             f2 = f_range[index_new_center]
             f4 = f_range[index_new_center+1]
-        except IndexError:
-            # if the optimum is close to 1:
-            if index_new_center == len(f_range)-1:
-                f0 = f_range[index_new_center-2]
-                f2 = f_range[index_new_center-1]
-                f4 = f_range[index_new_center]
-            # if the optimum is close to 0:
-            elif index_new_center == 0:
-                f0 = f_range[index_new_center]
-                f2 = f_range[index_new_center+1]
-                f4 = f_range[index_new_center+2]
 
 	# when we are finished iterating on the yield gap factor range, we plot the
     # RMSE as a function of the yield gap factor
