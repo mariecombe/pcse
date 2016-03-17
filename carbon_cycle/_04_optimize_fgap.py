@@ -24,7 +24,7 @@ def main():
     global inputdir, cwdir, CGMSdir, EUROSTATdir, ecmwfdir, outputdir, \
            crop_dict, NUTS_regions, years, crop, year, observed_data,\
            selec_method, ncells, nsoils, weather, opti_metric,\
-           CGMSgrid, CGMSsoil, CGMScrop, CGMStimer, CGMSsite
+           CGMSgrid, CGMSsoil, CGMScropmask, CGMScrop, CGMStimer, CGMSsite
 #-------------------------------------------------------------------------------
 # Temporarily add parent directory to python path, to be able to import pcse
 # modules
@@ -81,10 +81,9 @@ def main():
 #-------------------------------------------------------------------------------
 # open the pickle files containing the CGMS input data
     CGMSgrid  = pickle_load(open(os.path.join(CGMSdir,'CGMSgrid.pickle'),'rb'))
+    print 'Successfully loaded the CGMS grid pickle file'
     CGMSsoil  = pickle_load(open(os.path.join(CGMSdir,'CGMSsoil.pickle'),'rb'))
-    CGMScrop  = pickle_load(open(os.path.join(CGMSdir,'CGMScrop.pickle'),'rb'))
-    CGMStimer = pickle_load(open(os.path.join(CGMSdir,'CGMStimer.pickle'),'rb'))
-    CGMSsite  = pickle_load(open(os.path.join(CGMSdir,'CGMSsite.pickle'),'rb'))
+    print 'Successfully loaded the CGMS soils pickle file'
 #-------------------------------------------------------------------------------
 # The optimization method and metric are now default options not given as
 # choice for the user. THESE OPTIONS SHOULD NOT BE MODIFIED ANYMORE.
@@ -120,6 +119,26 @@ def main():
                 for f in filelist:
                     os.remove(os.path.join(outputdir,f))
                 print "We force the optimization: output directory just got emptied"
+
+            # load the CGMS input data for crop parameters and calendars, and
+            # site parameters
+            filename = os.path.join(CGMSdir, 'cropdata_objects',
+                                       'cropmask_c%i.pickle'%crop_dict[crop][0])
+            CGMScropmask = pickle_load(open(filename, 'rb'))
+            filename = os.path.join(CGMSdir, 'cropdata_objects',
+                             'CGMScrop_%i_c%i.pickle'%(year,crop_dict[crop][0]))
+            CGMScrop = pickle_load(open(filename, 'rb'))
+            print 'Successfully loaded the CGMS crop pickle files'
+
+            filename = os.path.join(CGMSdir, 'timerdata_objects',
+                            'CGMStimer_%i_c%i.pickle'%(year,crop_dict[crop][0]))
+            CGMStimer = pickle_load(open(filename, 'rb'))
+            print 'Successfully loaded the CGMS timer pickle file'
+
+            filename = os.path.join(CGMSdir, 'sitedata_objects',
+                             'CGMSsite_%i_c%i.pickle'%(year,crop_dict[crop][0]))
+            CGMSsite = pickle_load(open(filename, 'rb'))
+            print 'Successfully loaded the CGMS site pickle file'
 
 #-------------------------------------------------------------------------------
 # loop over NUTS regions - this is the parallelized part of the script -
@@ -186,7 +205,7 @@ def optimize_fgap(NUTS_no):
     # if there were no "non-shared" cells that were cultivated that year,
     # we skip that region
     selected_grid_cells = select_cells(NUTS_no, crop_dict[crop][0], 
-                                   year, CGMSgrid, CGMScrop,
+                                   year, CGMSgrid, CGMScropmask,
                                    method=selec_method, n=ncells, 
                                    select_from='cultivated')
     if (selected_grid_cells == None):
@@ -225,6 +244,7 @@ def optimize_fgap(NUTS_no):
     # pickle the information per NUTS region
     outlist = [NUTS_no, opti_code, optimum, selected_grid_cells]
     filename = os.path.join(cwdir,outputdir,'fgap_%s.pickle'%NUTS_no)
+    #print filename
     pickle_dump(outlist, open(filename,'wb'))
 
     return None

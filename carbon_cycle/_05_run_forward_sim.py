@@ -27,7 +27,7 @@ def main():
     global cwdir, CGMSdir, EUROSTATdir, ecmwfdir, yldgapfdir, wofostdir,\
            potential_sim, force_sim, selec_method, nsoils, weather,\
            crop, crop_no, year, start_timestamp, optimi_code, fgap,\
-           CGMSsoil, CGMScrop, CGMStimer, CGMSsite
+           CGMSsoil, CGMScropmask, CGMScrop, CGMStimer, CGMSsite
 #-------------------------------------------------------------------------------
 # Temporarily add the parent directory to python path, to be able to import pcse
 # modules
@@ -70,9 +70,6 @@ def main():
 #-------------------------------------------------------------------------------
 # open the pickle files containing the CGMS input data
     CGMSsoil  = pickle_load(open(os.path.join(CGMSdir,'CGMSsoil.pickle'),'rb'))
-    CGMScrop  = pickle_load(open(os.path.join(CGMSdir,'CGMScrop.pickle'),'rb'))
-    CGMStimer = pickle_load(open(os.path.join(CGMSdir,'CGMStimer.pickle'),'rb'))
-    CGMSsite  = pickle_load(open(os.path.join(CGMSdir,'CGMSsite.pickle'),'rb'))
 #-------------------------------------------------------------------------------
 # PERFORM FORWARD RUNS:
 #-------------------------------------------------------------------------------
@@ -103,6 +100,27 @@ def main():
                 filelist = [f for f in os.listdir(wofostdir)]
                 for f in filelist:
                     os.remove(os.path.join(wofostdir,f))
+
+#-------------------------------------------------------------------------------
+# load the CGMS input data for crop parameters and calendars, and site parameters
+
+            filename = os.path.join(CGMSdir, 'cropdata_objects',
+                                                  'cropmask_c%i.pickle'%crop_no)
+            CGMScropmask = pickle_load(open(filename, 'rb'))
+            filename = os.path.join(CGMSdir, 'cropdata_objects',
+                                        'CGMScrop_%i_c%i.pickle'%(year,crop_no))
+            CGMScrop = pickle_load(open(filename, 'rb'))
+            print 'Successfully loaded the CGMS crop pickle files'
+
+            filename = os.path.join(CGMSdir, 'timerdata_objects',
+                                       'CGMStimer_%i_c%i.pickle'%(year,crop_no))
+            CGMStimer = pickle_load(open(filename, 'rb'))
+            print 'Successfully loaded the CGMS timer pickle file'
+
+            filename = os.path.join(CGMSdir, 'sitedata_objects',
+                                        'CGMSsite_%i_c%i.pickle'%(year,crop_no))
+            CGMSsite = pickle_load(open(filename, 'rb'))
+            print 'Successfully loaded the CGMS site pickle file'
 #-------------------------------------------------------------------------------
 # OPTIMIZED FORWARD RUNS:
 #-------------------------------------------------------------------------------
@@ -164,7 +182,7 @@ def main():
                     print 'SKIP MODE: we skip any simulation already performed\n'
 
                 # we retrieve the list of cultivated grid cells:
-                culti_grid = CGMScrop['cropmask_c%i'%crop_no]
+                culti_grid = CGMScropmask['cropmask_c%i'%crop_no]
                 grid_shortlist = list(set([g for g,a in culti_grid[year]]))
 
                 # we set the yield gap factor to 1

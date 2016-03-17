@@ -28,7 +28,7 @@ def main():
     global ecmwfdir_ssrd, ecmwfdir_tsurf, wofostdir, analysisdir, CGMSdir,\
            prod_figure, R10, Eact0, selec_method, nsoils,\
            mmC, mmCO2, mmCH2O, all_grids, lons, lats, crop_no, crop, year,\
-           CGMSsoil, CGMScrop, CGMStimer, CGMSsite
+           CGMSsoil
 #-------------------------------------------------------------------------------
 # constant molar masses for unit conversion of carbon fluxes
     mmC    = 12.01
@@ -76,9 +76,6 @@ def main():
 #-------------------------------------------------------------------------------
 # open the pickle files containing the CGMS input data
     CGMSsoil  = pickle_load(open(os.path.join(CGMSdir,'CGMSsoil.pickle'),'rb'))
-    CGMScrop  = pickle_load(open(os.path.join(CGMSdir,'CGMScrop.pickle'),'rb'))
-    CGMStimer = pickle_load(open(os.path.join(CGMSdir,'CGMStimer.pickle'),'rb'))
-    CGMSsite  = pickle_load(open(os.path.join(CGMSdir,'CGMSsite.pickle'),'rb'))
 #-------------------------------------------------------------------------------
 # we read the coordinates of all possible CGMS grid cells from file
     CGMS_cells = open_csv(CGMSdir, ['CGMS_grid_list.csv'])
