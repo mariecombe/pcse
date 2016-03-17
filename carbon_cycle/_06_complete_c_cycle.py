@@ -201,7 +201,7 @@ def compute_timeseries_fluxes(grid_no):
         fig1.subplots_adjust(0.1,0.1,0.98,0.9,0.2,0.2)
 
     # Select soil types to loop over
-    soilist = select_soils(crop_no, [grid_no], CGMSsoil
+    soilist = select_soils(crop_no, [grid_no], CGMSsoil,
                            method=selec_method, n=nsoils)
 
     #---------------------------------------------------------------

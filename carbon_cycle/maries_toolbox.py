@@ -306,7 +306,7 @@ def find_complete_grid_cells_in_regions(connection, regions):
 
 #===============================================================================
 # Function to select a subset of grid cells within a NUTS region
-def select_cells(NUTS_no, crop_no, year, CGMSgriddata, CGMScropdata, 
+def select_cells(NUTS_no, crop_no, year, CGMSgriddata, CGMScropmask, 
                                       method='topn', n=3, select_from='arable'):
 #===============================================================================
     '''
@@ -324,9 +324,7 @@ def select_cells(NUTS_no, crop_no, year, CGMSgriddata, CGMScropdata,
     CGMSgriddata   is a dictionary of grid cell lists, with keys being the NUTS
                    region code: example of a key: "BE35"
 
-    CGMScropdata   is a dictionary of crop parameter sets, with keys being a 
-                   combination of grid nb, crop nb, and year:
-                   example of a key: "cropobject_g54987_c7_y2005"
+    CGMScropmask   is a list of cultivated (grid nb, arable area) tuples
 
     method         is a string specifying how we select our subset of grid cells.
                    if 'all': we select all grid cells from the list.
@@ -362,7 +360,7 @@ def select_cells(NUTS_no, crop_no, year, CGMSgriddata, CGMScropdata,
         # first get the CGMS cells with arable land contained in the NUTS region
         NUTS_arable = CGMSgriddata['nutstogrids_filled'][NUTS_no]
         # then get the subset of cultivated cells for that year and crop
-        culti_cells = CGMScropdata['cropmask_c%i'%crop_no]
+        culti_cells = CGMScropmask
         # get only the intersection, i.e. the cultivated cells in NUTS region:
         list_of_tuples = list()
         if (NUTS_arable != None):

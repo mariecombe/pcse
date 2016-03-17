@@ -44,7 +44,7 @@ def main():
     weather       = 'ECMWF'   # weather data used for the forward simulations
                               # can be 'CGMS' or 'ECMWF'
 
-    process  = 'parallel'  # multiprocessing option: can be 'serial' or 'parallel'
+    process  = 'serial'  # multiprocessing option: can be 'serial' or 'parallel'
     nb_cores = 12          # number of cores used in case of a parallelization
 
     # input data directory path
@@ -182,7 +182,7 @@ def main():
                     print 'SKIP MODE: we skip any simulation already performed\n'
 
                 # we retrieve the list of cultivated grid cells:
-                culti_grid = CGMScropmask['cropmask_c%i'%crop_no]
+                culti_grid = CGMScropmask
                 grid_shortlist = list(set([g for g,a in culti_grid[year]]))
 
                 # we set the yield gap factor to 1

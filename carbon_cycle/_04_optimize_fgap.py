@@ -190,8 +190,7 @@ def optimize_fgap(NUTS_no):
         return None
 #-------------------------------------------------------------------------------
     # Get the NUTS region name
-    NUTS_name = NUTS_regions[NUTS_no][1]
-    print "\nRegion: %s / %s"%(NUTS_no, NUTS_name)
+    print "\nRegion %s"%(NUTS_no)
 #-------------------------------------------------------------------------------
     # NB: we do NOT detrend the yields anymore, since fgap is not supposed to be
     # representative of multi-annual gap
