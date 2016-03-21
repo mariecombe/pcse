@@ -12,3 +12,14 @@ dir.project         : template
 
 dir.wofost.input    : /Storage/CO2/wofost/
 
+opt.wofost.parallel : True
+opt.wofost.method   : topn
+opt.wofost.ncells   : 1
+opt.wofost.nsoils   : 1
+opt.wofost.weather  : ECMWF
+
+fwd.wofost.parallel : True
+fwd.wofost.method   : topn
+fwd.wofost.nsoils   : 1
+fwd.wofost.weather  : ECMWF
+fwd.wofost.potential: False

@@ -11,6 +11,7 @@ from py.tools.initexit import start_logger, parse_options
 from py.carbon_cycle._01_select_crops_n_regions import select_crops_regions
 import py.tools.rc as rc
 import logging
+import tarfile
 
 from cPickle import load as pickle_load
 from cPickle import dump as pickle_dump
@@ -34,7 +35,8 @@ def main():
 # variables/constants passed between functions
     global cwdir, CGMSdir, EUROSTATdir, ecmwfdir, yldgapfdir, wofostdir,\
            potential_sim, force_sim, selec_method, nsoils, weather,\
-           crop, crop_no, year, start_timestamp, optimi_code, fgap, opt_type, pickle_load
+           crop, crop_no, year, start_timestamp, optimi_code, fgap, opt_type, pickle_load,\
+           CGMSsoil, CGMScropmask, CGMScrop, CGMStimer, CGMSsite
 #-------------------------------------------------------------------------------
 # Temporarily add the parent directory to python path, to be able to import pcse
 # modules
@@ -59,6 +61,11 @@ def main():
     outputdir = rcF['dir.output']
     outputdir = os.path.join(outputdir,'wofost')
     inputdir = rcF['dir.wofost.input']
+    par_process = (rcF['fwd.wofost.parallel'] in ['True','TRUE','true','T'])
+    nsoils = int(rcF['fwd.wofost.nsoils'])
+    weather = rcF['fwd.wofost.weather']
+    selec_method = rcF['fwd.wofost.method']
+    potential_sim = (rcF['fwd.wofost.potential'] in ['True','TRUE','true','T'])
 
     if opt_type not in ['observed','gapfilled']:
         logging.error('The specified optimization type (%s) in the call argument is not recognized' % opt_type )
@@ -69,16 +76,8 @@ def main():
 # ================================= USER INPUT =================================
 
     # forward run settings:
-    potential_sim = False     # decide if to do potential / optimum simulations
     force_sim     = False     # decides if we overwrite the forward simulations,
                               # in case the results file already exists
-    selec_method  = 'topn'    # for soils: can be 'topn' or 'randomn' or 'all'
-    nsoils        = 1         # number of selected soil types within a grid cell
-    weather       = 'ECMWF'   # weather data used for the forward simulations
-                              # can be 'CGMS' or 'ECMWF'
-
-    process  = 'serial'  # multiprocessing option: can be 'serial' or 'parallel'
-    nb_cores = 12          # number of cores used in case of a parallelization
 
     # input data directory path
     #inputdir = os.path.join('/Users',os.environ["USER"],'mnt/promise/CO2/wofost')
@@ -93,6 +92,9 @@ def main():
 #-------------------------------------------------------------------------------
 # we retrieve the crops and years to loop over:
     NUTS_regions,crop_dict = select_crops_regions(crops, EUROSTATdir)
+#-------------------------------------------------------------------------------
+# open the pickle files containing the CGMS input data
+    CGMSsoil  = pickle_load(open(os.path.join(CGMSdir,'CGMSsoil.pickle'),'rb'))
 #-------------------------------------------------------------------------------
 # PERFORM FORWARD RUNS:
 #-------------------------------------------------------------------------------
@@ -123,6 +125,27 @@ def main():
                 filelist = [f for f in os.listdir(wofostdir)]
                 for f in filelist:
                     os.remove(os.path.join(wofostdir,f))
+
+#-------------------------------------------------------------------------------
+# load the CGMS input data for crop parameters and calendars, and site parameters
+
+            filename = os.path.join(CGMSdir, 'cropdata_objects',
+                                                  'cropmask_c%i.pickle'%crop_no)
+            CGMScropmask = pickle_load(open(filename, 'rb'))
+            filename = os.path.join(CGMSdir, 'cropdata_objects',
+                                        'CGMScrop_%i_c%i.pickle'%(year,crop_no))
+            CGMScrop = pickle_load(open(filename, 'rb'))
+            print 'Successfully loaded the CGMS crop pickle files'
+
+            filename = os.path.join(CGMSdir, 'timerdata_objects',
+                                       'CGMStimer_%i_c%i.pickle'%(year,crop_no))
+            CGMStimer = pickle_load(open(filename, 'rb'))
+            print 'Successfully loaded the CGMS timer pickle file'
+
+            filename = os.path.join(CGMSdir, 'sitedata_objects',
+                                        'CGMSsite_%i_c%i.pickle'%(year,crop_no))
+            CGMSsite = pickle_load(open(filename, 'rb'))
+            print 'Successfully loaded the CGMS site pickle file'
 #-------------------------------------------------------------------------------
 # OPTIMIZED FORWARD RUNS:
 #-------------------------------------------------------------------------------
@@ -156,112 +179,58 @@ def main():
                 
                 # if we do a serial iteration, we loop over the grid cells
                 # that contain arable land
-                if (process == 'serial'):
-                    for f in filelist:
-                        forward_sim_per_region(f)
+                for f in filelist:
+                    # get the optimum fgap and the grid cell list for these regions
+                    optimi_info = pickle_load(open(os.path.join(yldgapfdir,f),'rb')) 
+                    NUTS_no     = optimi_info[0]
+                    optimi_code = optimi_info[1]
+                    fgap        = optimi_info[2]
+                    grid_shortlist = list(set([ g for g,a in optimi_info[3] ]))
+                    logging.info( '    NUTS region (n=%d): %s'%(NUTS_no,len(grid_shortlist) )
+                    print ( '    NUTS region (n=%d): %s'%(NUTS_no,len(grid_shortlist) )
+
+
+                    tarfilelist=[]
+                    if (par_process):
+                        import multiprocessing
+                        # get number of cpus available to job
+                        try:
+                            ncpus = int(os.environ["SLURM_JOB_CPUS_PER_NODE"])/2
+                            print "Success reading parallel env %d" % ncpus
+                        except KeyError:
+                            ncpus = multiprocessing.cpu_count()/2
+                            print "Success obtaining processor count %d" % ncpus
+                        NUTS_nos = [NUTS_no]*len(grid_shortlist)
+                        fgaps = [fgap]*len(grid_shortlist)
+                        arguments = zip(grid_shortlist,NUTS_nos, fgaps)
+                        p = multiprocessing.Pool(ncpus)
+                        tarfilelist = p.map(forward_sim_per_grid, arguments)
+                        p.close()
+
+                    else: 
+                        for grid in sorted(grid_shortlist):
+                            wofostfile = forward_sim_per_grid((grid, NUTS_no, fgap))
+                            tarfilelist.extend(wofostfile)
+
+                    outputfile = os.path.join(wofostdir, "wofost_%s_results.tgz" %NUTS_no)
+                    if os.path.exists(outputfile):
+                        logging.debug('tar output file exists, removing')
+                        print ('tar output file exists, removing')
+                        os.remove(outputfile)
+                        tarmode = 'w:gz'
+                    else:
+                        logging.debug('tar output file does not exist, creating')
+                        print ('tar output file does not exist, creating')
+                        tarmode = 'w:gz'
+
+                    with tarfile.open(outputfile,tarmode) as tarf:
+                        for f in tarfilelist:
+                            tarf.add(f,recursive=False,arcname=os.path.basename(f))
+                            os.remove(f)
+
                 
-                # if we do a parallelization, we use the multiprocessor
-                # module to provide series of cells to the function
-                if (process == 'parallel'):
-                    import multiprocessing
-                    p = multiprocessing.Pool(nb_cores)
-                    data = p.map(forward_sim_per_region, filelist)
-                    p.close()
-            
-                # We add an end timestamp to time the process
-                end_timestamp = datetime.utcnow()
-                logging.info( 'Duration of the optimized runs: %s '% (end_timestamp - start_timestamp) )
-
-#-------------------------------------------------------------------------------
-# POTENTIAL FORWARD RUNS:
-#-------------------------------------------------------------------------------
-            if potential_sim:
-                logging.info( 'POTENTIAL MODE: we use a yield gap factor of 1.' )
-#-------------------------------------------------------------------------------
-                # print out some more information to user
-                if force_sim:
-                    logging.info( 'FORCE MODE: we just wiped the wofost output directory' )
-                else:
-                    logging.info( 'SKIP MODE: we skip any simulation already performed' )
-
-                # we retrieve the list of cultivated grid cells:
-                filename = os.path.join(CGMSdir, 'cropdata_objects', 
-                           'cropmask_c%i.pickle'%(crop_no))
-                culti_grid = pickle_load(open(filename,'rb'))
-                grid_shortlist = list(set([g for g,a in culti_grid[year]]))
-
-                # we set the yield gap factor to 1
-                fgap = 1.
-
-                #---------------------------------------------------------------
-                # loop over grid cells - this is the parallelized part -
-                #---------------------------------------------------------------
-
-                # We add a timestamp at start of the forward runs
-                start_timestamp = datetime.utcnow()
-                
-                # if we do a serial iteration, we loop over the grid cells that 
-                # contain arable land
-                if (process == 'serial'):
-                    for grid in sorted(grid_shortlist):
-                        forward_sim_per_grid(grid)
-                
-                # if we do a parallelization, we use the multiprocessor module
-                # to provide series of cells to the function
-                if (process == 'parallel'):
-                    import multiprocessing
-                    p = multiprocessing.Pool(nb_cores)
-                    data = p.map(forward_sim_per_grid, sorted(grid_shortlist))
-                    p.close()
-            
-                # We add an end timestamp to time the process
-                end_timestamp = datetime.utcnow()
-                print '\nDuration of the potential runs:', end_timestamp - \
-                start_timestamp
-
-            # we open a results file to write only summary output (for
-            # harvest maps)
-            #regroup_summary_output()
-            
-
 #===============================================================================
-def forward_sim_per_region(fgap_filename):
-#===============================================================================
-    import logging
-    import tarfile
-
-    global fgap, tarf
-
-    _ = start_logger(level=logging.DEBUG)
-
-    # get the optimum fgap and the grid cell list for these regions
-    optimi_info = pickle_load(open(os.path.join(yldgapfdir,fgap_filename),'rb')) 
-    NUTS_no     = optimi_info[0]
-    optimi_code = optimi_info[1]
-    fgap        = optimi_info[2]
-    grid_shortlist = list(set([ g for g,a in optimi_info[3] ]))
-    logging.info( '    NUTS region: %s'%NUTS_no )
-
-    outputfile = os.path.join(wofostdir, "wofost_%s_results.tgz" %NUTS_no)
-    if os.path.exists(outputfile):
-        logging.debug('tar output file already exists, opening for writing')
-        tarmode = 'a'
-    else:
-        logging.debug('tar output file does not exist, creating')
-        tarmode = 'w'
-
-    with tarfile.TarFile(outputfile,mode=tarmode) as tarf:
-
-        for grid in sorted(grid_shortlist):
-            wofostfile = forward_sim_per_grid(grid, NUTS_no)
-            tarf.add(wofostfile, recursive=False)
-            os.remove(wofostfile)
-
-
-    return None
-
-#===============================================================================
-def forward_sim_per_grid(grid_no, NUTS_no):
+def forward_sim_per_grid(arguments):
 #===============================================================================
     """
     Function to do forward simulations of crop yield for a given grid cell no
@@ -273,6 +242,8 @@ def forward_sim_per_grid(grid_no, NUTS_no):
     from pcse.models import Wofost71_WLP_FD
     from pcse.base_classes import WeatherDataProvider
     from pcse.fileinput.cabo_weather import CABOWeatherDataProvider
+
+    grid_no, NUTS_no, fgap = arguments
 
     _ = start_logger(level=logging.DEBUG)
 
@@ -289,28 +260,14 @@ def forward_sim_per_grid(grid_no, NUTS_no):
         weatherdata = CABOWeatherDataProvider('%i'%(grid_no),fpath=ecmwfdir)
     #print weatherdata(datetime.date(datetime(2006,4,1)))
  
-    # Retrieve the soil data of one grid cell 
-    filename = os.path.join(CGMSdir,'soildata_objects/',
-               'soilobject_g%d.pickle'%grid_no)
-    soil_iterator = pickle_load(open(filename,'rb'))
- 
-    # Retrieve calendar data of one year for one grid cell
-    filename = os.path.join(CGMSdir,
-               'timerdata_objects/%i/c%i/'%(year,crop_no),
-               'timerobject_g%d_c%d_y%d.pickle'%(grid_no,crop_no,year))
-    timerdata = pickle_load(open(filename,'rb'))
-                    
-    # Retrieve crop data of one year for one grid cell
-    filename = os.path.join(CGMSdir,
-               'cropdata_objects/%i/c%i/'%(year,crop_no),
-               'cropobject_g%d_c%d_y%d.pickle'%(grid_no,crop_no,year))
-    cropdata = pickle_load(open(filename,'rb'))
- 
-    # retrieve the fgap data of one year and one grid cell
+    # Retrieve the soil types, crop calendar, crop species
+    soil_iterator = ['soilobject_g%d'%grid_no]
+    timerdata = CGMStimer['timerobject_g%d_c%d_y%d'%(grid_no,crop_no,year)]
+    cropdata  = CGMScrop['cropobject_g%d_c%d_y%d'%(grid_no,crop_no,year)]
     cropdata['YLDGAPF'] = fgap
  
     # Select soil types to loop over for the forward runs
-    selected_soil_types = select_soils(crop_no, [grid_no], CGMSdir, 
+    selected_soil_types = select_soils(crop_no, [grid_no], CGMSsoil, 
                                        method=selec_method, n=nsoils)
  
     for smu, stu_no, stu_area, soildata in selected_soil_types[grid_no]:
@@ -320,21 +277,8 @@ def forward_sim_per_grid(grid_no, NUTS_no):
         wofostfile = os.path.join(wofostdir, "wofost_%s_g%i_s%i_%s.txt"\
                      %(NUTS_no,grid_no,stu_no,opt_type))
 
-        if wofostfile in tarf.getnames():
-            logging.info('Skipping calculation, output file already exists')
-            print 'Skipping calculation, output file already exists (%s)'%wofostfile
-            continue
- 
         # Retrieve the site data of one year, one grid cell, one soil type
-        if str(grid_no).startswith('1'):
-            dum = str(grid_no)[0:2]
-        else:
-            dum = str(grid_no)[0]
-        filename = os.path.join(CGMSdir,
-                   'sitedata_objects/%i/c%i/grid_%s/'%(year,crop_no,dum),
-                   'siteobject_g%d_c%d_y%d_s%d.pickle'%(grid_no,crop_no,year,
-                                                                    stu_no))
-        sitedata = pickle_load(open(filename,'rb'))
+        sitedata = CGMSsite['siteobject_g%d_c%d_y%d_s%d'%(grid_no,crop_no,year,stu_no)]
  
         # run WOFOST
         wofost_object = Wofost71_WLP_FD(sitedata, timerdata, soildata, 
@@ -412,5 +356,3 @@ def regroup_summary_output():
 if __name__=='__main__':
     main()
 #===============================================================================
-
-

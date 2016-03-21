@@ -59,7 +59,13 @@ for year in years:
             os.makedirs(dirname)
             logging.info('Created new folder: %s'%dirname)
 
-        jobrc = {'year' : year.strip(),'crop' : crop.strip() , 'dir.output' : dirname, 'optimize.type': 'observed', 'dir.wofost.input': inputdir }
+        # Create rc-file for the subjobs to be started, using some run specific and some
+        # general rc-keys. The latter are copied from the main rc-file
+        jobrc = {'year' : year.strip(),'crop' : crop.strip() , 'dir.output' : dirname, 'optimize.type': 'observed'}
+        for k,v in rcitems.iteritems():
+            if not jobrc.has_key(k):
+                jobrc[k]=v
+
         rcfilename = 'jobs/runopt-%s_%s.rc'%(year.strip(),crop.strip().replace(' ','_') )
         rc.write(rcfilename,jobrc)
         logging.debug('An rc-file was created (%s)' % rcfilename )
