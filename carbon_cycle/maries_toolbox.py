@@ -187,20 +187,53 @@ def querie_arable_cells_in_NUTS_region(NUTS_reg_code,_threshold=None,_largest_n=
         sys.exit(2)
 
     # 1- retrieve the NUTS 3 region ID forming the desired NUTS 2 region
-    try:
-        # the CGMS database uses the 2006 EUROSTAT nomenclature for NUTS_ids
-        # we correct a few NUTS names before trying to retrieve information there
-        # 1- Greece old country code was 'GR' before it became 'EL'
-        if NUTS_reg_code.startswith('EL'):
-            NUTS_reg_code = 'GR'+NUTS_reg_code[2:len(NUTS_reg_code)]
-        # 3- Italy old code 'ITD' became 'ITH' in 2010
-        if NUTS_reg_code.startswith('ITH'):
-            NUTS_reg_code = 'ITD'+NUTS_reg_code[3:len(NUTS_reg_code)]
-        # 4- Italy old code 'ITE' became 'ITI' in 2010
-        if NUTS_reg_code.startswith('ITI'):
-            NUTS_reg_code = 'ITE'+NUTS_reg_code[3:len(NUTS_reg_code)]
 
-        regions = find_level3_regions(connection, NUTS_reg_code)
+    # convert 2013 and 2010 codes read in EUROSTAT yields file to CGMS codes
+    # new countries, not yet coded in classification of CGMS:
+    if NUTS_reg_code.startswith('AL'): # Albania AL, AL0
+        old_NUTS_reg_code = '10481'
+    elif NUTS_reg_code=='BA': # Bosnia BA
+        old_NUTS_reg_code = '10530'
+    elif NUTS_reg_code.startswith('ME'): # Montenegro ME, ME0
+        old_NUTS_reg_code = '10517'
+    elif NUTS_reg_code=='XK' or NUTS_reg_code=='RS': # Kosovo, independant from Serbia
+        old_NUTS_reg_code = '10478'                  # since 2008, assigned to Serbia code
+    # Germany
+    elif NUTS_reg_code=='DE40':
+        old_NUTS_reg_code = ['DE41','DE42']
+    elif NUTS_reg_code=='DED4':
+        old_NUTS_reg_code = 'DED1'
+    elif NUTS_reg_code=='DED5':
+        old_NUTS_reg_code = 'DED3'
+    # Greece codes
+    elif NUTS_reg_code=='EL54':
+        old_NUTS_reg_code = 'GR21'
+    elif NUTS_reg_code.startswith('EL5'):
+        old_NUTS_reg_code = 'GR1'+NUTS_reg_code[3:]
+    elif NUTS_reg_code.startswith('EL6'):
+        old_NUTS_reg_code = 'GR2'+NUTS_reg_code[3:]
+    elif NUTS_reg_code.startswith('EL'):
+        old_NUTS_reg_code = 'GR'+NUTS_reg_code[2:len(NUTS_reg_code)]
+    # Croatia (Hrvatska)
+    elif NUTS_reg_code=='HR04':
+        old_NUTS_reg_code = ['HR01','HR02']
+    # Italy
+    elif NUTS_reg_code.startswith('ITH'):
+        old_NUTS_reg_code = 'ITD'+NUTS_reg_code[3:len(NUTS_reg_code)]
+    elif NUTS_reg_code.startswith('ITI'):
+        old_NUTS_reg_code = 'ITE'+NUTS_reg_code[3:len(NUTS_reg_code)]
+    # Slovenija
+    elif NUTS_reg_code=='SI03':
+        old_NUTS_reg_code = 'SI01'
+    elif NUTS_reg_code=='SI04':
+        old_NUTS_reg_code = 'SI02'
+    # unchanged codes:
+    else:
+        old_NUTS_reg_code = NUTS_reg_code
+    print 'EUROSTAT: %s, CGMS: %s'%(NUTS_reg_code, old_NUTS_reg_code)
+
+    try:
+        regions = find_level3_regions(connection, old_NUTS_reg_code)
     except Exception as e:
         print 'Region id does not exist?', e
         return None,'all'
