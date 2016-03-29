@@ -70,7 +70,7 @@ setup()
 
 import logging.config
 from .settings import settings
-logging.config.dictConfig(settings.LOG_CONFIG)
+#logging.config.dictConfig(settings.LOG_CONFIG)
 
 from . import examples
 from . import util

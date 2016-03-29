@@ -3,7 +3,7 @@
 import sys, os
 sys.path.append('../')
 import numpy as np
-import logging
+import logging as mylogger
 from py.tools.initexit import start_logger, parse_options
 from py.carbon_cycle.maries_toolbox import *
 from cPickle import load as pickle_load
@@ -53,7 +53,7 @@ def select_crops_regions(crops,EUROSTATdir):
 
     # Set up the basic logging style, start logging from DEBUG and higher
 
-    _ = start_logger(level=logging.DEBUG)
+    _ = start_logger(level=mylogger.DEBUG)
 
 #-------------------------------------------------------------------------------
 # ================================= USER INPUT =================================
@@ -89,10 +89,10 @@ def select_crops_regions(crops,EUROSTATdir):
     # we select a subset of regions to work with:
     if (levels_method == 'all'):
         NUTS_regions = all_NUTS_regions
-        logging.info('We selected all NUTS levels (0-1-2): %d'%len(NUTS_regions))
+        mylogger.info('We selected all NUTS levels (0-1-2): %d'%len(NUTS_regions))
     if (levels_method == 'composite'):
         NUTS_regions = make_NUTS_composite(lands_levels, all_NUTS_regions)
-        logging.info('We select a shortlist of NUTS 0/1/2 regions (user-defined): %s'%len(NUTS_regions))
+        mylogger.info('We select a shortlist of NUTS 0/1/2 regions (user-defined): %s'%len(NUTS_regions))
     
     NUTS_names_dict = NUTS_regions
 #-------------------------------------------------------------------------------
@@ -423,7 +423,7 @@ def map_NUTS_id_to_NUTS_name(list_of_NUTS_ids, EUROSTATdir):
                                                +"Hrvatska (former statistical "\
                                                +"region)"]
 
-    logging.debug('We select the following NUTS regions: %s'% sorted(dict_geo_units.keys()) )
+    mylogger.debug('We select the following NUTS regions: %s'% sorted(dict_geo_units.keys()) )
 
     return dict_geo_units
 

@@ -77,8 +77,10 @@ for year in years:
                  'jobqueue' : 'normal',
                  'joblog' : '%s'% runjobname.replace('jb','log') }
         header= pf.get_job_header(joboptions=jobopts)
+        header += 'rm -f /projects/0/ctdas/input/wofost/CABO_weather_ECMWF/*cache'
         header += 'python py/carbon_cycle/_04_optimize_fgap.py rc=%s\n'%rcfilename
         header += 'python py/carbon_cycle/_05_run_forward_sim.py rc=%s\n'%rcfilename
+        header += 'python py/carbon_cycle/_06_complete_c_cycle.py rc=%s\n'%rcfilename
         pf.write_job(runjobname, header, '999')  
         pf.submit_job(runjobname)
 
