@@ -278,68 +278,61 @@ def retrieve_CGMS_input(grid):
 # if the retrieval does not raise an error, the crop was cultivated that year
     print '    - grid cell no %i'%grid
     try:
-        # We retrieve the crop calendar (timerdata)
-        filename = os.path.join(CGMSdir,
-                   'timerdata_objects/%i/c%i/'%(year,crop_no),
-                   'timerobject_g%d_c%d_y%d.pickle'%(grid, crop_no, year))
-        if os.path.exists(filename):
-            pass
-        else:
-            timerdata = TimerDataProvider(engine, grid, crop_no, year)
-            pickle_dump(timerdata,open(filename,'wb'))    
-
-        # If required by the user, we retrieve the weather data
+        # try to retrieve all input files, to see if an error is caught
+        cropdata      = CropDataProvider(engine, grid, crop_no, year)
+        timerdata     = TimerDataProvider(engine, grid, crop_no, year)
+        soil_iterator = SoilDataIterator(engine, grid)
+        for smu_no, area_smu, stu_no, percentage, soildata in soil_iterator:
+            if stu_no in suitable_stu:
+                sitedata  = SiteDataProvider(engine,grid,crop_no,year,stu_no)
         if retrieve_weather == True: 
-            filename = os.path.join(CGMSdir, 'weather_objects/',
-                       'weatherobject_g%d.pickle'%(grid))
-            if os.path.exists(filename):
-                pass
-            else:
-                weatherdata = WeatherObsGridDataProvider(engine, grid)
-                weatherdata._dump(filename)
+            weatherdata = WeatherObsGridDataProvider(engine, grid)
 
-        # We retrieve the soil data (soil_iterator)
-        filename = os.path.join(CGMSdir, 'soildata_objects/',
-                   'soilobject_g%d.pickle'%(grid))
-        if os.path.exists(filename):
-            soil_iterator = pickle_load(open(filename,'rb'))
-        else:
-            soil_iterator = SoilDataIterator(engine, grid)
-            pickle_dump(soil_iterator,open(filename,'wb'))       
-
-        # We retrieve the crop variety info (crop_data)
-        filename = os.path.join(CGMSdir,
+        # if no error has been caught so far, we pickle the input data
+        # crop variety info (crop_data)
+        filenameCrop = os.path.join(CGMSdir,
                    'cropdata_objects/%i/c%i/'%(year,crop_no),
                    'cropobject_g%d_c%d_y%d.pickle'%(grid,crop_no,year))
-        if os.path.exists(filename):
-            pass
-        else:
-            cropdata = CropDataProvider(engine, grid, crop_no, year)
-            pickle_dump(cropdata,open(filename,'wb'))     
+        if not os.path.exists(filenameCrop):
+            pickle_dump(cropdata,open(filenameCrop,'wb'))
+
+        # crop calendar (timerdata)
+        filenameTimer = os.path.join(CGMSdir,
+                   'timerdata_objects/%i/c%i/'%(year,crop_no),
+                   'timerobject_g%d_c%d_y%d.pickle'%(grid, crop_no, year))
+        if not os.path.exists(filenameTimer):
+            pickle_dump(timerdata,open(filenameTimer,'wb'))
+
+        # soil data (soil_iterator)
+        filenameSoil = os.path.join(CGMSdir, 'soildata_objects/',
+                   'soilobject_g%d.pickle'%(grid))
+        if not os.path.exists(filenameSoil):
+            pickle_dump(soil_iterator,open(filenameSoil,'wb'))
 
         # WE LOOP OVER ALL SOIL TYPES LOCATED IN THE GRID CELL:
         for smu_no, area_smu, stu_no, percentage, soildata in soil_iterator:
 
             # NB: we remove all unsuitable soils from the iteration
-            if (stu_no not in suitable_stu):
-                pass
-            else:
+            if stu_no in suitable_stu:
                 print '        soil type no %i'%stu_no
 
-                # We retrieve the site data (site management)
-                if (str(grid)).startswith('1'):
-                    dum = str(grid)[0:2]
-                else:
-                    dum = str(grid)[0]
-                filename = os.path.join(CGMSdir,
+                # site data (site management)
+                if (str(grid)).startswith('1'): dum = str(grid)[0:2]
+                else: dum = str(grid)[0]
+                filenameSite = os.path.join(CGMSdir,
                            'sitedata_objects/%i/c%i/grid_%s/'%(year,crop_no,dum),
                            'siteobject_g%d_c%d_y%d_s%d.pickle'%(grid, crop_no,
                                                                   year, stu_no))
-                if os.path.exists(filename):
-                    pass
-                else:
+                if not os.path.exists(filenameSite):
                     sitedata = SiteDataProvider(engine,grid,crop_no,year,stu_no)
-                    pickle_dump(sitedata,open(filename,'wb'))     
+                    pickle_dump(sitedata,open(filenameSite,'wb'))     
+
+        # If required by the user, we retrieve the weather data
+        if retrieve_weather == True: 
+            filenameWeather = os.path.join(CGMSdir, 'weather_objects/',
+                       'weatherobject_g%d.pickle'%(grid))
+            if not os.path.exists(filenameWeather):
+                weatherdata._dump(filenameWeather)
 
     # if an error is raised, the crop was not grown that year
     except PCSEError:
@@ -357,8 +350,17 @@ def get_id_if_cultivated(grid_no):
 
     print '    - grid cell no %i'%grid_no
     try:
-        timerdata    = TimerDataProvider(engine, grid_no, crop_no, year)
+        cropdata      = CropDataProvider(engine, grid_no, crop_no, year)
+        timerdata     = TimerDataProvider(engine, grid_no, crop_no, year)
+        soil_iterator = SoilDataIterator(engine, grid_no)
+        for smu_no, area_smu, stu_no, percentage, soildata in soil_iterator:
+            if stu_no in suitable_stu:
+                sitedata  = SiteDataProvider(engine,grid_no,crop_no,year,stu_no)
+        if retrieve_weather == True: 
+            weatherdata = WeatherObsGridDataProvider(engine, grid)
+
         id_to_return = [grid_no]
+
     except PCSEError: # if the crop has not been grown on that year in this cell
         id_to_return = []
 
