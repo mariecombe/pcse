@@ -346,7 +346,9 @@ def retrieve_CGMS_input(grid):
 def get_id_if_cultivated(grid_no):
 #===============================================================================
     from pcse.exceptions import PCSEError 
-    from pcse.db.cgms11 import TimerDataProvider
+    from pcse.db.cgms11 import TimerDataProvider, SoilDataIterator, \
+                               CropDataProvider, STU_Suitability, \
+                               SiteDataProvider, WeatherObsGridDataProvider
 
     print '    - grid cell no %i'%grid_no
     try:
