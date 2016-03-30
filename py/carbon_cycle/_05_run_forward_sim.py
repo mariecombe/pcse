@@ -10,7 +10,7 @@ import numpy as np
 from py.tools.initexit import start_logger, parse_options
 from py.carbon_cycle._01_select_crops_n_regions import select_crops_regions
 import py.tools.rc as rc
-import logging
+import logging as mylogger
 import tarfile
 
 from cPickle import load as pickle_load
@@ -42,15 +42,15 @@ def main():
 # modules
     sys.path.insert(0, "..") 
 
-    _ = start_logger(level=logging.DEBUG)
+    _ = start_logger(level=mylogger.INFO)
 
     opts, args = parse_options()
 
     # First message from logger
-    logging.info('Python Code has started')
-    logging.info('Passed arguments:')
+    mylogger.info('Python Code has started')
+    mylogger.info('Passed arguments:')
     for arg,val in args.iteritems():
-        logging.info('         %s : %s'%(arg,val) )
+        mylogger.info('         %s : %s'%(arg,val) )
 
     rcfilename = args['rc']
     rcF = rc.read(rcfilename)
@@ -68,8 +68,8 @@ def main():
     potential_sim = (rcF['fwd.wofost.potential'] in ['True','TRUE','true','T'])
 
     if opt_type not in ['observed','gapfilled']:
-        logging.error('The specified optimization type (%s) in the call argument is not recognized' % opt_type )
-        logging.error('Please use either "observed" or "gapfilled" as value in the main rc-file')
+        mylogger.error('The specified optimization type (%s) in the call argument is not recognized' % opt_type )
+        mylogger.error('Please use either "observed" or "gapfilled" as value in the main rc-file')
         sys.exit(2)
 
 #-------------------------------------------------------------------------------
@@ -119,7 +119,7 @@ def main():
             # create output folder if needed
             if not os.path.exists(wofostdir):
                 os.makedirs(wofostdir)
-                logging.info("Created new folder for output (%s)"%wofostdir)
+                mylogger.info("Created new folder for output (%s)"%wofostdir)
             # empty folder if required by user
             if (os.path.exists(wofostdir) and force_sim == True):
                 filelist = [f for f in os.listdir(wofostdir)]
@@ -150,25 +150,25 @@ def main():
 # OPTIMIZED FORWARD RUNS:
 #-------------------------------------------------------------------------------
             if not potential_sim:
-                logging.info( 'OPTIMIZED MODE: we use the available optimum ygf' )
+                mylogger.info( 'OPTIMIZED MODE: we use the available optimum ygf' )
 #-------------------------------------------------------------------------------
                 # print out some information to user
                 if force_sim:
-                    logging.info( 'FORCE MODE: we just wiped the wofost output directory' )
+                    mylogger.info( 'FORCE MODE: we just wiped the wofost output directory' )
                 else:
-                    logging.info( 'SKIP MODE: we skip any simulation already performed' )
+                    mylogger.info( 'SKIP MODE: we skip any simulation already performed' )
 
                 # we retrieve the optimum yield gap factor output files
                 yldgapfdir = os.path.join(outputdir.replace('wofost','ygf') )
                 if not os.path.exists(yldgapfdir):
-                    logging.error( "You haven't optimized the yield gap factor!!" )
-                    logging.error( "Run the script _04_optimize_fgap.py first!" )
+                    mylogger.error( "You haven't optimized the yield gap factor!!" )
+                    mylogger.error( "Run the script _04_optimize_fgap.py first!" )
                     sys.exit(2)
                     continue
              
                 # list the regions for which we have been able to optimize fgap
                 filelist = [ f for f in os.listdir(yldgapfdir) if opt_type in f]  #WP Selection for only observed, or only gap-filled NUTS
-                logging.info( "Found %d optimized yield gap factor files"%len(filelist) )
+                mylogger.info( "Found %d optimized yield gap factor files"%len(filelist) )
 
                 #---------------------------------------------------------------
                 # loop over NUTS regions - this is the parallelized part -
@@ -186,11 +186,9 @@ def main():
                     optimi_code = optimi_info[1]
                     fgap        = optimi_info[2]
                     grid_shortlist = list(set([ g for g,a in optimi_info[3] ]))
-                    logging.info( '    NUTS region (n=%d): %s'%(NUTS_no,len(grid_shortlist) )
-                    print ( '    NUTS region (n=%d): %s'%(NUTS_no,len(grid_shortlist) )
+                    mylogger.info( '    NUTS region (n=%d): %s'%(len(grid_shortlist), NUTS_no ) )
 
 
-                    tarfilelist=[]
                     if (par_process):
                         import multiprocessing
                         # get number of cpus available to job
@@ -204,31 +202,33 @@ def main():
                         fgaps = [fgap]*len(grid_shortlist)
                         arguments = zip(grid_shortlist,NUTS_nos, fgaps)
                         p = multiprocessing.Pool(ncpus)
-                        tarfilelist = p.map(forward_sim_per_grid, arguments)
+                        _ = p.map(forward_sim_per_grid, arguments)
                         p.close()
 
                     else: 
                         for grid in sorted(grid_shortlist):
-                            wofostfile = forward_sim_per_grid((grid, NUTS_no, fgap))
-                            tarfilelist.extend(wofostfile)
+                            _ = forward_sim_per_grid((grid, NUTS_no, fgap))
 
                     outputfile = os.path.join(wofostdir, "wofost_%s_results.tgz" %NUTS_no)
                     if os.path.exists(outputfile):
-                        logging.debug('tar output file exists, removing')
+                        mylogger.debug('tar output file exists, removing')
                         print ('tar output file exists, removing')
                         os.remove(outputfile)
                         tarmode = 'w:gz'
                     else:
-                        logging.debug('tar output file does not exist, creating')
+                        mylogger.debug('tar output file does not exist, creating')
                         print ('tar output file does not exist, creating')
                         tarmode = 'w:gz'
 
                     with tarfile.open(outputfile,tarmode) as tarf:
-                        for f in tarfilelist:
-                            tarf.add(f,recursive=False,arcname=os.path.basename(f))
-                            os.remove(f)
+                        for f in [f for f in os.listdir(wofostdir) if NUTS_no in f and f.endswith('.txt')]:
+                            mylogger.info('Adding wofostfile to archive: %s'%f)
+                            tarf.add(os.path.join(wofostdir,f),recursive=False,arcname=f)
+                            os.remove(os.path.join(wofostdir,f))
 
-                
+    mylogger.info('Successfully finished the script, returning...')
+    sys.exit(0)
+    
 #===============================================================================
 def forward_sim_per_grid(arguments):
 #===============================================================================
@@ -237,7 +237,7 @@ def forward_sim_per_grid(arguments):
 
     """
     import glob
-    import logging
+    import logging as mylogger
     from maries_toolbox import select_soils
     from pcse.models import Wofost71_WLP_FD
     from pcse.base_classes import WeatherDataProvider
@@ -245,9 +245,9 @@ def forward_sim_per_grid(arguments):
 
     grid_no, NUTS_no, fgap = arguments
 
-    _ = start_logger(level=logging.DEBUG)
+    _ = start_logger(level=mylogger.INFO)
 
-    logging.info( '    - grid cell %i, yield gap factor of %.2f'%(grid_no, fgap) )
+    mylogger.info( '    - grid cell %i, yield gap factor of %.2f'%(grid_no, fgap) )
     print '    - grid cell %i, yield gap factor of %.2f'%(grid_no, fgap)
 
     # Retrieve the weather data of one grid cell
@@ -271,7 +271,7 @@ def forward_sim_per_grid(arguments):
                                        method=selec_method, n=nsoils)
  
     for smu, stu_no, stu_area, soildata in selected_soil_types[grid_no]:
-        logging.info( '        soil type no %i'%stu_no )
+        mylogger.info( '        soil type no %i'%stu_no )
         print  '        soil type no %i'%stu_no 
         
         wofostfile = os.path.join(wofostdir, "wofost_%s_g%i_s%i_%s.txt"\

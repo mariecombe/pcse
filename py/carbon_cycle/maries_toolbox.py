@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-import sys, os, logging
+import sys, os
+import logging as mylogger
 import numpy as np
 
 # This script gathers a few useful general functions used by several scripts
@@ -614,9 +615,9 @@ def fetch_EUROSTAT_NUTS_name(EUROSTATdir):
     inputpath = os.path.join(EUROSTATdir,'nutscodes.pickle')
     try:
         dictnames = pickle.load(open(inputpath,'rb'))
-        logging.info("Read %03d NUTS region codes/names in a dictionary, from file %s"% (len(dictnames),inputpath) )
+        mylogger.info("Read %03d NUTS region codes/names in a dictionary, from file %s"% (len(dictnames),inputpath) )
     except:
-        logging.error("Unable to read NUTS region codes/names from file %s"% (inputpath) )
+        mylogger.error("Unable to read NUTS region codes/names from file %s"% (inputpath) )
         sys.exit(2)
 
     

@@ -23,3 +23,5 @@ fwd.wofost.method   : topn
 fwd.wofost.nsoils   : 1
 fwd.wofost.weather  : ECMWF
 fwd.wofost.potential: False
+
+dir.ecmwf.nc-meteo  : /projects/0/tm5meteo/tm5-nc/ec/ei/fc012up2tr3/sfc/glb100x100/

@@ -9,7 +9,7 @@ import os,glob
 from py.tools.initexit import start_logger, parse_options
 from py.carbon_cycle._01_select_crops_n_regions import select_crops_regions
 import py.tools.rc as rc
-import logging
+import logging as mylogger
 import numpy as np
 
 from datetime import datetime
@@ -37,15 +37,15 @@ def optimize():
 
     sys.path.insert(0, "..")
 
-    _ = start_logger(level=logging.DEBUG)
+    _ = start_logger(level=mylogger.INFO)
 
     opts, args = parse_options()
 
     # First message from logger
-    logging.info('Python Code has started')
-    logging.info('Passed arguments:')
+    mylogger.info('Python Code has started')
+    mylogger.info('Passed arguments:')
     for arg,val in args.iteritems():
-        logging.info('         %s : %s'%(arg,val) )
+        mylogger.info('         %s : %s'%(arg,val) )
 
     rcfilename = args['rc']
     rcF = rc.read(rcfilename)
@@ -62,8 +62,8 @@ def optimize():
     selec_method = rcF['opt.wofost.method']
 
     if opt_type not in ['observed','gapfilled']:
-        logging.error('The specified optimization type (%s) in the call argument is not recognized' % opt_type )
-        logging.error('Please use either "observed" or "gapfilled" as value in the main rc-file')
+        mylogger.error('The specified optimization type (%s) in the call argument is not recognized' % opt_type )
+        mylogger.error('Please use either "observed" or "gapfilled" as value in the main rc-file')
         sys.exit(2)
 
 
@@ -100,8 +100,8 @@ def optimize():
         yields_dict   = pickle_load(open(filename1,'rb'))
         harvests_dict = pickle_load(open(filename2,'rb'))
     except IOError:
-        logging.error( 'You have not preprocessed the EUROSTAT observations' )
-        logging.error( 'Run the script 03_preprocess_obs.py first!' )
+        mylogger.error( 'You have not preprocessed the EUROSTAT observations' )
+        mylogger.error( 'Run the script 03_preprocess_obs.py first!' )
         sys.exit() 
 #-------------------------------------------------------------------------------
 # open the pickle files containing the CGMS input data
@@ -125,18 +125,18 @@ def optimize():
 # I - OPTIMIZE THE YIELD GAP FACTOR FOR THE CLIMATOLOGICAL PERIOD (2000-2010):
 #-------------------------------------------------------------------------------
     for year in years:
-        logging.info( 'Year %s'% year)
-        logging.info( '================================================' )
+        mylogger.info( 'Year %s'% year)
+        mylogger.info( '================================================' )
 #-------------------------------------------------------------------------------
         for crop in sorted(crop_dict.keys()):
             crop_name  = crop_dict[crop][1]
-            logging.info( '\nCrop no %i: %s / %s'%(crop_dict[crop][0],crop, crop_name) )
-            logging.info( '================================================' )
+            mylogger.info( '\nCrop no %i: %s / %s'%(crop_dict[crop][0],crop, crop_name) )
+            mylogger.info( '================================================' )
             if force_optimization == True:
                 filelist = [f for f in os.listdir(outputdir)]
                 for f in filelist:
                     os.remove(os.path.join(outputdir,f))
-                logging.info( "We force the optimization: output directory just got emptied" )
+                mylogger.info( "We force the optimization: output directory just got emptied" )
             # load the CGMS input data for crop parameters and calendars, and
             # site parameters
             filename = os.path.join(CGMSdir, 'cropdata_objects',
@@ -165,8 +165,8 @@ def optimize():
          
             # if we do a serial iteration:
             if (not par_process):
-                for NUTS_no in sorted(NUTS_regions)[0:32]:  # WP limit to ten NUTS regions for testing
-                    logging.warning("Only testing 32 NUTS regions for now!")
+                for NUTS_no in sorted(NUTS_regions):  
+                    #mylogger.warning("Only testing 32 NUTS regions for now!")
                     optimize_fgap(NUTS_no)
          
             # if we do a parallelization
@@ -189,10 +189,10 @@ def optimize():
          
             # we time the optimization
             end_timestamp = datetime.utcnow()
-            logging.info( 'Finished dynamic optimization at timestamp: %s' % ( end_timestamp-start_timestamp ))
+            mylogger.info( 'Finished dynamic optimization at timestamp: %s' % ( end_timestamp-start_timestamp ))
          
             # we save the dictionary of optimum fgap in the output folder
-            #logging.debug('ygf: %4.2f'% opti_fgap)
+            #mylogger.debug('ygf: %4.2f'% opti_fgap)
             #pickle_dump(opti_fgap, open(filename,'wb'))
 
     sys.exit()
@@ -207,7 +207,7 @@ def optimize_fgap(NUTS_no):
     # to redo it, we skip that year x crop
     filename = os.path.join(outputdir,'ygf_%s_%s.pickle'%( NUTS_no,opt_type) )
     if (os.path.exists(filename) and force_optimization == False):
-        logging.info( "We have already calculated the optimum ygf for that year and crop" )
+        mylogger.info( "We have already calculated the optimum ygf for that year and crop" )
         return None
 #-------------------------------------------------------------------------------
     # Get the NUTS region name
@@ -223,8 +223,8 @@ def optimize_fgap(NUTS_no):
                           select_from='cultivated')
 
     if (shortlist_cells == None):
-        logging.info( "No cultivated grid cells for %s in region %s"%(crop,NUTS_no) )
-        logging.info( "This crop/NUTS combination will be skipped from now on")
+        mylogger.info( "No cultivated grid cells for %s in region %s"%(crop,NUTS_no) )
+        mylogger.info( "This crop/NUTS combination will be skipped from now on")
         print ( "No cultivated grid cells for %s in region %s"%(crop,NUTS_no) )
         print ( "This crop/NUTS combination will be skipped from now on")
         filename = os.path.join(outputdir,'ygf_%s_noncultivated.pickle'% NUTS_no )
@@ -238,7 +238,7 @@ def optimize_fgap(NUTS_no):
     try:
         detrend = observed_data[crop][NUTS_no]
     except:
-        logging.info( 'This region code is unknown and will be skipped')
+        mylogger.info( 'This region code is unknown and will be skipped')
         print ( 'This region code (%s) is unknown and will be skipped'%NUTS_no)
         filename = os.path.join(outputdir,'ygf_%s_notreported.pickle'% NUTS_no )
         outlist = [NUTS_no, 'missingyield', np.NaN, shortlist_cells ]
@@ -248,15 +248,15 @@ def optimize_fgap(NUTS_no):
 	# if there were no reported yields at all, or no reported yield for the
 	# year of interest, we skip that region
     if (len(detrend[1])==0) or (year not in detrend[1]):
-        logging.info( 'No reported yield of %s in %s in %s, optimum cannot be compiled'%(crop,NUTS_no, year) )
+        mylogger.info( 'No reported yield of %s in %s in %s, optimum cannot be compiled'%(crop,NUTS_no, year) )
         print ( 'No reported yield of %s in %s in %s, optimum cannot be compiled'%(crop,NUTS_no, year) )
         if len(NUTS_no)==2: #WP NUTS level 0, needs to be gapfilled if missing
-            logging.info( 'This region will need to be gapfilled')
+            mylogger.info( 'This region will need to be gapfilled')
             print ( 'This region will need to be gapfilled')
             filename = os.path.join(outputdir,'ygf_%s_togapfill.pickle'% NUTS_no )
             outlist = [NUTS_no, 'togapfill', np.NaN, shortlist_cells ]
         else:
-            logging.info( 'This region will be skipped')
+            mylogger.info( 'This region will be skipped')
             print ( 'This region will be skipped')
             filename = os.path.join(outputdir,'ygf_%s_notreported.pickle'% NUTS_no )
             outlist = [NUTS_no, 'missingyield', np.NaN, shortlist_cells ]
@@ -286,7 +286,7 @@ def optimize_fgap(NUTS_no):
     opti_code = 1 # 1= observations are available for optimization
                   # 2= no obs available 
 
-    logging.info( "Proceeding to optimize based on %d grid cells for %s in region %s"%(len(shortlist_cells),crop,NUTS_no) )
+    mylogger.info( "Proceeding to optimize based on %d grid cells for %s in region %s"%(len(shortlist_cells),crop,NUTS_no) )
     print ( "Proceeding to optimize based on %d grid cells for %s in region %s"%(len(shortlist_cells),crop,NUTS_no) )
 
     # in all other cases, we optimize the yield gap factor
@@ -432,10 +432,10 @@ def optimize_regional_yldgapf_dyn(NUTS_no_, detrend, crop_no_,
         # 5- we compute the (sim-obs) differences.
         DIFF = TSO_regional - OBS
         if (TSO_regional[-1][0] <= 0.):
-            logging.warning ('WARNING: no simulated crop growth. We set the optimum ygf to 1.')
+            mylogger.warning ('WARNING: no simulated crop growth. We set the optimum ygf to 1.')
             return 1.
         if (TSO_regional[-1] <= OBS[-1]):
-            logging.warning( 'WARNING: obs yield > sim yield. We set optimum to 1.')
+            mylogger.warning( 'WARNING: obs yield > sim yield. We set optimum to 1.')
             return 1.
         
         # 6- we calculate the RMSE (root mean squared error) of the 3 yldgapf
@@ -496,7 +496,7 @@ def optimize_regional_yldgapf_dyn(NUTS_no_, detrend, crop_no_,
     index_optimum   = RMSE.argmin()
     optimum_yldgapf = f_range[index_optimum] 
 
-    logging.info( 'optimum found: %.2f +/- %.2f'%(optimum_yldgapf, f_step) )
+    mylogger.info( 'optimum found: %.2f +/- %.2f'%(optimum_yldgapf, f_step) )
 
     # 10- we return the optimized YLDGAPF
     return optimum_yldgapf

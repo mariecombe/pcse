@@ -485,7 +485,7 @@ class DVS_Phenology(SimulationObject):
             raise exc.PCSEError(msg)
         
         msg = "Changed phenological stage '%s' to '%s' on %s"
-        self.logger.info(msg % (current_STAGE, s.STAGE, day))
+        self.logger.debug(msg % (current_STAGE, s.STAGE, day))
 
     #---------------------------------------------------------------------------
     def _on_CROP_FINISH(self, day, finish_type=None):
