@@ -29,6 +29,10 @@ def main():
 #-------------------------------------------------------------------------------
     global EUROSTATdir, crop_dict
 #-------------------------------------------------------------------------------
+# we select the EUROSTAT data release year (year on which a new set of data was
+# dowloaded from the website) that we want to pre-process
+    EUROSTAT_release_year = 2015
+#-------------------------------------------------------------------------------
 # Define working directories
     EUROSTATdir   = '/Users/mariecombe/mnt/promise/CO2/wofost/EUROSTATobs/'
 #-------------------------------------------------------------------------------
@@ -75,7 +79,7 @@ def main():
     except IOError: # if the files don't exist, we create them:
         print '\nWARNING! You are launching the pre-processing of the yield, '+\
               'harvest, and area data \nthis procedure can take up to 20 hours!!!'
-        preprocess_EUROSTAT_data()
+        preprocess_EUROSTAT_data(EUROSTAT_release_year)
     except Exception as e:
         print 'Unexpected error:', e
         sys.exit()
@@ -222,7 +226,7 @@ def plot_DM_time_series(DM_dict, list_of_years_, crop, country):
     return None
 
 #===============================================================================
-def preprocess_EUROSTAT_data():
+def preprocess_EUROSTAT_data(EUROSTAT_release_year):
 #===============================================================================
     from maries_toolbox import open_csv_EUROSTAT, detrend_obs,\
                                retrieve_crop_DM_content
@@ -234,15 +238,28 @@ def preprocess_EUROSTAT_data():
     start_timestamp = datetime.utcnow()
 #-------------------------------------------------------------------------------
 # Retrieve the observational dataset:
-    fileyield    = 'NUTS12_yield.csv'
-    fileharvest  = 'NUTS12_harvest.csv'
-    filearea     = 'NUTS12_area.csv'
+    print 'Data release %i'%EUROSTAT_release_year
+    if EUROSTAT_release_year == 2015:
+        fileyield    = 'agri_yields_NUTS1-2-3_1975-2014.csv'
+        fileharvest  = 'agri_harvest_NUTS1-2-3_1975-2014.csv'
+        filearea     = 'agri_croparea_NUTS1-2-3_1975-2014.csv'
+    elif EUROSTAT_release_year == 2016:
+        fileyield    = 'NUTS12_yield.csv'
+        fileharvest  = 'NUTS12_harvest.csv'
+        filearea     = 'NUTS12_area.csv'
+    else:
+        print 'Wrong EUROSTAT data release year:', EUROSTAT_release_year
+        sys.exit()
 
-    filepath = os.path.join(EUROSTATdir, 'download_2016')
+    filepath = os.path.join(EUROSTATdir, 'download_%i'%EUROSTAT_release_year)
     NUTS_data = open_csv_EUROSTAT(filepath,[fileyield, fileharvest, filearea],
-                convert_to_float=True, verbose=False, data_year=2016)
+        convert_to_float=True, verbose=False, data_year=EUROSTAT_release_year)
 #-------------------------------------------------------------------------------
-    NUTS_regions = sorted(set(NUTS_data[fileharvest]['NUTS_id']))
+    if EUROSTAT_release_year == 2015:
+        NUTS_names = set(NUTS_data[fileharvest]['NUTS_name'])
+        NUTS_regions = 
+    elif EUROSTAT_release_year == 2016:
+        NUTS_regions = sorted(set(NUTS_data[fileharvest]['NUTS_id']))
 #-------------------------------------------------------------------------------
     # we print out some info for the user
     print '\nWe will loop over:\n'
@@ -286,41 +303,46 @@ def preprocess_EUROSTAT_data():
 			# retrieve the region's crop area and arable area for the years
 			# 2000-2013. NB: by specifying obs_type='area', we do not remove a
 			# long term trend in the observations 
-            cultia[crop][NUTS_no] = detrend_obs(NUTS_no,
-                                      EURO_name, NUTS_data[filearea], 1., 
-                                      obs_type='culti_area', detrend=detr, 
-                                      prod_fig=fig, verbose=verb)
-            arable[crop][NUTS_no] = detrend_obs(NUTS_no, 
-                                      'Arable land', NUTS_data[filearea], 1., 
-                                      obs_type='arable_area', detrend=detr,
-                                      prod_fig=fig, verbose=verb)
-            harvest[crop][NUTS_no] = detrend_obs(NUTS_no, 
-                                      EURO_name, NUTS_data[fileharvest], DM, 
-                                      obs_type='harvest', detrend=detr, 
-                                      prod_fig=fig, verbose=verb)
+           # cultia[crop][NUTS_no] = detrend_obs(NUTS_no,
+           #                           EURO_name, NUTS_data[filearea], 1., 
+           #                           obs_type='culti_area', detrend=detr, 
+           #                           prod_fig=fig, verbose=verb, 
+           #                           data_year=EUROSTAT_release_year)
+           # arable[crop][NUTS_no] = detrend_obs(NUTS_no, 
+           #                           'Arable land', NUTS_data[filearea], 1., 
+           #                           obs_type='arable_area', detrend=detr,
+           #                           prod_fig=fig, verbose=verb,
+           #                           data_year=EUROSTAT_release_year)
+           # harvest[crop][NUTS_no] = detrend_obs(NUTS_no, 
+           #                           EURO_name, NUTS_data[fileharvest], DM, 
+           #                           obs_type='harvest', detrend=detr, 
+           #                           prod_fig=fig, verbose=verb,
+           #                           data_year=EUROSTAT_release_year)
             dummy_yield = detrend_obs(NUTS_no, EURO_name, NUTS_data[fileyield], DM,
                                       obs_type='yield', detrend=detr,
-                                      prod_fig=fig, verbose=verb)
+                                      prod_fig=fig, verbose=verb,
+                                      data_year=EUROSTAT_release_year)
             # we recalculate the yields from the harvest and area data if necessary
             yields[crop][NUTS_no] = compute_yield_from_harvest_over_area(dummy_yield, 
                                       harvest[crop][NUTS_no], cultia[crop][NUTS_no])
             print 'final yields:', yields[crop][NUTS_no][0], yields[crop][NUTS_no][1], '\n'
             print '--------------------------------------'
 
-    pickle_dump(cultia,  open(os.path.join(EUROSTATdir,
-                                       'preprocessed_culti_areas.pickle'),'wb'))
-    pickle_dump(arable,  open(os.path.join(EUROSTATdir,
-                                      'preprocessed_arable_areas.pickle'),'wb'))
+   # pickle_dump(cultia,  open(os.path.join(EUROSTATdir,
+   #                                    'preprocessed_culti_areas.pickle'),'wb'))
+   # pickle_dump(arable,  open(os.path.join(EUROSTATdir,
+   #                                   'preprocessed_arable_areas.pickle'),'wb'))
     pickle_dump(yields,  open(os.path.join(EUROSTATdir,
                                             'preprocessed_yields.pickle'),'wb'))
-    pickle_dump(harvest, open(os.path.join(EUROSTATdir,
-                                          'preprocessed_harvests.pickle'),'wb'))
+   # pickle_dump(harvest, open(os.path.join(EUROSTATdir,
+   #                                       'preprocessed_harvests.pickle'),'wb'))
 
     # We add a timestamp at end of the retrieval, to time the process
     end_timestamp = datetime.utcnow()
     print '\nDuration of the retrieval:', end_timestamp-start_timestamp
 
-    return cultia, arable, harvest, yields
+    #return cultia, arable, harvest, yields
+    return yields
 
 #===============================================================================
 def compute_yield_from_harvest_over_area(yields, harvests, cultias):

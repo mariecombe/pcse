@@ -8,6 +8,10 @@ from datetime import datetime
 from cPickle import load as pickle_load
 from cPickle import dump as pickle_dump
 
+sys.path.append( os.path.dirname( os.path.dirname( os.path.dirname( os.path.abspath(__file__) ) ) ))
+sys.path.append( os.path.dirname( os.path.dirname( os.path.abspath(__file__) ) ) )
+
+
 #===============================================================================
 # This script optimizes the WOFOST fgap for a number of NUTS regions
 def main():
@@ -24,7 +28,8 @@ def main():
     global inputdir, cwdir, CGMSdir, EUROSTATdir, ecmwfdir, outputdir, \
            crop_dict, NUTS_regions, years, crop, year, observed_data,\
            selec_method, ncells, nsoils, weather, opti_metric,\
-           CGMSgrid, CGMSsoil, CGMScropmask, CGMScrop, CGMStimer, CGMSsite
+           CGMSgrid, CGMSsoil, CGMScropmask, CGMScrop, CGMStimer, CGMSsite,\
+           force_optimization
 #-------------------------------------------------------------------------------
 # Temporarily add parent directory to python path, to be able to import pcse
 # modules
@@ -36,8 +41,8 @@ def main():
     force_optimization = True # decides if we recalculate the optimum fgap, in
                                # case the results file already exists
     selec_method  = 'topn'    # can be 'topn' or 'randomn' or 'all'
-    ncells        = 1        # number of selected grid cells within a region
-    nsoils        = 1        # number of selected soil types within a grid cell
+    ncells        = 10        # number of selected grid cells within a region
+    nsoils        = 3        # number of selected soil types within a grid cell
     weather       = 'ECMWF'   # weather data to use for the optimization
                               # can be 'CGMS' or 'ECMWF'
 
@@ -45,9 +50,9 @@ def main():
     nb_cores = 12          # number of cores used in case of a parallelization
 
     # input directory path
-    #inputdir = '/Users/mariecombe/Documents/Work/Research_project_3/'+\
-    #           'model_input_data/'
-    inputdir = '/Users/mariecombe/mnt/promise/CO2/wofost/'
+    inputdir = '/Users/mariecombe/Documents/Work/Research_project_3/'+\
+               'model_input_data/'
+    #inputdir = '/Users/mariecombe/mnt/promise/CO2/wofost/'
 
 # ==============================================================================
 #-------------------------------------------------------------------------------
@@ -183,7 +188,7 @@ def optimize_fgap(NUTS_no):
 #-------------------------------------------------------------------------------
     # if the optimization has already been performed and we don't want
     # to redo it, we skip that region
-    filename = os.path.join(outputdir,'opti_fgap_%s.pickle'%NUTS_no)
+    filename = os.path.join(outputdir,'fgap_%s_optimized.pickle'%NUTS_no)
     if (os.path.exists(filename) and force_optimization == False):
         print "We have already calculated the optimum fgap for that "+\
               "year and crop!"
@@ -199,6 +204,8 @@ def optimize_fgap(NUTS_no):
 	# if there were no reported yield on the year X, we skip that region
     if (year not in detrend[1]):
         print 'No reported yield at year X, we have to gap-fill later.'
+        filename = os.path.join(cwdir,outputdir,'fgap_%s_tobegapfilled.pickle'%NUTS_no)
+        pickle_dump(None, open(filename,'wb'))
         return None
 #-------------------------------------------------------------------------------
     # if there were no "non-shared" cells that were cultivated that year,
@@ -242,7 +249,7 @@ def optimize_fgap(NUTS_no):
 
     # pickle the information per NUTS region
     outlist = [NUTS_no, opti_code, optimum, selected_grid_cells]
-    filename = os.path.join(cwdir,outputdir,'fgap_%s.pickle'%NUTS_no)
+    filename = os.path.join(cwdir,outputdir,'fgap_%s_optimized.pickle'%NUTS_no)
     #print filename
     pickle_dump(outlist, open(filename,'wb'))
 
@@ -389,6 +396,11 @@ def optimize_regional_yldgapf_dyn(NUTS_no_, detrend, crop_no_,
             RMSE[f] = np.sqrt(np.mean( [ math.pow(j,2) for j in
                                                            list_of_DIFF ] ))
 
+        print f_range, RMSE
+        if iter_no == 1: 
+            observed_yield  = RMSE[0]
+            potential_yield = RMSE[-1] + observed_yield
+
         # We store the value of the RMSE for plotting purposes
         RMSE_stored = RMSE_stored + [(f_range[1], RMSE[1]), (f_range[3], RMSE[3])]
         if (iter_no == 1):
@@ -434,6 +446,11 @@ def optimize_regional_yldgapf_dyn(NUTS_no_, detrend, crop_no_,
     # the optimum value. We look for the yldgapf with the lowest RMSE
     index_optimum   = RMSE.argmin()
     optimum_yldgapf = f_range[index_optimum] 
+    optimized_yield = RMSE[index_optimum] + observed_yield
+
+    # region, obs yield, potential yield, optimized yield, fgap
+    yields_stored = [NUTS_no_, year, observed_yield, potential_yield, optimized_yield, optimum_yldgapf]
+    pickle_dump(yields_stored,open(os.path.join(outputdir,'%s_optimidata.pickle'%NUTS_no_),'wb'))
 
     print 'optimum found: %.2f +/- %.2f'%(optimum_yldgapf, f_step)
 

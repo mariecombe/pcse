@@ -36,7 +36,7 @@ def main():
 # ================================= USER INPUT =================================
 
     # forward run settings:
-    potential_sim = True     # decide if to do potential / optimum simulations
+    potential_sim = False     # decide if to do potential / optimum simulations
     force_sim     = False     # decides if we overwrite the forward simulations,
                               # in case the results file already exists
     selec_method  = 'topn'    # for soils: can be 'topn' or 'randomn' or 'all'
@@ -48,7 +48,8 @@ def main():
     nb_cores = 12          # number of cores used in case of a parallelization
 
     # input data directory path
-    inputdir = '/Users/mariecombe/mnt/promise/CO2/wofost/'
+    #inputdir = '/Users/mariecombe/mnt/promise/CO2/wofost/'
+    inputdir = '/Users/mariecombe/Documents/Work/Research_project_3/model_input_data/'
 
 # ==============================================================================
 #-------------------------------------------------------------------------------
@@ -141,7 +142,7 @@ def main():
                     continue
              
                 # list the regions for which we have been able to optimize fgap
-                filelist = [ f for f in os.listdir(yldgapfdir)]
+                filelist = [ f for f in os.listdir(yldgapfdir) if '_optimized' in f]
 
                 #---------------------------------------------------------------
                 # loop over NUTS regions - this is the parallelized part -
@@ -226,6 +227,7 @@ def forward_sim_per_region(fgap_filename):
 
     # get the optimum fgap and the grid cell list for these regions
     optimi_info = pickle_load(open(os.path.join(yldgapfdir,fgap_filename),'rb')) 
+    print fgap_filename, optimi_info
     NUTS_no     = optimi_info[0]
     optimi_code = optimi_info[1]
     fgap        = optimi_info[2]
