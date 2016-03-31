@@ -339,7 +339,7 @@ def find_complete_grid_cells_in_regions(connection, regions):
 
 #===============================================================================
 # Function to select a subset of grid cells within a NUTS region
-def select_cells(NUTS_no, crop_no, year, CGMSgriddata, CGMScropmask, 
+def select_cells(NUTS_no, year, CGMSgriddata, CGMScropmask, 
                                       method='topn', n=3, select_from='arable'):
 #===============================================================================
     '''
@@ -986,18 +986,18 @@ def get_crop_names(crop_list, method='short'):
     """
     crops = dict()
     crops['Winter wheat']    = [1,'Common winter wheat and spelt']
-    crops['Spring wheat']    = [5,'Common spring wheat and spelt']
     crops['Grain maize']     = [2,'Grain maize and corn-cob-mix']
-    crops['Fodder maize']    = [12,'Green maize']
     crops['Spring barley']   = [3,'Spring barley']
-    crops['Winter barley']   = [13,'Winter barley']
     crops['Rye']             = [4,'Rye']
+    crops['Spring wheat']    = [5,'Common spring wheat and spelt']
     crops['Sugar beet']      = [6,'Sugar beet (excluding seed)']
     crops['Potato']          = [7,'Potatoes (including seed potatoes)']
     crops['Field beans']     = [8,'Broad and field beans']
     crops['Spring rapeseed'] = [9,'Spring rape and turnip rape seeds']
     crops['Winter rapeseed'] = [10,'Winter rape and turnip rape seeds']
     crops['Sunflower']       = [11,'Sunflower seed']
+    crops['Fodder maize']    = [12,'Green maize']
+    crops['Winter barley']   = [13,'Winter barley']
     crops['Durum wheat']     = [41,'Durum wheat']
     crops['Triticale']       = [43,'Triticale']
     crops['Rapeseed and turnips'] = [46,'Rape and turnip rape seeds']
