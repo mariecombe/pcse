@@ -26,7 +26,7 @@ def main():
 # variables/constants passed between functions
     global cwdir, CGMSdir, EUROSTATdir, ecmwfdir, yldgapfdir, wofostdir,\
            potential_sim, force_sim, selec_method, nsoils, weather,\
-           crop, crop_no, year, start_timestamp, optimi_code, fgap,\
+           crop, crop_dict, crop_no, year, start_timestamp, optimi_code, fgap,\
            CGMSsoil, CGMScropmask, CGMScrop, CGMStimer, CGMSsite
 #-------------------------------------------------------------------------------
 # Temporarily add the parent directory to python path, to be able to import pcse
@@ -36,8 +36,8 @@ def main():
 # ================================= USER INPUT =================================
 
     # forward run settings:
-    potential_sim = False     # decide if to do potential / optimum simulations
-    force_sim     = False     # decides if we overwrite the forward simulations,
+    potential_sim = True     # decide if to do potential / optimum simulations
+    force_sim     = True     # decides if we overwrite the forward simulations,
                               # in case the results file already exists
     selec_method  = 'topn'    # for soils: can be 'topn' or 'randomn' or 'all'
     nsoils        = 3         # number of selected soil types within a grid cell
@@ -81,18 +81,25 @@ def main():
 #-------------------------------------------------------------------------------
 # loop over crops
         for crop in sorted(crop_dict.keys()):
-            crop_no    = crop_dict[crop][0]
             crop_name  = crop_dict[crop][1]
-            print '\nCrop no %i: %s / %s'%(crop_no, crop, crop_name)
+            print '\nCrop no %i: %s / %s'%(crop_dict[crop][0], crop, crop_name)
             print '================================================'
+            if crop_dict[crop][0]==5:
+                crop_no = 1
+            elif crop_dict[crop][0]==13:
+                crop_no = 3
+            elif crop_dict[crop][0]==12:
+                crop_no = 2
+            else:
+                crop_no = crop_dict[crop][0]
 #-------------------------------------------------------------------------------
 # wofost runs output folder: create if needed, wipe if required by user
             if potential_sim:
                 subfolder = 'potential' 
             else:
                 subfolder = 'optimized' 
-            wofostdir = os.path.join(cwdir,"../output/%i/%s/wofost/"%(year,crop),
-                        subfolder)
+            wofostdir = os.path.join(cwdir,"../output/%i/c%i/wofost/"%(year,
+                                                 crop_dict[crop][0]), subfolder)
             # create output folder if needed
             if not os.path.exists(wofostdir):
                 os.makedirs(wofostdir)
@@ -105,23 +112,44 @@ def main():
 #-------------------------------------------------------------------------------
 # load the CGMS input data for crop parameters and calendars, and site parameters
 
+            # crop mask (do NOT use the crossover crop_no here)
             filename = os.path.join(CGMSdir, 'cropdata_objects',
-                                                  'cropmask_c%i.pickle'%crop_no)
+                                       'cropmask_c%i.pickle'%crop_dict[crop][0])
             CGMScropmask = pickle_load(open(filename, 'rb'))
+            # crop parameters (where needed use the crossover crop_no)
             filename = os.path.join(CGMSdir, 'cropdata_objects',
                                         'CGMScrop_%i_c%i.pickle'%(year,crop_no))
             CGMScrop = pickle_load(open(filename, 'rb'))
-            print 'Successfully loaded the CGMS crop pickle files'
+            print 'Successfully loaded the CGMS crop pickle files:', \
+                  'cropmask_c%i.pickle'%crop_dict[crop][0], 'and', \
+                  'CGMScrop_%i_c%i.pickle'%(year,crop_no)
 
-            filename = os.path.join(CGMSdir, 'timerdata_objects',
+            # crop calendars (use crossover crop_no, plus 2 exceptions)
+            if crop_dict[crop][0]==5: # spring wheat uses spring barley calendars
+                filename = os.path.join(CGMSdir, 'timerdata_objects',
+                                             'CGMStimer_%i_c%i.pickle'%(year,3))
+                CGMStimer = pickle_load(open(filename, 'rb'))
+                print 'Successfully loaded the CGMS timer pickle file:',\
+                      'CGMStimer_%i_c%i.pickle'%(year,3)
+            elif crop_dict[crop][0]==13: # winter barley uses winter wheat calendars
+                filename = os.path.join(CGMSdir, 'timerdata_objects',
+                                             'CGMStimer_%i_c%i.pickle'%(year,1))
+                CGMStimer = pickle_load(open(filename, 'rb'))
+                print 'Successfully loaded the CGMS timer pickle file:',\
+                      'CGMStimer_%i_c%i.pickle'%(year,1)
+            else:
+                filename = os.path.join(CGMSdir, 'timerdata_objects',
                                        'CGMStimer_%i_c%i.pickle'%(year,crop_no))
-            CGMStimer = pickle_load(open(filename, 'rb'))
-            print 'Successfully loaded the CGMS timer pickle file'
+                CGMStimer = pickle_load(open(filename, 'rb'))
+                print 'Successfully loaded the CGMS timer pickle file:',\
+                      'CGMStimer_%i_c%i.pickle'%(year,crop_no)
 
+            # site parameters (use the crossover crop_no)
             filename = os.path.join(CGMSdir, 'sitedata_objects',
                                         'CGMSsite_%i_c%i.pickle'%(year,crop_no))
             CGMSsite = pickle_load(open(filename, 'rb'))
-            print 'Successfully loaded the CGMS site pickle file'
+            print 'Successfully loaded the CGMS site pickle file:',\
+                  'CGMSsite_%i_c%i.pickle'%(year,crop_no)
 #-------------------------------------------------------------------------------
 # OPTIMIZED FORWARD RUNS:
 #-------------------------------------------------------------------------------
@@ -135,7 +163,8 @@ def main():
                     print 'SKIP MODE: we skip any simulation already performed'
 
                 # we retrieve the optimum yield gap factor output files
-                yldgapfdir = os.path.join(cwdir,"../output/%i/%s/fgap/"%(year,crop))
+                yldgapfdir = os.path.join(cwdir,"../output/%i/c%i/fgap/"%(year,
+                                                            crop_dict[crop][0]))
                 if not os.path.exists(yldgapfdir):
                     print "You haven't optimized the yield gap factor!!"
                     print "Run the script _04_optimize_fgap.py first!"
@@ -272,8 +301,14 @@ def forward_sim_per_grid(grid_no):
  
     # Retrieve the soil types, crop calendar, crop species
     soil_iterator = ['soilobject_g%d'%grid_no]
-    timerdata = CGMStimer['timerobject_g%d_c%d_y%d'%(grid_no,crop_no,year)]
+    if crop_dict[crop][0]==5: # spring wheat uses spring barley calendars
+        timerdata = CGMStimer['timerobject_g%d_c%d_y%d'%(grid_no,3,year)]
+    elif crop_dict[crop][0]==13: # winter barley uses winter wheat calendars
+        timerdata = CGMStimer['timerobject_g%d_c%d_y%d'%(grid_no,1,year)]
+    else:
+        timerdata = CGMStimer['timerobject_g%d_c%d_y%d'%(grid_no,crop_no,year)]
     cropdata  = CGMScrop['cropobject_g%d_c%d_y%d'%(grid_no,crop_no,year)]
+    cropdata['CRPNAM'] = crop
     cropdata['YLDGAPF'] = fgap
  
     # Select soil types to loop over for the forward runs
