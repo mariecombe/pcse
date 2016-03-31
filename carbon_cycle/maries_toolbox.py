@@ -986,7 +986,7 @@ def get_crop_names(crop_list, method='short'):
     """
     crops = dict()
     crops['Winter wheat']    = [1,'Common winter wheat and spelt']
-    crops['Spring wheat']    = [np.nan,'Common spring wheat and spelt']
+    crops['Spring wheat']    = [5,'Common spring wheat and spelt']
     crops['Grain maize']     = [2,'Grain maize and corn-cob-mix']
     crops['Fodder maize']    = [12,'Green maize']
     crops['Spring barley']   = [3,'Spring barley']
@@ -995,7 +995,7 @@ def get_crop_names(crop_list, method='short'):
     crops['Sugar beet']      = [6,'Sugar beet (excluding seed)']
     crops['Potato']          = [7,'Potatoes (including seed potatoes)']
     crops['Field beans']     = [8,'Broad and field beans']
-    crops['Spring rapeseed'] = [np.nan,'Spring rape and turnip rape seeds']
+    crops['Spring rapeseed'] = [9,'Spring rape and turnip rape seeds']
     crops['Winter rapeseed'] = [10,'Winter rape and turnip rape seeds']
     crops['Sunflower']       = [11,'Sunflower seed']
     crops['Durum wheat']     = [41,'Durum wheat']
