@@ -307,7 +307,7 @@ def find_complete_grid_cells_in_regions(connection, regions):
 
 #===============================================================================
 # Function to select a subset of grid cells within a NUTS region
-def select_cells(NUTS_no, crop_no, year, CGMSgriddata, CGMScropmask, 
+def select_cells(NUTS_no, year, CGMSgriddata, CGMScropmask, CGMSsoildata,
                                       method='topn', n=3, select_from='arable'):
 #===============================================================================
     '''
@@ -374,6 +374,9 @@ def select_cells(NUTS_no, crop_no, year, CGMSgriddata, CGMScropmask,
         list_of_tuples = list()
         if (NUTS_arable):
             for celltuple in NUTS_arable:
+                if 'soilobject_g%d'%celltuple[0] not in CGMSsoildata.keys():
+                    mylogger.warning('Skipping cell %s in NUTS region %s, we do not have soil data for it!!'%(str(celltuple[0]), NUTS_no))
+                    continue
                 if celltuple[0] in [c for c,a in culti_cells[year]]:
                     list_of_tuples += [celltuple]
         else:
@@ -947,18 +950,18 @@ def get_crop_names(crop_list, method='short'):
     """
     crops = dict()
     crops['Winter wheat']    = [1,'Common winter wheat and spelt']
-    crops['Spring wheat']    = [np.nan,'Common spring wheat and spelt']
     crops['Grain maize']     = [2,'Grain maize and corn-cob-mix']
-    crops['Fodder maize']    = [12,'Green maize']
     crops['Spring barley']   = [3,'Spring barley']
-    crops['Winter barley']   = [13,'Winter barley']
     crops['Rye']             = [4,'Rye']
+    crops['Spring wheat']    = [5,'Common spring wheat and spelt']
     crops['Sugar beet']      = [6,'Sugar beet (excluding seed)']
     crops['Potato']          = [7,'Potatoes (including seed potatoes)']
     crops['Field beans']     = [8,'Broad and field beans']
-    crops['Spring rapeseed'] = [np.nan,'Spring rape and turnip rape seeds']
+    crops['Spring rapeseed'] = [9,'Spring rape and turnip rape seeds']
     crops['Winter rapeseed'] = [10,'Winter rape and turnip rape seeds']
     crops['Sunflower']       = [11,'Sunflower seed']
+    crops['Fodder maize']    = [12,'Green maize']
+    crops['Winter barley']   = [13,'Winter barley']
     crops['Durum wheat']     = [41,'Durum wheat']
     crops['Triticale']       = [43,'Triticale']
     crops['Rapeseed and turnips'] = [46,'Rape and turnip rape seeds']
