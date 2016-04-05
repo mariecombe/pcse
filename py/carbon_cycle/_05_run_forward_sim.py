@@ -33,7 +33,7 @@ def main():
 #-------------------------------------------------------------------------------
 # declare as global variables: folder names, main() method arguments, and a few
 # variables/constants passed between functions
-    global cwdir, CGMSdir, EUROSTATdir, ecmwfdir, yldgapfdir, wofostdir,\
+    global cwdir, CGMSdir, EUROSTATdir, ecmwfdir, yldgapfdir, wofostdir,crop_dict,\
            potential_sim, force_sim, selec_method, nsoils, weather,\
            crop, crop_no, year, start_timestamp, optimi_code, fgap, opt_type, pickle_load,\
            CGMSsoil, CGMScropmask, CGMScrop, CGMStimer, CGMSsite
@@ -55,9 +55,7 @@ def main():
     rcfilename = args['rc']
     rcF = rc.read(rcfilename)
     crops = [ rcF['crop'] ]
-    #crops = [i.strip().replace(' ','_') for i in crops]
     years = [int(rcF['year'])]
-    opt_type = rcF['optimize.type']
     outputdir = rcF['dir.output']
     outputdir = os.path.join(outputdir,'wofost')
     inputdir = rcF['dir.wofost.input']
@@ -66,11 +64,6 @@ def main():
     weather = rcF['fwd.wofost.weather']
     selec_method = rcF['fwd.wofost.method']
     potential_sim = (rcF['fwd.wofost.potential'] in ['True','TRUE','true','T'])
-
-    if opt_type not in ['observed','gapfilled']:
-        mylogger.error('The specified optimization type (%s) in the call argument is not recognized' % opt_type )
-        mylogger.error('Please use either "observed" or "gapfilled" as value in the main rc-file')
-        sys.exit(2)
 
 #-------------------------------------------------------------------------------
 # ================================= USER INPUT =================================
@@ -98,17 +91,24 @@ def main():
 #-------------------------------------------------------------------------------
 # PERFORM FORWARD RUNS:
 #-------------------------------------------------------------------------------
-# loop over years:
     for year in years:
-        print '\nYear ', year
-        print '================================================'
+        mylogger.info( 'Year %s'% year)
+        mylogger.info( '================================================' )
 #-------------------------------------------------------------------------------
-# loop over crops
         for crop in sorted(crop_dict.keys()):
-            crop_no    = crop_dict[crop][0]
             crop_name  = crop_dict[crop][1]
-            print '\nCrop no %i: %s / %s'%(crop_dict[crop][0],crop, crop_name)
-            print '================================================'
+            mylogger.info( 'Crop no %i: %s / %s'%(crop_dict[crop][0],crop, crop_name) )
+            if crop_dict[crop][0]==5:
+                crop_no = 1
+                mylogger.info( 'Modified the internal crop_no from 5 to 1')
+            elif crop_dict[crop][0]==13:
+                crop_no = 3
+                mylogger.info( 'Modified the internal crop_no from 13 to 3')
+            elif crop_dict[crop][0]==12:
+                crop_no = 2
+                mylogger.info( 'Modified the internal crop_no from 12 to 2')
+            else:
+                crop_no = crop_dict[crop][0]
 #-------------------------------------------------------------------------------
 # wofost runs output folder: create if needed, wipe if required by user
             if potential_sim:
@@ -125,27 +125,37 @@ def main():
                 filelist = [f for f in os.listdir(wofostdir)]
                 for f in filelist:
                     os.remove(os.path.join(wofostdir,f))
+                mylogger.info( "We force the optimization: output directory just got emptied" )
 
-#-------------------------------------------------------------------------------
-# load the CGMS input data for crop parameters and calendars, and site parameters
-
+            # crop mask (do NOT use the crossover crop_no here)
             filename = os.path.join(CGMSdir, 'cropdata_objects',
-                                                  'cropmask_c%i.pickle'%crop_no)
+                                       'cropmask_c%i.pickle'%crop_dict[crop][0])
             CGMScropmask = pickle_load(open(filename, 'rb'))
+            # crop parameters (where needed use the crossover crop_no)
             filename = os.path.join(CGMSdir, 'cropdata_objects',
-                                        'CGMScrop_%i_c%i.pickle'%(year,crop_no))
+                             'CGMScrop_%i_c%i.pickle'%(year,crop_no))
             CGMScrop = pickle_load(open(filename, 'rb'))
-            print 'Successfully loaded the CGMS crop pickle files'
+            mylogger.info('Successfully loaded the CGMS crop pickle files: cropmask_c%i.pickle and CGMScrop_%i_c%i.pickle'%(crop_dict[crop][0],year,crop_no) )
 
-            filename = os.path.join(CGMSdir, 'timerdata_objects',
-                                       'CGMStimer_%i_c%i.pickle'%(year,crop_no))
+            # crop calendars (use crossover crop_no, plus 2 exceptions)
+            if crop_dict[crop][0]==5: # spring wheat uses spring barley calendars
+                filename = os.path.join(CGMSdir, 'timerdata_objects',
+                                'CGMStimer_%i_c%i.pickle'%(year,3))
+            elif crop_dict[crop][0]==13: # winter barley uses winter wheat calendars
+                filename = os.path.join(CGMSdir, 'timerdata_objects',
+                                'CGMStimer_%i_c%i.pickle'%(year,1))
+            else:
+                filename = os.path.join(CGMSdir, 'timerdata_objects',
+                                'CGMStimer_%i_c%i.pickle'%(year,crop_no))
+
             CGMStimer = pickle_load(open(filename, 'rb'))
-            print 'Successfully loaded the CGMS timer pickle file'
+            mylogger.info('Successfully loaded the CGMS timer pickle file (%s)'%filename)
 
             filename = os.path.join(CGMSdir, 'sitedata_objects',
-                                        'CGMSsite_%i_c%i.pickle'%(year,crop_no))
+                             'CGMSsite_%i_c%i.pickle'%(year,crop_no))
             CGMSsite = pickle_load(open(filename, 'rb'))
-            print 'Successfully loaded the CGMS site pickle file'
+            #print 'Successfully loaded the CGMS site pickle file'
+            mylogger.info('Successfully loaded the CGMS site pickle file (%s)'%filename)
 #-------------------------------------------------------------------------------
 # OPTIMIZED FORWARD RUNS:
 #-------------------------------------------------------------------------------
@@ -167,8 +177,8 @@ def main():
                     continue
              
                 # list the regions for which we have been able to optimize fgap
-                filelist = [ f for f in os.listdir(yldgapfdir) if opt_type in f]  #WP Selection for only observed, or only gap-filled NUTS
-                mylogger.info( "Found %d optimized yield gap factor files"%len(filelist) )
+                filelist = [ f for f in os.listdir(yldgapfdir) if ('observed' in f or 'gapfilled' in f)]  #WP Selection for only observed, or only gap-filled NUTS
+                mylogger.info( "Found %d yield gap factor files"%len(filelist) )
 
                 #---------------------------------------------------------------
                 # loop over NUTS regions - this is the parallelized part -
@@ -180,14 +190,27 @@ def main():
                 # if we do a serial iteration, we loop over the grid cells
                 # that contain arable land
                 for f in filelist:
+                    if 'gapfilled' in f:
+                        opt_type='gapfilled'
+                    elif 'observed' in f:
+                        opt_type='observed'
+
                     # get the optimum fgap and the grid cell list for these regions
                     optimi_info = pickle_load(open(os.path.join(yldgapfdir,f),'rb')) 
                     NUTS_no     = optimi_info[0]
                     optimi_code = optimi_info[1]
                     fgap        = optimi_info[2]
                     grid_shortlist = list(set([ g for g,a in optimi_info[3] ]))
-                    mylogger.info( '    NUTS region (n=%d): %s'%(len(grid_shortlist), NUTS_no ) )
+                    mylogger.info( 'NUTS region (n=%d): %s'%(len(grid_shortlist), NUTS_no ) )
 
+                    outputfile = os.path.join(wofostdir, "wofost_%s_results.tgz" %NUTS_no)
+                    if os.path.exists(outputfile):
+                        mylogger.info('tar output file exists, extracting data and removing tar file')
+                        tarf=tarfile.open(outputfile,mode='r')
+                        gridfiles = tarf.getnames()
+                        tarf.extractall(path=wofostdir)
+                        tarf.close()
+                        os.remove(outputfile)
 
                     if (par_process):
                         import multiprocessing
@@ -210,19 +233,12 @@ def main():
                             _ = forward_sim_per_grid((grid, NUTS_no, fgap))
 
                     outputfile = os.path.join(wofostdir, "wofost_%s_results.tgz" %NUTS_no)
-                    if os.path.exists(outputfile):
-                        mylogger.debug('tar output file exists, removing')
-                        print ('tar output file exists, removing')
-                        os.remove(outputfile)
-                        tarmode = 'w:gz'
-                    else:
-                        mylogger.debug('tar output file does not exist, creating')
-                        print ('tar output file does not exist, creating')
-                        tarmode = 'w:gz'
+                    mylogger.info('Creating tar output file for region %s'%NUTS_no)
+                    tarmode = 'w:gz'
 
                     with tarfile.open(outputfile,tarmode) as tarf:
                         for f in [f for f in os.listdir(wofostdir) if NUTS_no in f and f.endswith('.txt')]:
-                            mylogger.info('Adding wofostfile to archive: %s'%f)
+                            mylogger.info('Adding wofostfile to tar archive and removing txt file: %s'%f)
                             tarf.add(os.path.join(wofostdir,f),recursive=False,arcname=f)
                             os.remove(os.path.join(wofostdir,f))
 
@@ -262,8 +278,22 @@ def forward_sim_per_grid(arguments):
  
     # Retrieve the soil types, crop calendar, crop species
     soil_iterator = ['soilobject_g%d'%grid_no]
-    timerdata = CGMStimer['timerobject_g%d_c%d_y%d'%(grid_no,crop_no,year)]
+    if crop_dict[crop][0]==5: # spring wheat uses spring barley calendars
+        timerdata = CGMStimer['timerobject_g%d_c%d_y%d'%(grid_no,3,year)]
+    elif crop_dict[crop][0]==13: # winter barley uses winter wheat calendars
+        timerdata = CGMStimer['timerobject_g%d_c%d_y%d'%(grid_no,1,year)]
+    else:
+        timerdata = CGMStimer['timerobject_g%d_c%d_y%d'%(grid_no,crop_no,year)]
+
+    # we use a temporary fix for sugar beet simulations:
+    if crop_dict[crop][0]==6:
+        if timerdata['END_DATE'] == timerdata['START_DATE']: 
+            timerdata['END_DATE'] = timerdata['CROP_END_DATE']
+        if timerdata['MAX_DURATION'] == 0: 
+            timerdata['MAX_DURATION']=300
+
     cropdata  = CGMScrop['cropobject_g%d_c%d_y%d'%(grid_no,crop_no,year)]
+    cropdata['CRPNAM'] = crop
     cropdata['YLDGAPF'] = fgap
  
     # Select soil types to loop over for the forward runs
@@ -272,10 +302,13 @@ def forward_sim_per_grid(arguments):
  
     for smu, stu_no, stu_area, soildata in selected_soil_types[grid_no]:
         mylogger.info( '        soil type no %i'%stu_no )
-        print  '        soil type no %i'%stu_no 
         
         wofostfile = os.path.join(wofostdir, "wofost_%s_g%i_s%i_%s.txt"\
                      %(NUTS_no,grid_no,stu_no,opt_type))
+
+        if os.path.exists(wofostfile):
+            mylogger.info("Skipping exisiting grid/soil simulation (%s)"%wofostfile)
+            return wofostfile
 
         # Retrieve the site data of one year, one grid cell, one soil type
         sitedata = CGMSsite['siteobject_g%d_c%d_y%d_s%d'%(grid_no,crop_no,year,stu_no)]

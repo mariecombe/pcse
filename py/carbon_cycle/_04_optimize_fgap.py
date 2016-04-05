@@ -31,8 +31,8 @@ def optimize():
 # observations, and user input variables are converted to global variables
     global inputdir, cwdir, CGMSdir, EUROSTATdir, ecmwfdir, outputdir, \
            crop_dict, NUTS_regions, years, crop, crop_name, year, observed_data,\
-           selec_method, ncells, nsoils, weather, opti_metric, opt_type, force_optimization,\
-           CGMSgrid, CGMSsoil, CGMScropmask, CGMScrop, CGMStimer, CGMSsite
+           selec_method, ncells, nsoils, weather, opti_metric, force_optimization,\
+           CGMSgrid, CGMSsoil, CGMScropmask, CGMScrop, CGMStimer, CGMSsite, crop_no
 #-------------------------------------------------------------------------------
 
     sys.path.insert(0, "..")
@@ -51,7 +51,6 @@ def optimize():
     rcF = rc.read(rcfilename)
     crops = [ rcF['crop'] ]
     years = [int(rcF['year'])]
-    opt_type = rcF['optimize.type']
     outputdir = rcF['dir.output']
     outputdir = os.path.join(outputdir,'ygf')
     inputdir = rcF['dir.wofost.input']
@@ -60,12 +59,6 @@ def optimize():
     ncells = int(rcF['opt.wofost.ncells'])
     weather = rcF['opt.wofost.weather']
     selec_method = rcF['opt.wofost.method']
-
-    if opt_type not in ['observed','gapfilled']:
-        mylogger.error('The specified optimization type (%s) in the call argument is not recognized' % opt_type )
-        mylogger.error('Please use either "observed" or "gapfilled" as value in the main rc-file')
-        sys.exit(2)
-
 
 # ================================= USER INPUT =================================
  
@@ -106,9 +99,7 @@ def optimize():
 #-------------------------------------------------------------------------------
 # open the pickle files containing the CGMS input data
     CGMSgrid  = pickle_load(open(os.path.join(CGMSdir,'CGMSgrid.pickle'),'rb'))
-    print 'Successfully loaded the CGMS grid pickle file'
     CGMSsoil  = pickle_load(open(os.path.join(CGMSdir,'CGMSsoil.pickle'),'rb'))
-    print 'Successfully loaded the CGMS soils pickle file'
 # The optimization method and metric are now default options not given as
 # choice for the user. THESE OPTIONS SHOULD NOT BE MODIFIED ANYMORE.
     opti_metric = 'yield'      # can be 'yield' or 'harvest'
@@ -130,32 +121,59 @@ def optimize():
 #-------------------------------------------------------------------------------
         for crop in sorted(crop_dict.keys()):
             crop_name  = crop_dict[crop][1]
-            mylogger.info( '\nCrop no %i: %s / %s'%(crop_dict[crop][0],crop, crop_name) )
+            mylogger.info( 'Crop no %i: %s / %s'%(crop_dict[crop][0],crop, crop_name) )
+            if crop_dict[crop][0]==5:
+                crop_no = 1
+                mylogger.info( 'Modified the internal crop_no from 5 to 1')
+            elif crop_dict[crop][0]==13:
+                crop_no = 3
+                mylogger.info( 'Modified the internal crop_no from 13 to 3')
+            elif crop_dict[crop][0]==12:
+                crop_no = 2
+                mylogger.info( 'Modified the internal crop_no from 12 to 2')
+            else:
+                crop_no = crop_dict[crop][0]
+
             mylogger.info( '================================================' )
+
             if force_optimization == True:
                 filelist = [f for f in os.listdir(outputdir)]
                 for f in filelist:
                     os.remove(os.path.join(outputdir,f))
                 mylogger.info( "We force the optimization: output directory just got emptied" )
-            # load the CGMS input data for crop parameters and calendars, and
-            # site parameters
+
+            # crop mask (do NOT use the crossover crop_no here)
             filename = os.path.join(CGMSdir, 'cropdata_objects',
                                        'cropmask_c%i.pickle'%crop_dict[crop][0])
             CGMScropmask = pickle_load(open(filename, 'rb'))
-            filename = os.path.join(CGMSdir, 'cropdata_objects',
-                             'CGMScrop_%i_c%i.pickle'%(year,crop_dict[crop][0]))
-            CGMScrop = pickle_load(open(filename, 'rb'))
-            print 'Successfully loaded the CGMS crop pickle files'
 
-            filename = os.path.join(CGMSdir, 'timerdata_objects',
-                            'CGMStimer_%i_c%i.pickle'%(year,crop_dict[crop][0]))
+            # Other crop parameters (where needed use the crossover crop_no)
+
+            CGMScropmask = pickle_load(open(filename, 'rb'))
+            filename = os.path.join(CGMSdir, 'cropdata_objects',
+                             'CGMScrop_%i_c%i.pickle'%(year,crop_no))
+            CGMScrop = pickle_load(open(filename, 'rb'))
+            mylogger.info('Successfully loaded the CGMS crop pickle files: cropmask_c%i.pickle and CGMScrop_%i_c%i.pickle'%(crop_dict[crop][0],year,crop_no) )
+
+            # crop calendars (use crossover crop_no, plus 2 exceptions)
+            if crop_dict[crop][0]==5: # spring wheat uses spring barley calendars
+                filename = os.path.join(CGMSdir, 'timerdata_objects',
+                                'CGMStimer_%i_c%i.pickle'%(year,3))
+            elif crop_dict[crop][0]==13: # winter barley uses winter wheat calendars
+                filename = os.path.join(CGMSdir, 'timerdata_objects',
+                                'CGMStimer_%i_c%i.pickle'%(year,1))
+            else:
+                filename = os.path.join(CGMSdir, 'timerdata_objects',
+                                'CGMStimer_%i_c%i.pickle'%(year,crop_no))
+
             CGMStimer = pickle_load(open(filename, 'rb'))
-            print 'Successfully loaded the CGMS timer pickle file'
+            mylogger.info('Successfully loaded the CGMS timer pickle file (%s)'%filename)
 
             filename = os.path.join(CGMSdir, 'sitedata_objects',
-                             'CGMSsite_%i_c%i.pickle'%(year,crop_dict[crop][0]))
+                             'CGMSsite_%i_c%i.pickle'%(year,crop_no))
             CGMSsite = pickle_load(open(filename, 'rb'))
-            print 'Successfully loaded the CGMS site pickle file'
+            #print 'Successfully loaded the CGMS site pickle file'
+            mylogger.info('Successfully loaded the CGMS site pickle file (%s)'%filename)
 
 #-------------------------------------------------------------------------------
 # loop over NUTS regions - this is the parallelized part of the script -
@@ -174,18 +192,15 @@ def optimize():
                 import multiprocessing
                 # get number of cpus available to job
                 try:
-                    ncpus = int(os.environ["SLURM_JOB_CPUS_PER_NODE"])
-                    print "Success reading parallel env %d" % ncpus
+                    ncpus = int(os.environ["SLURM_JOB_CPUS_PER_NODE"])/2
+                    mylogger.info( "Success reading parallel env %d" % ncpus )
                 except KeyError:
-                    ncpus = multiprocessing.cpu_count()
-                    print "Success obtaining processor count %d" % ncpus
+                    ncpus = multiprocessing.cpu_count()/2
+                    mylogger.info( "Success obtaining processor count %d" % ncpus )
                 p = multiprocessing.Pool(ncpus)
                 data = p.map(optimize_fgap, sorted(NUTS_regions))
                 p.close()
 
-                # regroup the created temporary multiple files
-            #for NUTS_no in sorted(NUTS_regions):
-            #    opti_fgap[NUTS_no] = pickle_load(open( os.path.join(outputdir,'ygf_%s_%s.pickle'%(NUTS_no, opt_type) ),'rb'))
          
             # we time the optimization
             end_timestamp = datetime.utcnow()
@@ -205,28 +220,25 @@ def optimize_fgap(NUTS_no):
 #-------------------------------------------------------------------------------
     # if the optimization has already been performed and we don't want
     # to redo it, we skip that year x crop
-    filename = os.path.join(outputdir,'ygf_%s_%s.pickle'%( NUTS_no,opt_type) )
+    filename = os.path.join(outputdir,'ygf_%s_%s.pickle'%( NUTS_no,'observed') )
     if (os.path.exists(filename) and force_optimization == False):
         mylogger.info( "We have already calculated the optimum ygf for that year and crop" )
         return None
 #-------------------------------------------------------------------------------
     # Get the NUTS region name
-    print ( "Region: %s "%(NUTS_no) )
+    mylogger.info( "Region: %s "%(NUTS_no) )
 
 
 #-------------------------------------------------------------------------------
     # if there were no "non-shared" cells that were cultivated that year,
     # we skip that region in all further calculations
-    shortlist_cells = select_cells(NUTS_no, crop_dict[crop][0], 
-                          year, CGMSgrid, CGMScropmask,\
+    shortlist_cells = select_cells(NUTS_no, year, CGMSgrid, CGMScropmask,CGMSsoil,\
                           method=selec_method, n=ncells,
                           select_from='cultivated')
 
     if (shortlist_cells == None):
         mylogger.info( "No cultivated grid cells for %s in region %s"%(crop,NUTS_no) )
         mylogger.info( "This crop/NUTS combination will be skipped from now on")
-        print ( "No cultivated grid cells for %s in region %s"%(crop,NUTS_no) )
-        print ( "This crop/NUTS combination will be skipped from now on")
         filename = os.path.join(outputdir,'ygf_%s_noncultivated.pickle'% NUTS_no )
         outlist = [NUTS_no, 'noncultivated', np.NaN, [] ]
         pickle_dump(outlist, open(filename,'wb'))
@@ -239,7 +251,6 @@ def optimize_fgap(NUTS_no):
         detrend = observed_data[crop][NUTS_no]
     except:
         mylogger.info( 'This region code is unknown and will be skipped')
-        print ( 'This region code (%s) is unknown and will be skipped'%NUTS_no)
         filename = os.path.join(outputdir,'ygf_%s_notreported.pickle'% NUTS_no )
         outlist = [NUTS_no, 'missingyield', np.NaN, shortlist_cells ]
         pickle_dump(outlist, open(filename,'wb'))
@@ -249,15 +260,12 @@ def optimize_fgap(NUTS_no):
 	# year of interest, we skip that region
     if (len(detrend[1])==0) or (year not in detrend[1]):
         mylogger.info( 'No reported yield of %s in %s in %s, optimum cannot be compiled'%(crop,NUTS_no, year) )
-        print ( 'No reported yield of %s in %s in %s, optimum cannot be compiled'%(crop,NUTS_no, year) )
         if len(NUTS_no)==2: #WP NUTS level 0, needs to be gapfilled if missing
             mylogger.info( 'This region will need to be gapfilled')
-            print ( 'This region will need to be gapfilled')
             filename = os.path.join(outputdir,'ygf_%s_togapfill.pickle'% NUTS_no )
             outlist = [NUTS_no, 'togapfill', np.NaN, shortlist_cells ]
         else:
             mylogger.info( 'This region will be skipped')
-            print ( 'This region will be skipped')
             filename = os.path.join(outputdir,'ygf_%s_notreported.pickle'% NUTS_no )
             outlist = [NUTS_no, 'missingyield', np.NaN, shortlist_cells ]
         pickle_dump(outlist, open(filename,'wb'))
@@ -270,7 +278,7 @@ def optimize_fgap(NUTS_no):
 
 
     # if the observed cultivated fraction is zero, we skip that region
-    selected_soil_types = select_soils(crop_dict[crop][0],
+    selected_soil_types = select_soils(crop_no,
                                [g for g,a in shortlist_cells],
                                CGMSsoil,
                                method=selec_method, 
@@ -287,11 +295,10 @@ def optimize_fgap(NUTS_no):
                   # 2= no obs available 
 
     mylogger.info( "Proceeding to optimize based on %d grid cells for %s in region %s"%(len(shortlist_cells),crop,NUTS_no) )
-    print ( "Proceeding to optimize based on %d grid cells for %s in region %s"%(len(shortlist_cells),crop,NUTS_no) )
 
     # in all other cases, we optimize the yield gap factor
     optimum = optimize_regional_yldgapf_dyn(NUTS_no, detrend,
-                                                crop_dict[crop][0],
+                                                crop_no,
                                                 shortlist_cells,
                                                 selected_soil_types,
                                                 CGMSdir,
@@ -300,12 +307,12 @@ def optimize_fgap(NUTS_no):
                                                 plot_rmse=False)
 
     # we compute the list of whole grid cells contained in the region
-    shortlist_cells = select_cells(NUTS_no, crop_dict[crop][0], year, CGMSgrid, CGMScropmask, 
+    shortlist_cells = select_cells(NUTS_no, year, CGMSgrid, CGMScropmask,CGMSsoil, 
                       method='all', select_from='cultivated')
 
     # pickle the information per NUTS region
     outlist = [NUTS_no, opti_code, optimum, shortlist_cells]
-    filename = os.path.join(outputdir,'ygf_%s_%s.pickle'% (NUTS_no, opt_type))
+    filename = os.path.join(outputdir,'ygf_%s_%s.pickle'% (NUTS_no, 'observed'))
     pickle_dump(outlist, open(filename,'wb'))
 
     return None
@@ -390,7 +397,21 @@ def optimize_regional_yldgapf_dyn(NUTS_no_, detrend, crop_no_,
                 for y, year in enumerate(opti_years_): 
 
                     # Retrieve yearly data 
-                    timerdata = CGMStimer['timerobject_g%d_c%d_y%d'%(grid,crop_no_,year)]
+                    # 2 exceptions for the calendars: crossover across species
+                    if crop_dict[crop][0]==5: # spring wheat uses spring barley calendars
+                        timerdata = CGMStimer['timerobject_g%d_c%d_y%d'%(grid,3,year)]
+                    elif crop_dict[crop][0]==13: # winter barley uses winter wheat calendars
+                        timerdata = CGMStimer['timerobject_g%d_c%d_y%d'%(grid,1,year)]
+                    else:
+                        timerdata = CGMStimer['timerobject_g%d_c%d_y%d'%(grid,crop_no_,year)]
+
+                    # we use a temporary fix for sugar beet simulations:
+                    if crop_dict[crop][0]==6:
+                        if timerdata['END_DATE'] == timerdata['START_DATE']: 
+                            timerdata['END_DATE'] = timerdata['CROP_END_DATE']
+                        if timerdata['MAX_DURATION'] == 0: 
+                            timerdata['MAX_DURATION']=300
+
                     cropdata  = CGMScrop['cropobject_g%d_c%d_y%d'%(grid,crop_no_,year)]
                     sitedata  = CGMSsite['siteobject_g%d_c%d_y%d_s%d'%(grid,crop_no_,year,stu_no)]
 
@@ -449,6 +470,10 @@ def optimize_regional_yldgapf_dyn(NUTS_no_, detrend, crop_no_,
                 list_of_DIFF = list_of_DIFF + [DIFF[f,y]]
             RMSE[f] = np.sqrt(np.mean( [ math.pow(j,2) for j in
                                                            list_of_DIFF ] ))
+
+        if iter_no == 1: 
+            observed_yield  = RMSE[0]
+            potential_yield = RMSE[-1] + observed_yield
 
         # We store the value of the RMSE for plotting purposes
         RMSE_stored = RMSE_stored + [(f_range[1], RMSE[1]), (f_range[3], RMSE[3])]
