@@ -307,6 +307,14 @@ def forward_sim_per_grid(grid_no):
         timerdata = CGMStimer['timerobject_g%d_c%d_y%d'%(grid_no,1,year)]
     else:
         timerdata = CGMStimer['timerobject_g%d_c%d_y%d'%(grid_no,crop_no,year)]
+
+    # we use a temporary fix for sugar beet simulations:
+    if crop_dict[crop][0]==6:
+        if timerdata['END_DATE'] == timerdata['START_DATE']: 
+            timerdata['END_DATE'] = timerdata['CROP_END_DATE']
+        if timerdata['MAX_DURATION'] == 0: 
+            timerdata['MAX_DURATION']=300
+
     cropdata  = CGMScrop['cropobject_g%d_c%d_y%d'%(grid_no,crop_no,year)]
     cropdata['CRPNAM'] = crop
     cropdata['YLDGAPF'] = fgap

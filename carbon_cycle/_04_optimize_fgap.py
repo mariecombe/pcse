@@ -369,6 +369,14 @@ def optimize_regional_yldgapf_dyn(NUTS_no_, detrend, crop_no_,
                         timerdata = CGMStimer['timerobject_g%d_c%d_y%d'%(grid,1,year)]
                     else:
                         timerdata = CGMStimer['timerobject_g%d_c%d_y%d'%(grid,crop_no_,year)]
+
+                    # we use a temporary fix for sugar beet simulations:
+                    if crop_dict[crop][0]==6:
+                        if timerdata['END_DATE'] == timerdata['START_DATE']: 
+                            timerdata['END_DATE'] = timerdata['CROP_END_DATE']
+                        if timerdata['MAX_DURATION'] == 0: 
+                            timerdata['MAX_DURATION']=300
+
                     cropdata  = CGMScrop['cropobject_g%d_c%d_y%d'%(grid,crop_no_,year)]
                     sitedata  = CGMSsite['siteobject_g%d_c%d_y%d_s%d'%(grid,crop_no_,year,stu_no)]
 
