@@ -61,47 +61,68 @@ for year in years:
 
         # Create rc-file for the subjobs to be started, using some run specific and some
         # general rc-keys. The latter are copied from the main rc-file
-        jobrc = {'year' : year.strip(),'crop' : crop.strip() , 'dir.output' : dirname, 'optimize.type': 'observed'}
+        jobrc = {'year' : year.strip(),'crop' : crop.strip() , 'dir.output' : dirname}
         for k,v in rcitems.iteritems():
             if not jobrc.has_key(k):
                 jobrc[k]=v
 
-        rcfilename = 'jobs/runopt-%s_%s.rc'%(year.strip(),crop.strip().replace(' ','_') )
-        rc.write(rcfilename,jobrc)
-        logging.debug('An rc-file was created (%s)' % rcfilename )
+        if 'run-obs' in rcitems['steps.todo']:
 
-        # We first run the ygf optimization and directly do the forward runs as well
+            rcfilename = 'jobs/runopt-%s_%s.rc'%(year.strip(),crop.strip().replace(' ','_') )
+            rc.write(rcfilename,jobrc)
+            logging.debug('An rc-file was created (%s)' % rcfilename )
 
-        runjobname = 'jobs/runopt-%s_%s.jb'%(year.strip(),crop.strip().replace(' ','_') )
-        jobopts={'jobname':'%s_%s'%(year.strip(),crop.strip().replace(' ','_')),
-                 'jobqueue' : 'normal',
-                 'joblog' : '%s'% runjobname.replace('jb','log') }
-        header= pf.get_job_header(joboptions=jobopts)
-        header += 'rm -f /projects/0/ctdas/input/wofost/CABO_weather_ECMWF/*cache'
-        header += 'python py/carbon_cycle/_04_optimize_fgap.py rc=%s\n'%rcfilename
-        header += 'python py/carbon_cycle/_05_run_forward_sim.py rc=%s\n'%rcfilename
-        header += 'python py/carbon_cycle/_06_complete_c_cycle.py rc=%s\n'%rcfilename
-        pf.write_job(runjobname, header, '999')  
-        pf.submit_job(runjobname)
+            # We first run the ygf optimization and directly do the forward runs as well
+
+            runjobname = 'jobs/runopt-%s_%s.jb'%(year.strip(),crop.strip().replace(' ','_') )
+            jobopts={'jobname':'%s_%s'%(year.strip(),crop.strip().replace(' ','_')),
+                     'jobqueue' : 'normal',
+                     'jobtime' : '%s'%jobrc['time.job.limit'],
+                     'joblog' : '%s'% runjobname.replace('jb','log') }
+            header= pf.get_job_header(joboptions=jobopts)
+            #header += 'rm -f /projects/0/ctdas/input/wofost/CABO_weather_ECMWF/*cache\n'
+            header += 'python py/carbon_cycle/_04_optimize_fgap.py rc=%s\n'%rcfilename
+            pf.write_job(runjobname, header, '999')  
+            if 'submit' in rcitems['steps.todo']:
+                pf.submit_job(runjobname)
 
         # Then we gapfill
 
-        #runjobname = 'jobs/gapfill-%s_%s.jb'%(year.strip(),crop.strip().replace(' ','_') )
-        #header= pf.get_job_header()
-        #header += 'python ../py/carbon_cycle/gapfill.py rc=%s\n'%os.path.split(rcfilename)[-1]
-        #pf.write_job(runjobname, header, '999')  
+        if 'gapfill' in rcitems['steps.todo']:
+
+            rcfilename = 'jobs/gapfill-%s_%s.rc'%(year.strip(),crop.strip().replace(' ','_') )
+            rc.write(rcfilename,jobrc)
+            logging.debug('An rc-file was created (%s)' % rcfilename )
+            runjobname = 'jobs/gapfill-%s_%s.jb'%(year.strip(),crop.strip().replace(' ','_') )
+            jobopts={'jobname':'%s_%s'%(year.strip(),crop.strip().replace(' ','_')),
+                     'jobqueue' : 'short',
+                     'jobtime' : '00:15:00',
+                     'joblog' : '%s'% runjobname.replace('jb','log') }
+            header= pf.get_job_header(joboptions=jobopts)
+            header += 'python py/carbon_cycle/gapfill.py rc=%s\n'%rcfilename
+            pf.write_job(runjobname, header, '999')  
+            if 'submit' in rcitems['steps.todo']:
+                pf.submit_job(runjobname)
 
         # And finally we run the gapfilled NUTS regions forward, note that we have to use a different rc-file now
 
-        #jobrc = {'year' : year.strip(),'crop' : crop.strip() , 'dir.output' : dirname, 'optimize.type': 'gapfilled'}
-        #rcfilename = 'jobs/rungap-%s_%s.rc'%(year.strip(),crop.strip().replace(' ','_') )
-        #rc.write(rcfilename,jobrc)
-        #logging.debug('An rc-file was created (%s)' % rcfilename )
+        if 'run-fwd' in rcitems['steps.todo']:
 
-        #runjobname = 'jobs/rungap-%s_%s.jb'%(year.strip(),crop.strip().replace(' ','_') )
-        #header= pf.get_job_header()
-        #header += 'python ../py/carbon_cycle/_05_run_forward_sim.py rc=%s\n'%os.path.split(rcfilename)[-1]
-        #pf.write_job(runjobname, header, '999')  
+            rcfilename = 'jobs/runfwd-%s_%s.rc'%(year.strip(),crop.strip().replace(' ','_') )
+            rc.write(rcfilename,jobrc)
+            logging.debug('An rc-file was created (%s)' % rcfilename )
+
+            runjobname = 'jobs/runfwd-%s_%s.jb'%(year.strip(),crop.strip().replace(' ','_') )
+            jobopts={'jobname':'%s_%s'%(year.strip(),crop.strip().replace(' ','_')),
+                     'jobqueue' : 'normal',
+                     'jobtime' : '%s'%jobrc['time.job.limit'],
+                     'joblog' : '%s'% runjobname.replace('jb','log') }
+            header= pf.get_job_header(joboptions=jobopts)
+            header += 'python py/carbon_cycle/_05_run_forward_sim.py rc=%s\n'%rcfilename
+            #header += 'python py/carbon_cycle/_06_complete_c_cycle.py rc=%s\n'%rcfilename
+            pf.write_job(runjobname, header, '999')  
+            if 'submit' in rcitems['steps.todo']:
+                pf.submit_job(runjobname)
 
 #exit
 sys.exit(0)

@@ -66,7 +66,6 @@ def main():
     crops = [ rcF['crop'] ]
     #crops = [i.strip().replace(' ','_') for i in crops]
     years = [int(rcF['year'])]
-    opt_type = rcF['optimize.type']
     outputdir = rcF['dir.output']
     inputdir = rcF['dir.wofost.input']
     par_process = (rcF['fwd.wofost.parallel'] in ['True','TRUE','true','T'])
@@ -74,11 +73,6 @@ def main():
     selec_method = rcF['fwd.wofost.method']
     potential_sim = (rcF['fwd.wofost.potential'] in ['True','TRUE','true','T'])
     ecmwfdir= rcF['dir.ecmwf.nc-meteo']
-
-    if opt_type not in ['observed','gapfilled']:
-        mylogger.error('The specified optimization type (%s) in the call argument is not recognized' % opt_type )
-        mylogger.error('Please use either "observed" or "gapfilled" as value in the main rc-file')
-        sys.exit(2)
 
     # Post-processing settings
     prod_figure = False     # if True, will produce plots of fluxes per grid cell
@@ -112,7 +106,7 @@ def main():
     # loop over years:
     #---------------------------------------------------------------------------
     for year in years:
-        print '================================================'
+        mylogger.info( '================================================')
 
         #-----------------------------------------------------------------------
         # loop over crops
@@ -120,8 +114,7 @@ def main():
         for crop in sorted(crop_dict.keys()):
             crop_no    = crop_dict[crop][0]
             crop_name  = crop_dict[crop][1]
-            print '\nCrop no %i: %s / %s'%(crop_no, crop, crop_name)
-            print '================================================'
+            mylogger.info( 'Crop no %i: %s / %s'%(crop_no, crop, crop_name) )
 
             # build folder name from year and crop
             if potential_sim:
@@ -187,8 +180,7 @@ def main():
                 
                 # We add an end timestamp to time the process
                 end_timestamp = dt.datetime.utcnow()
-                print '\nDuration of the post-processing:', end_timestamp - \
-                start_timestamp
+                mylogger.info( 'Duration of the post-processing: %s', %(end_timestamp - start_timestamp))
 
     mylogger.info('Successfully finished the script, returning...')
     sys.exit(0)
@@ -256,7 +248,7 @@ def compute_timeseries_fluxes(gridfilename):
         soil_codes.append(stu_no)
         soil_areas.append(stu_area)
         # We open the WOFOST results file
-        filename    = 'wofost_%s_g%i_s%i_observed.txt'%(NUTS_no,grid_no, stu_no) 
+        filename    = 'wofost_%s_g%i_s%i_%s.txt'%(NUTS_no,grid_no, stu_no,opt_type) 
         results_set = open_pcse_csv_output(analysisdir, [filename])
         wofost_data = results_set[0]
         wofost_yield = results_set[1]

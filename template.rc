@@ -2,7 +2,7 @@
 !
 ! The time for which to start and end the data assimilation experiment in format YYYY-MM-DD HH:MM:SS
 
-steps.todo          : run-obs, gap-fill, run-gaps
+steps.todo          : run-obs, gapfill, run-fwd, submit
 
 time.years          : 2001, 2002, 2003, 2004
 
@@ -12,15 +12,17 @@ dir.project         : template
 
 dir.wofost.input    : /Storage/CO2/wofost/
 
+time.job.limit      : 24:00:00
+
 opt.wofost.parallel : True
 opt.wofost.method   : topn
-opt.wofost.ncells   : 1
-opt.wofost.nsoils   : 1
+opt.wofost.ncells   : 10
+opt.wofost.nsoils   : 3
 opt.wofost.weather  : ECMWF
 
 fwd.wofost.parallel : True
 fwd.wofost.method   : topn
-fwd.wofost.nsoils   : 1
+fwd.wofost.nsoils   : 3
 fwd.wofost.weather  : ECMWF
 fwd.wofost.potential: False
 
