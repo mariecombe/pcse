@@ -157,7 +157,7 @@ class Wofost71_PP(_Wofost71Base):
     configuration file.
     """
     simulation_mode = "pp"
-    config = "Wofost71_PP.conf"
+    config = "Wofost71_PP_Marie.conf"
 
 class Wofost71_WLP_FD(_Wofost71Base):
     """Convenience class for running WOFOST7.1.
