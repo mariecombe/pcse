@@ -189,6 +189,10 @@ def compute_timeseries_fluxes(grid_no):
     # heterotrophic respiration timeseries
     rhet_cell_persec_timeseries = np.array([0.]*len_persec)
     rhet_cell_perday_timeseries = np.array([0.]*len_perday)
+    # extra variables to calculate the harvest:
+    tagp_cell_perday_timeseries = np.array([0.]*len_persec)
+    twrt_cell_perday_timeseries = np.array([0.]*len_persec)
+    twso_cell_perday_timeseries = np.array([0.]*len_persec)
 
     # we initialize some variables
     sum_stu_areas = 0. # sum of soil types areas
@@ -222,6 +226,9 @@ def compute_timeseries_fluxes(grid_no):
         raut_cycle_timeseries  = np.array([])
         gpp_perday_timeseries  = np.array([])
         raut_perday_timeseries = np.array([])
+        tagp_perday_timeseries = np.array([])
+        twrt_perday_timeseries = np.array([])
+        twso_perday_timeseries = np.array([])
      
         # we compile the sum of the stu areas to do a weighted average of
         # GPP and Rauto later on
@@ -243,13 +250,13 @@ def compute_timeseries_fluxes(grid_no):
             # if the day of the time series is before sowing date: plant 
             # fluxes are set to zero
             if test_sow < 0.: 
-                gpp_day  = 0.
-                raut_day = 0.
+                gpp_day  = 0.; raut_day = 0.
+                tagp_day = 0.; twrt_day = 0.; twso_day = 0.
             # or if the day of the time series is after the harvest date: 
             # plant fluxes are set to zero
             elif test_rip > 0.: 
-                gpp_day  = 0.
-                raut_day = 0.
+                gpp_day  = 0.; raut_day = 0.
+                tagp_day = 0.; twrt_day = 0.; twso_day = 0.
             # else we get the daily total GPP and Raut in kgCH2O/ha/day
             # from wofost, and we weigh it with the stu area to later on 
             # calculate the weighted average GPP and Raut in the grid cell
@@ -275,6 +282,10 @@ def compute_timeseries_fluxes(grid_no):
                 except ZeroDivisionError: # otherwise there is no crop growth
                     growth_resp = 0.
                 raut_day   = growth_resp + maint_resp
+                # extra variables to calculate the harvest:
+                tagp_day = wofost_data[filename]['TAGP'][index_day_w]
+                twrt_day = wofost_data[filename]['TWRT'][index_day_w]
+                twso_day = wofost_data[filename]['TWSO'][index_day_w]
      
             # we select the radiation diurnal cycle for that date
             # NB: the last index is ignored in the selection, so we DO have
@@ -311,6 +322,13 @@ def compute_timeseries_fluxes(grid_no):
                                                    [gpp_day]), axis=0) 
             raut_perday_timeseries = np.concatenate((raut_perday_timeseries,
                                                    [raut_day]), axis=0)
+            # extra variables to calculate the harvest:
+            tagp_perday_timeseries = np.concatenate((tagp_perday_timeseries,
+                                                   [tagp_day]), axis=0)
+            twrt_perday_timeseries = np.concatenate((twrt_perday_timeseries,
+                                                   [twrt_day]), axis=0)
+            twso_perday_timeseries = np.concatenate((twso_perday_timeseries,
+                                                   [twso_day]), axis=0)
 
         #-----------------------------------------------------------
         # end of day nb loop
@@ -341,6 +359,13 @@ def compute_timeseries_fluxes(grid_no):
                                       gpp_perday_timeseries*stu_area
         raut_cell_perday_timeseries = raut_cell_perday_timeseries + \
                                       raut_perday_timeseries*stu_area
+        # extra variables to calculate the harvest:
+        tagp_cell_perday_timeseries = tagp_cell_perday_timeseries + \
+                                      tagp_perday_timeseries*stu_area
+        twrt_cell_perday_timeseries = twrt_cell_perday_timeseries + \
+                                      twrt_perday_timeseries*stu_area
+        twso_cell_perday_timeseries = twso_cell_perday_timeseries + \
+                                      twso_perday_timeseries*stu_area
     #---------------------------------------------------------------
     # end of soil type loop
     #---------------------------------------------------------------
@@ -365,6 +390,10 @@ def compute_timeseries_fluxes(grid_no):
     # b- PER DAY
     gpp_cell_perday_timeseries  = gpp_cell_perday_timeseries  / sum_stu_areas
     raut_cell_perday_timeseries = raut_cell_perday_timeseries / sum_stu_areas
+    # extra variables to calculate the harvest:
+    tagp_cell_perday_timeseries = tagp_cell_perday_timeseries / sum_stu_areas
+    twrt_cell_perday_timeseries = twrt_cell_perday_timeseries / sum_stu_areas
+    twso_cell_perday_timeseries = twso_cell_perday_timeseries / sum_stu_areas
 
     # compute the heterotrophic respiration with the A-gs equation
     # NB: we assume here Rhet only dependant on tsurf, not soil moisture
@@ -405,6 +434,9 @@ def compute_timeseries_fluxes(grid_no):
     series['daily']['NEE']     = pd.Series(gpp_cell_perday_timeseries +\
                                            rhet_cell_perday_timeseries +\
                                            raut_cell_perday_timeseries, index=dtimes)
+    series['daily']['TAGP']    = pd.Series(tagp_cell_perday_timeseries, index=dtimes)
+    series['daily']['TWRT']    = pd.Series(twrt_cell_perday_timeseries, index=dtimes)
+    series['daily']['TWSO']    = pd.Series(twso_cell_perday_timeseries, index=dtimes)
 
     # pandas series, 3-hourly frequency:
     series['3-hourly'] = dict()
