@@ -840,10 +840,8 @@ def open_pcse_csv_output(inpath,filelist):
         converted_data=[]
         for line in lines:
             datestr = split(line[0], '-')
-            a = [date(int(datestr[0]),int(datestr[1]),int(datestr[2])), \
-                 float(line[1]), float(line[2]), float(line[3]), float(line[4]), \
-                 float(line[5]), float(line[6]), float(line[7]), float(line[8]), \
-                 float(line[9])]#, float(line[10]), float(line[11])]
+            a = [date(int(datestr[0]),int(datestr[1]),int(datestr[2]))] + \
+                 map(float, line[1:])
             converted_data.append(a)
         data = np.array(converted_data)
 
