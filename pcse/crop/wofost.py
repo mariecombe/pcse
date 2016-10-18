@@ -207,6 +207,12 @@ class Wofost(SimulationObject):
         # water stress reduction
         TRA = self.kiosk["TRA"]
         TRAMX = self.kiosk["TRAMX"]
+        IDWST = self.evtra._IDWST
+        if IDWST > 10 and TRA/TRAMX < 0.4:
+            rates.GASS = rates.PGASS * 0.4
+            #if self.kiosk["DVS"]>1.95:
+                #print 'WP limiting drought stress to 0.4!!!!'
+        else:
         rates.GASS = rates.PGASS * TRA/TRAMX
 
         # Respiration
