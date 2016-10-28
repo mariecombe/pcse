@@ -85,6 +85,15 @@ def optimize():
 #-------------------------------------------------------------------------------
 # we retrieve the crops, regions, and years to loop over:
     NUTS_regions,crop_dict = select_crops_regions(crops,EUROSTATdir)
+
+    if rcF.has_key('nuts.limit'):
+        nutslimit = rcF['nuts.limit'].split(',')
+        NUTS_selected = []
+        for nuts in nutslimit:
+            NUTS_selected.extend([ n for n in sorted(NUTS_regions) if nuts.strip() in n] ) 
+        mylogger.info('NUTS list limited to length %d based on nuts.limit (%s)'%(len(NUTS_selected),sorted(NUTS_selected)))
+        NUTS_regions = NUTS_selected
+
 #-------------------------------------------------------------------------------
 # we retrieve the EUROSTAT pre-processed yield observations:
     try:
@@ -391,6 +400,7 @@ def optimize_regional_yldgapf_dyn(NUTS_no_, detrend, crop_no_,
                 # TSO will store all the yields of one grid cell x soil 
                 # combination, for all years and all 3 yldgapf values
                 TSO = np.zeros((len(f_range), len(opti_years_)))
+                HIO = np.zeros((len(f_range), len(opti_years_)))
 
                 counter +=1
         
@@ -425,39 +435,50 @@ def optimize_regional_yldgapf_dyn(NUTS_no_, detrend, crop_no_,
                         wofost_object.run_till_terminate()
         
                         # get the yield (in kgDM.ha-1) 
+                        hi = wofost_object.get_variable('HI')
+
+                        if hi < 0.15:
+                            mylogger.warning ('WARNING: simulated harvest index suspiciously small (%f)'%hi)
+
+                        # get the yield (in kgDM.ha-1) 
                         TSO[f,y] = wofost_object.get_variable('TWSO')
+                        HIO[f,y] = wofost_object.get_variable('HI')
+
 
                     #print grid, smu, year, counter, TSO[-1]
-                RES = RES + [(grid, stu_no, weight*frac_arable, TSO)]
+                RES = RES + [(grid, stu_no, weight*frac_arable, TSO, HIO)]
 
         # 4- we aggregate the yield or harvest into the regional one with array
         # operations
 
         sum_weighted_vals = np.zeros((len(f_range), len(opti_years_)))
+        sum_weighted_hio = np.zeros((len(f_range), len(opti_years_)))
                                     # empty 2D array with same dimension as TSO
         sum_weights       = 0.
-        for grid, stu_no, weight, TSO in RES:
+        for grid, stu_no, weight, TSO, HIO in RES:
             # adding weighted 2D-arrays in the empty array sum_weighted_yields
             # NB: variable 'weight' is actually the cultivated area in m2
             sum_weighted_vals   = sum_weighted_vals + (weight/10000.)*TSO 
+            sum_weighted_hio   = sum_weighted_hio + (weight/10000.)*HIO 
             # computing the total sum of the cultivated area in ha 
             sum_weights         = sum_weights       + (weight/10000.) 
 
         if (obs_type == 'harvest'):
             TSO_regional = sum_weighted_vals / 1000000. # sum of the individual 
                                                         # harvests in 1000 tDM
+            HIO_regional = sum_weighted_hio / 1000000. # sum of the individual 
+                                                        # harvest indices [0-1]
         elif (obs_type == 'yield'):
             TSO_regional = sum_weighted_vals / sum_weights # weighted average of 
                                                         # all yields in kgDM/ha
+            HIO_regional = sum_weighted_hio / sum_weights # weighted average of 
+                                                        # harvest indices [0-1]
 
         # 5- we compute the (sim-obs) differences.
         DIFF = TSO_regional - OBS
         if (TSO_regional[-1][0] <= 0.):
-            mylogger.warning ('WARNING: no simulated crop growth. We set the optimum ygf to 1.')
-            return 1.
-        if (TSO_regional[-1] <= OBS[-1]):
-            mylogger.warning( 'WARNING: obs yield > sim yield. We set optimum to 1.')
-            return 1.
+            mylogger.warning ('WARNING: no simulated crop growth. We set the optimum ygf to 0.666')
+            return 0.666
         
         # 6- we calculate the RMSE (root mean squared error) of the 3 yldgapf
         # The RMSE of each yldgapf is based on N obs-sim differences for the N
@@ -521,7 +542,7 @@ def optimize_regional_yldgapf_dyn(NUTS_no_, detrend, crop_no_,
     index_optimum   = RMSE.argmin()
     optimum_yldgapf = f_range[index_optimum] 
 
-    mylogger.info( 'optimum found: %.2f +/- %.2f'%(optimum_yldgapf, f_step) )
+    mylogger.info( 'optimum found: %.2f +/- %.2f with RMSE: (%5.2f) and observed yield of %7.2f at Harvest Index of %4.2f'%(optimum_yldgapf, f_step,RMSE.min(),OBS[-1], HIO_regional[index_optimum,0]))
 
     # 10- we return the optimized YLDGAPF
     return optimum_yldgapf

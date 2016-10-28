@@ -66,7 +66,7 @@ for year in years:
             if not jobrc.has_key(k):
                 jobrc[k]=v
 
-        if 'run-obs' in rcitems['steps.todo']:
+        if 'run-opt' in rcitems['steps.todo']:
 
             rcfilename = 'jobs/runopt-%s_%s.rc'%(year.strip(),crop.strip().replace(' ','_') )
             rc.write(rcfilename,jobrc)
@@ -81,8 +81,9 @@ for year in years:
                      'joblog' : '%s'% runjobname.replace('jb','log') }
             header= pf.get_job_header(joboptions=jobopts)
             #header += 'rm -f /projects/0/ctdas/input/wofost/CABO_weather_ECMWF/*cache\n'
+            header += 'export PYTHONPATH="./"\n'
             header += 'python py/carbon_cycle/_04_optimize_fgap.py rc=%s\n'%rcfilename
-            pf.write_job(runjobname, header, '999')  
+            pf.e_job(runjobname, header, '999')  
             if 'submit' in rcitems['steps.todo']:
                 pf.submit_job(runjobname)
 
@@ -99,6 +100,7 @@ for year in years:
                      'jobtime' : '00:15:00',
                      'joblog' : '%s'% runjobname.replace('jb','log') }
             header= pf.get_job_header(joboptions=jobopts)
+            header += 'export PYTHONPATH="./"\n'
             header += 'python py/carbon_cycle/gapfill.py rc=%s\n'%rcfilename
             pf.write_job(runjobname, header, '999')  
             if 'submit' in rcitems['steps.todo']:
@@ -118,11 +120,49 @@ for year in years:
                      'jobtime' : '%s'%jobrc['time.job.limit'],
                      'joblog' : '%s'% runjobname.replace('jb','log') }
             header= pf.get_job_header(joboptions=jobopts)
+            header += 'export PYTHONPATH="./"\n'
             header += 'python py/carbon_cycle/_05_run_forward_sim.py rc=%s\n'%rcfilename
             #header += 'python py/carbon_cycle/_06_complete_c_cycle.py rc=%s\n'%rcfilename
             pf.write_job(runjobname, header, '999')  
             if 'submit' in rcitems['steps.todo']:
                 pf.submit_job(runjobname)
+
+        if 'ccycle' in rcitems['steps.todo']:
+
+            rcfilename = 'jobs/runccycle-%s_%s.rc'%(year.strip(),crop.strip().replace(' ','_') )
+            rc.write(rcfilename,jobrc)
+            logging.debug('An rc-file was created (%s)' % rcfilename )
+
+            runjobname = 'jobs/runccycle-%s_%s.jb'%(year.strip(),crop.strip().replace(' ','_') )
+            jobopts={'jobname':'%s_%s'%(year.strip(),crop.strip().replace(' ','_')),
+                     'jobqueue' : 'normal',
+                     'jobtime' : '%s'%('12:00:00'),
+                     'joblog' : '%s'% runjobname.replace('jb','log') }
+            header= pf.get_job_header(joboptions=jobopts)
+            header += 'export PYTHONPATH="./"\n'
+            header += 'python py/carbon_cycle/_06_complete_c_cycle.py rc=%s\n'%rcfilename
+            pf.write_job(runjobname, header, '999')  
+            if 'submit' in rcitems['steps.todo']:
+                pf.submit_job(runjobname)
+
+    if 'gridflux' in rcitems['steps.todo']:
+
+        rcfilename = 'jobs/rungridflux_%s.rc'%(year.strip())
+        rc.write(rcfilename,jobrc)
+        logging.debug('An rc-file was created (%s)' % rcfilename )
+
+        runjobname = 'jobs/rungridflux_%s.jb'%(year.strip())
+        jobopts={'jobname':'gridflux_%s'%(year.strip()),
+                 'jobqueue' : 'short',
+                 'jobtime' : '%s'%('01:00:00'),
+                 'joblog' : '%s'% runjobname.replace('jb','log') }
+        header= pf.get_job_header(joboptions=jobopts)
+        header += 'export PYTHONPATH="./"\n'
+        header += 'python py/carbon_cycle/_07_grid_netcdf.py rc=%s\n'%rcfilename
+        pf.write_job(runjobname, header, '999')  
+        if 'submit' in rcitems['steps.todo']:
+            pf.submit_job(runjobname)
+
 
 #exit
 sys.exit(0)
