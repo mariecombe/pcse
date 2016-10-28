@@ -260,9 +260,9 @@ def compute_timeseries_fluxes(gridfilename):
     # ssr sum per day
     ssr_cell_perday_timeseries = np.zeros(len_perday)
     # extra variables to calculate the harvest:
-    tagp_cell_perday_timeseries = np.array([0.]*len_persec)
-    twrt_cell_perday_timeseries = np.array([0.]*len_persec)
-    twso_cell_perday_timeseries = np.array([0.]*len_persec)
+    tagp_cell_perday_timeseries = np.zeros(len_perday)
+    twrt_cell_perday_timeseries = np.zeros(len_perday)
+    twso_cell_perday_timeseries = np.zeros(len_perday)
 
     # we initialize some variables
     sum_stu_areas = 0. # sum of soil types areas
