@@ -17,6 +17,8 @@ from cPickle import load as pickle_load
 from cPickle import dump as pickle_dump
 import datetime as dt
 
+sec_per_day = 86400.
+
 #===============================================================================
 def main():
 #===============================================================================
@@ -77,7 +79,7 @@ def main():
     # Post-processing settings
     prod_figure = False     # if True, will produce plots of fluxes per grid cell
     Eact0       = 53.3e3   # activation energy [kJ kmol-1]
-    R10         = 0.14     # respiration at 10C [mgCO2 m-2 s-1], can be between
+    R10         = 0.08     # respiration at 10C [mgCO2 m-2 s-1], can be between
 
     # input data directory paths
 
@@ -90,6 +92,14 @@ def main():
 #-------------------------------------------------------------------------------
 # we retrieve the crops and years to loop over:
     NUTS_regions,crop_dict = select_crops_regions(crops, EUROSTATdir)
+
+    if rcF.has_key('nuts.limit'):
+        nutslimit = rcF['nuts.limit'].split(',')
+        NUTS_selected = []
+        for nuts in nutslimit:
+            NUTS_selected.extend([ n for n in sorted(NUTS_regions) if nuts.strip() in n] ) 
+        mylogger.info('NUTS list limited to length %d based on nuts.limit (%s)'%(len(NUTS_selected),sorted(NUTS_selected)))
+        NUTS_regions = NUTS_selected
 #-------------------------------------------------------------------------------
 # open the pickle files containing the CGMS input data
     CGMSsoil  = pickle_load(open(os.path.join(CGMSdir,'CGMSsoil.pickle'),'rb'))
@@ -112,9 +122,19 @@ def main():
         # loop over crops
         #-----------------------------------------------------------------------
         for crop in sorted(crop_dict.keys()):
-            crop_no    = crop_dict[crop][0]
             crop_name  = crop_dict[crop][1]
-            mylogger.info( 'Crop no %i: %s / %s'%(crop_no, crop, crop_name) )
+            mylogger.info( 'Crop no %i: %s / %s'%(crop_dict[crop][0],crop, crop_name) )
+            if crop_dict[crop][0]==5:
+                crop_no = 1
+                mylogger.info( 'Modified the internal crop_no from 5 to 1')
+            elif crop_dict[crop][0]==13:
+                crop_no = 3
+                mylogger.info( 'Modified the internal crop_no from 13 to 3')
+            elif crop_dict[crop][0]==12:
+                crop_no = 2
+                mylogger.info( 'Modified the internal crop_no from 12 to 2')
+            else:
+                crop_no = crop_dict[crop][0]
 
             # build folder name from year and crop
             if potential_sim:
@@ -180,7 +200,7 @@ def main():
                 
                 # We add an end timestamp to time the process
                 end_timestamp = dt.datetime.utcnow()
-                mylogger.info( 'Duration of the post-processing: %s', %(end_timestamp - start_timestamp))
+                mylogger.info( 'Duration of the post-processing: %s'%(end_timestamp - start_timestamp))
 
     mylogger.info('Successfully finished the script, returning...')
     sys.exit(0)
@@ -200,13 +220,19 @@ def compute_timeseries_fluxes(gridfilename):
 
     grid_no=int(grid_no[1:])
 
+    filepath = os.path.join(analysisdir,'carbonfluxes_%s_g%i.pickle'%(NUTS_no,grid_no))
+    if os.path.exists(filepath):
+        mylogger.info("Skipping existing analysis file: %s"%filepath)
+        return None
+
+
     # We retrieve the longitude and latitude of the CGMS grid cell
     i   = np.argmin(np.absolute(all_grids - grid_no))
     lon = lons[i]
     lat = lats[i]
     mylogger.info('in NUTS region %s,  grid cell no %i: lon = %.2f , lat = %.2f'%(NUTS_no,grid_no,lon, lat) )
     # we retrieve the tsurf and rad variables from ECMWF
-    #rad = retrieve_ecmwf_ssrd(year, lon, lat)
+    rad = retrieve_ecmwf_ssrd(year, lon, lat)
     ts = retrieve_ecmwf_tsurf(year, lon, lat)
 
     startdate=dt.datetime(year,1,1,0,0,0)
@@ -223,10 +249,24 @@ def compute_timeseries_fluxes(gridfilename):
     raut_cell_perday_timeseries = np.zeros(len_perday)
     # heterotrophic respiration timeseries
     rhet_cell_perday_timeseries = np.zeros(len_perday)
+    # soil moisture stress 
+    tra_cell_perday_timeseries = np.zeros(len_perday)
+    # soil moisture stress max
+    tramx_cell_perday_timeseries = np.zeros(len_perday)
+    # t2m sum per day
+    t2m_cell_perday_timeseries = np.zeros(len_perday)
+    # tsum sum per day
+    tsum_cell_perday_timeseries = np.zeros(len_perday)
+    # ssr sum per day
+    ssr_cell_perday_timeseries = np.zeros(len_perday)
+    # extra variables to calculate the harvest:
+    tagp_cell_perday_timeseries = np.zeros(len_perday)
+    twrt_cell_perday_timeseries = np.zeros(len_perday)
+    twso_cell_perday_timeseries = np.zeros(len_perday)
 
     # we initialize some variables
     sum_stu_areas = 0. # sum of soil types areas
-    delta = 3600. * 24. # number of seconds in delta (here 3 hours)
+    delta = 3600. * 24. # WP changed to daily
 
     if (prod_figure == True):
         from matplotlib import pyplot as plt
@@ -238,6 +278,9 @@ def compute_timeseries_fluxes(gridfilename):
     soilist = select_soils(crop_no, [grid_no], CGMSsoil,
                            method=selec_method, n=nsoils)
 
+    if not soilist:
+        return None
+
     #---------------------------------------------------------------
     # loop over soil types
     #---------------------------------------------------------------
@@ -248,10 +291,13 @@ def compute_timeseries_fluxes(gridfilename):
         soil_codes.append(stu_no)
         soil_areas.append(stu_area)
         # We open the WOFOST results file
-        filename    = 'wofost_%s_g%i_s%i_%s.txt'%(NUTS_no,grid_no, stu_no,opt_type) 
+        filename    = 'wofost_%s_g%i_s%i_%s'%(NUTS_no,grid_no, stu_no,opt_type) 
+        if not os.path.exists(os.path.join(analysisdir,filename)):
+            mylogger.info('Skipping missing file %s'%filename)
+            continue
         results_set = open_pcse_csv_output(analysisdir, [filename])
         wofost_data = results_set[0]
-        wofost_yield = results_set[1]
+        wofost_mass, wofost_yield ,wofost_hindex = results_set[1]
 
         # We apply the short wave radiation diurnal cycle on the GPP 
         # and R_auto
@@ -261,6 +307,11 @@ def compute_timeseries_fluxes(gridfilename):
         raut_cycle_timeseries  = np.array([])
         gpp_perday_timeseries  = np.array([])
         raut_perday_timeseries = np.array([])
+        tra_perday_timeseries = np.array([])
+        tramx_perday_timeseries = np.array([])
+        tagp_perday_timeseries = np.array([])
+        twrt_perday_timeseries = np.array([])
+        twso_perday_timeseries = np.array([])
      
         # we compile the sum of the stu areas to do a weighted average of
         # GPP and Rauto later on
@@ -284,11 +335,21 @@ def compute_timeseries_fluxes(gridfilename):
             if test_sow < 0.: 
                 gpp_day  = 0.
                 raut_day = 0.
+                tra_day  = 0.
+                tramx_day = 0.
+                twso_day = 0.
+                twrt_day = 0.
+                tagp_day = 0.
             # or if the day of the time series is after the harvest date: 
             # plant fluxes are set to zero
             elif test_rip > 0.: 
                 gpp_day  = 0.
                 raut_day = 0.
+                tra_day  = 0.
+                tramx_day = 0.
+                twso_day = 0.
+                twrt_day = 0.
+                tagp_day = 0.
             # else we get the daily total GPP and Raut in kgCH2O/ha/day
             # from wofost, and we weigh it with the stu area to later on 
             # calculate the weighted average GPP and Raut in the grid cell
@@ -313,13 +374,38 @@ def compute_timeseries_fluxes(gridfilename):
                     growth_resp = (1.-growth_fac)*(-gpp_day-maint_resp) 
                 except ZeroDivisionError: # otherwise there is no crop growth
                     growth_resp = 0.
-                raut_day   = growth_resp + maint_resp
+
+                raut_day   = growth_resp  #WP#  + maint_resp
+
+                try:
+                    tra_day    = wofost_data[filename]['TRA'][index_day_w] 
+                    tramx_day    = wofost_data[filename]['TRAMX'][index_day_w] 
+                except:
+                    tra_day    = -999.
+                    tramx_day  = -999.
+
+                # extra variables to calculate the harvest:
+                tagp_day = wofost_data[filename]['TAGP'][index_day_w]
+                twrt_day = wofost_data[filename]['TWRT'][index_day_w]
+                twso_day = wofost_data[filename]['TWSO'][index_day_w]
+
      
             # we also store the carbon fluxes per day, for comparison with fluxnet
             gpp_perday_timeseries = np.concatenate((gpp_perday_timeseries,
                                                    [gpp_day]), axis=0) 
             raut_perday_timeseries = np.concatenate((raut_perday_timeseries,
                                                    [raut_day]), axis=0)
+            tra_perday_timeseries = np.concatenate((tra_perday_timeseries,
+                                                   [tra_day]), axis=0)
+            tramx_perday_timeseries = np.concatenate((tramx_perday_timeseries,
+                                                   [tramx_day]), axis=0)
+            # extra variables to calculate the harvest:
+            tagp_perday_timeseries = np.concatenate((tagp_perday_timeseries,
+                                                   [tagp_day]), axis=0)
+            twrt_perday_timeseries = np.concatenate((twrt_perday_timeseries,
+                                                   [twrt_day]), axis=0)
+            twso_perday_timeseries = np.concatenate((twso_perday_timeseries,
+                                                   [twso_day]), axis=0)
 
         #-----------------------------------------------------------
         # end of day nb loop
@@ -346,6 +432,17 @@ def compute_timeseries_fluxes(gridfilename):
                                       gpp_perday_timeseries*stu_area
         raut_cell_perday_timeseries = raut_cell_perday_timeseries + \
                                       raut_perday_timeseries*stu_area
+        tra_cell_perday_timeseries  = tra_cell_perday_timeseries + \
+                                      tra_perday_timeseries*stu_area
+        tramx_cell_perday_timeseries = tramx_cell_perday_timeseries + \
+                                      tramx_perday_timeseries*stu_area
+        # extra variables to calculate the harvest:
+        tagp_cell_perday_timeseries = tagp_cell_perday_timeseries + \
+                                      tagp_perday_timeseries*stu_area
+        twrt_cell_perday_timeseries = twrt_cell_perday_timeseries + \
+                                      twrt_perday_timeseries*stu_area
+        twso_cell_perday_timeseries = twso_cell_perday_timeseries + \
+                                      twso_perday_timeseries*stu_area
     #---------------------------------------------------------------
     # end of soil type loop
     #---------------------------------------------------------------
@@ -368,17 +465,27 @@ def compute_timeseries_fluxes(gridfilename):
     # b- PER DAY
     gpp_cell_perday_timeseries  = gpp_cell_perday_timeseries  / sum_stu_areas
     raut_cell_perday_timeseries = raut_cell_perday_timeseries / sum_stu_areas
+    tra_cell_perday_timeseries  = tra_cell_perday_timeseries  / sum_stu_areas
+    tramx_cell_perday_timeseries  = tramx_cell_perday_timeseries  / sum_stu_areas
+    # extra variables to calculate the harvest:
+    tagp_cell_perday_timeseries = tagp_cell_perday_timeseries / sum_stu_areas
+    twrt_cell_perday_timeseries = twrt_cell_perday_timeseries / sum_stu_areas
+    twso_cell_perday_timeseries = twso_cell_perday_timeseries / sum_stu_areas
 
     # compute the heterotrophic respiration with the A-gs equation
     # NB: we assume here Rhet only dependant on tsurf, not soil moisture
     #fw = Cw * wsmax / (wg + wsmin)
-    tsurf_inter = Eact0 / (283.15 * 8.314) * (1 - 283.15 / ts[1])
+    tsurf_inter = Eact0 / (283.15 * 8.314) * (1.0 - 283.15 / ts[1])
     # a- PER DAY:
     rhet_cell_persec_timeseries = R10 * np.array([ math.exp(t) for t in tsurf_inter ]) 
     rhet_cell_perday_timeseries = rhet_cell_persec_timeseries.reshape((-1,8)).mean(axis=1)
-   
-    # conversion from mgCO2 to gC
-    conversion_fac = (mmC / mmCO2) * 0.001
+
+    t2m_cell_perday_timeseries =  np.array(ts[1]).reshape((-1,8)).sum(axis=1) # sum of t2m
+    tsum_cell_perday_timeseries =  np.array([ math.exp(t) for t in tsurf_inter ]).reshape((-1,8)).sum(axis=1) # sum of interp t2m
+    ssr_cell_perday_timeseries =  np.array(rad[1]).reshape((-1,8)).sum(axis=1) # sum of ssr
+
+    # conversion from mgCO2 to gC and from sec to day
+    conversion_fac = (mmC / mmCO2) * 0.001 * sec_per_day
     rhet_cell_perday_timeseries = rhet_cell_perday_timeseries * conversion_fac
 
     # we format the time series using the pandas python library, for easy plotting
@@ -396,9 +503,16 @@ def compute_timeseries_fluxes(gridfilename):
     series['coords'] = (lon,lat,)
     series['soil_codes'] = soil_codes
     series['soil_areas'] = soil_areas
+    series['crop_mass'] = wofost_mass
     series['crop_yield'] = wofost_yield
+    series['crop_hi'] = wofost_hindex
 
     series['daily'] = dict()
+    series['daily']['T2M']     = pd.Series(t2m_cell_perday_timeseries, index=dtimes)
+    series['daily']['TSUM']     = pd.Series(tsum_cell_perday_timeseries, index=dtimes)
+    series['daily']['SSR']     = pd.Series(ssr_cell_perday_timeseries, index=dtimes)
+    series['daily']['TRA']     = pd.Series(tra_cell_perday_timeseries, index=dtimes)
+    series['daily']['TRAMX']   = pd.Series(tramx_cell_perday_timeseries, index=dtimes)
     series['daily']['GPP']     = pd.Series(gpp_cell_perday_timeseries, index=dtimes)
     series['daily']['Rauto']   = pd.Series(raut_cell_perday_timeseries, index=dtimes)
     series['daily']['Rhetero'] = pd.Series(rhet_cell_perday_timeseries, index=dtimes)
@@ -407,6 +521,9 @@ def compute_timeseries_fluxes(gridfilename):
     series['daily']['NEE']     = pd.Series(gpp_cell_perday_timeseries +\
                                            rhet_cell_perday_timeseries +\
                                            raut_cell_perday_timeseries, index=dtimes)
+    series['daily']['TAGP']    = pd.Series(tagp_cell_perday_timeseries, index=dtimes)
+    series['daily']['TWRT']    = pd.Series(twrt_cell_perday_timeseries, index=dtimes)
+    series['daily']['TWSO']    = pd.Series(twso_cell_perday_timeseries, index=dtimes)
 
     # pandas series, 3-hourly frequency:
     #series['3-hourly'] = dict()
@@ -420,7 +537,6 @@ def compute_timeseries_fluxes(gridfilename):
                                               #raut_cell_persec_timeseries, index=htimes)
 
     # we store the two pandas series in one pickle file
-    filepath = os.path.join(analysisdir,'carbonfluxes_%s_g%i.pickle'%(NUTS_no,grid_no))
     pickle_dump(series, open(filepath,'wb'))
 
     return None

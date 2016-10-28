@@ -12,6 +12,7 @@ from py.carbon_cycle._01_select_crops_n_regions import select_crops_regions
 import py.tools.rc as rc
 import logging as mylogger
 import tarfile
+import resource
 
 from cPickle import load as pickle_load
 from cPickle import dump as pickle_dump
@@ -85,6 +86,15 @@ def main():
 #-------------------------------------------------------------------------------
 # we retrieve the crops and years to loop over:
     NUTS_regions,crop_dict = select_crops_regions(crops, EUROSTATdir)
+
+    if rcF.has_key('nuts.limit'):
+        nutslimit = rcF['nuts.limit'].split(',')
+        NUTS_selected = []
+        for nuts in nutslimit:
+            NUTS_selected.extend([ n for n in sorted(NUTS_regions) if nuts.strip() in n] ) 
+        mylogger.info('NUTS list limited to length %d based on nuts.limit (%s)'%(len(NUTS_selected),sorted(NUTS_selected)))
+        NUTS_regions = NUTS_selected
+
 #-------------------------------------------------------------------------------
 # open the pickle files containing the CGMS input data
     CGMSsoil  = pickle_load(open(os.path.join(CGMSdir,'CGMSsoil.pickle'),'rb'))
@@ -205,26 +215,23 @@ def main():
 
                     outputfile = os.path.join(wofostdir, "wofost_%s_results.tgz" %NUTS_no)
                     if os.path.exists(outputfile):
-                        mylogger.info('tar output file exists, extracting data and removing tar file')
-                        tarf=tarfile.open(outputfile,mode='r')
-                        gridfiles = tarf.getnames()
-                        tarf.extractall(path=wofostdir)
-                        tarf.close()
-                        os.remove(outputfile)
+                        mylogger.info('tar output file exists for region (%s), skipping '%outputfile)
+                        continue
 
                     if (par_process):
                         import multiprocessing
                         # get number of cpus available to job
                         try:
-                            ncpus = int(os.environ["SLURM_JOB_CPUS_PER_NODE"])/2
+                            ncpus = int(os.environ["SLURM_JOB_CPUS_PER_NODE"])/6
                             print "Success reading parallel env %d" % ncpus
                         except KeyError:
-                            ncpus = multiprocessing.cpu_count()/2
+                            ncpus = multiprocessing.cpu_count()/6
                             print "Success obtaining processor count %d" % ncpus
                         NUTS_nos = [NUTS_no]*len(grid_shortlist)
                         fgaps = [fgap]*len(grid_shortlist)
                         arguments = zip(grid_shortlist,NUTS_nos, fgaps)
-                        p = multiprocessing.Pool(ncpus)
+                        p = multiprocessing.Pool(ncpus,maxtasksperchild=10)
+                        mylogger.info("Memory used now: %d Mb "%(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1000))
                         _ = p.map(forward_sim_per_grid, arguments)
                         p.close()
 
@@ -266,6 +273,27 @@ def forward_sim_per_grid(arguments):
     mylogger.info( '    - grid cell %i, yield gap factor of %.2f'%(grid_no, fgap) )
     print '    - grid cell %i, yield gap factor of %.2f'%(grid_no, fgap)
 
+    # Select soil types to loop over for the forward runs
+    selected_soil_types = select_soils(crop_no, [grid_no], CGMSsoil, 
+                                       method=selec_method, n=nsoils)
+
+    if not selected_soil_types:
+        return None
+
+    # Check the existence of an output file early on, so that we can skip it without reading any data
+
+    todo_soils=[]
+    for smu, stu_no, stu_area, soildata in selected_soil_types[grid_no]:
+        wofostfile = os.path.join(wofostdir, "wofost_%s_g%i_s%i_%s.txt"\
+                     %(NUTS_no,grid_no,stu_no,opt_type))
+        if os.path.exists(wofostfile):
+            mylogger.info("Skipping exisiting grid/soil simulation (%s)"%wofostfile)
+        else:
+            todo_soils.append([smu,stu_no,stu_area,soildata])
+
+    if not todo_soils:
+        return None
+
     # Retrieve the weather data of one grid cell
     if (weather == 'CGMS'):
         filename = os.path.join(CGMSdir,'weather_objects/',
@@ -277,7 +305,6 @@ def forward_sim_per_grid(arguments):
     #print weatherdata(datetime.date(datetime(2006,4,1)))
  
     # Retrieve the soil types, crop calendar, crop species
-    soil_iterator = ['soilobject_g%d'%grid_no]
     if crop_dict[crop][0]==5: # spring wheat uses spring barley calendars
         timerdata = CGMStimer['timerobject_g%d_c%d_y%d'%(grid_no,3,year)]
     elif crop_dict[crop][0]==13: # winter barley uses winter wheat calendars
@@ -296,12 +323,8 @@ def forward_sim_per_grid(arguments):
     cropdata['CRPNAM'] = crop
     cropdata['YLDGAPF'] = fgap
  
-    # Select soil types to loop over for the forward runs
-    selected_soil_types = select_soils(crop_no, [grid_no], CGMSsoil, 
-                                       method=selec_method, n=nsoils)
- 
-    for smu, stu_no, stu_area, soildata in selected_soil_types[grid_no]:
-        mylogger.info( '        soil type no %i'%stu_no )
+    for smu, stu_no, stu_area, soildata in todo_soils:
+        mylogger.info( 'soil type no %i'%stu_no )
         
         wofostfile = os.path.join(wofostdir, "wofost_%s_g%i_s%i_%s.txt"\
                      %(NUTS_no,grid_no,stu_no,opt_type))
