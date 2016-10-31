@@ -231,13 +231,13 @@ def main():
         cropgrp.CGMS_ID = cropno
         cropgrp.long_name = croplongname
 
-        cropyield = cropgrp.createVariable('yield','f4',('y','x'))
-        cropyield.source = pandaresultsdir
-        cropyield.units = 'gC m-2'
+        cropyieldsum = cropgrp.createVariable('yield_sum','f4',('y','x'))
+        cropyieldsum.source = pandaresultsdir
+        cropyieldsum.units = 'gC m-2'
 
-        cropmass = cropgrp.createVariable('biomass','f4',('y','x'))
-        cropmass.source = pandaresultsdir
-        cropmass.units = 'gC'
+        cropmasssum = cropgrp.createVariable('biomass_sum','f4',('y','x'))
+        cropmasssum.source = pandaresultsdir
+        cropmasssum.units = 'gC'
 
         crophi = cropgrp.createVariable('harvest_index','f4',('y','x'))
         crophi.source = pandaresultsdir
@@ -287,11 +287,31 @@ def main():
         cropssr.long_name = "sum of ssr from ECMWF"
         cropssr.units = 'W m-2'
 
+        cropagp = cropgrp.createVariable('abovegroundbiomass','f4',('time','y','x'))
+        cropagp.source = pandaresultsdir
+        cropagp.long_name = "Total Biomass Aboveground"
+        cropagp.units = 'gC'
+
+        croptwrt= cropgrp.createVariable('rootbiomass','f4',('time','y','x'))
+        croptwrt.source = pandaresultsdir
+        croptwrt.long_name = "Total Biomass in roots"
+        croptwrt.units = 'gC'
+
+        croptwso= cropgrp.createVariable('yield','f4',('time','y','x'))
+        croptwso.source = pandaresultsdir
+        croptwso.long_name = "yield"
+        croptwso.units = 'gC m-2'
+
+        cropstress= cropgrp.createVariable('fstress','f4',('time','y','x'))
+        cropstress.source = pandaresultsdir
+        cropstress.long_name = "stress factor for soil moisture, tra/tramx"
+        cropstress.units = '-'
+
         # Make arrays needed to fill arrays specific to this crop
 
-        massfield=np.zeros(gridX.shape)+np.NaN
+        masssumfield=np.zeros(gridX.shape)+np.NaN
         hifield=np.zeros(gridX.shape)+np.NaN
-        yieldfield=np.zeros(gridX.shape)+np.NaN
+        yieldsumfield=np.zeros(gridX.shape)+np.NaN
         yieldgapfield=np.zeros(gridX.shape)+np.NaN
         nutsfield=np.zeros(gridX.shape)-1.0  # all start at NUTS=-1 level
         cultfracfield=np.zeros(gridX.shape)  # The area of this crop cultivated per gridbox
@@ -303,6 +323,10 @@ def main():
         ssrfield=np.zeros((12,)+gridX.shape)
         t2mfield=np.zeros((12,)+gridX.shape)
         tsumfield=np.zeros((12,)+gridX.shape)
+        tagpfield=np.zeros((12,)+gridX.shape)
+        twrtfield=np.zeros((12,)+gridX.shape)
+        twsofield=np.zeros((12,)+gridX.shape)
+        stressfield=np.zeros((12,)+gridX.shape)
 
         #
         # Now proceed to process each file of output
@@ -372,9 +396,9 @@ def main():
             # Okay, we can now start to fill all arrays with the data
 
             nutsfield[jj,ii] = NUTS_level # Only higher NUTS levels can replace
-            massfield[jj,ii] = data['crop_mass']
+            masssumfield[jj,ii] = data['crop_mass']
             hifield[jj,ii] = data['crop_hi']
-            yieldfield[jj,ii] = data['crop_yield']
+            yieldsumfield[jj,ii] = data['crop_yield']
             yieldgapfield[jj,ii] = fgap
             cultfracfield[jj,ii] = cultfrac[cropindex]
             arableareafield[jj,ii] = arable_area[0]
@@ -385,11 +409,15 @@ def main():
             t2mfield[:,jj,ii] = (data['daily']['T2M']).resample('M').sum()[:]
             tsumfield[:,jj,ii] = (data['daily']['TSUM']).resample('M').sum()[:]
             ssrfield[:,jj,ii] = (data['daily']['SSR']).resample('M').sum()[:]
+            tagpfield[:,jj,ii] = (data['daily']['TAGP']).resample('M').sum()[:]
+            twrtfield[:,jj,ii] = (data['daily']['TWRT']).resample('M').sum()[:]
+            twsofield[:,jj,ii] = (data['daily']['TWSO']).resample('M').sum()[:]
+            stressfield[:,jj,ii] = (data['daily']['TRA']).resample('M').mean()[:]/(data['daily']['TRAMX']).resample('M').mean()[:]
 
         # When all files processes, we can write the gridded results to the NetCDF file variables
 
-        cropyield[:,:] = yieldfield
-        cropmass[:,:] = massfield
+        cropyieldsum[:,:] = yieldsumfield
+        cropmasssum[:,:] = masssumfield
         crophi[:,:] = hifield
         cropyieldgap[:,:] = yieldgapfield
         cropnuts[:,:] = nutsfield
@@ -398,6 +426,9 @@ def main():
         cropgpp[:,:,:] = gppfield 
         cropter[:,:,:] = terfield 
         cropnee[:,:,:] = neefield 
+        cropagp[:,:,:] = tagpfield 
+        croptwso[:,:,:] = twsofield 
+        cropstress[:,:,:] = stressfield 
 
     # And now, let's write the final accumulated fields to the NetCDF file, and close it
 
