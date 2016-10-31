@@ -281,7 +281,12 @@ def compute_timeseries_fluxes(grid_no):
                     growth_resp = (1.-growth_fac)*(-gpp_day-maint_resp) 
                 except ZeroDivisionError: # otherwise there is no crop growth
                     growth_resp = 0.
-                raut_day   = growth_resp + maint_resp
+
+                # we only store Rgrowth in variable Raut, because Rmaint
+                # is taken into account in Rhetero. Otherwise, TER becomes
+                # way too large!
+                raut_day   = growth_resp
+
                 # extra variables to calculate the harvest:
                 tagp_day = wofost_data[filename]['TAGP'][index_day_w]
                 twrt_day = wofost_data[filename]['TWRT'][index_day_w]
