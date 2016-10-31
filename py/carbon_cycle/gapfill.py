@@ -51,17 +51,16 @@ def gapfill():
     crops = [ rcF['crop'] ]
     #crops = [i.strip().replace(' ','_') for i in crops]
     years = [int(rcF['year'])]
+
+    inputdir = rcF['dir.wofost.input']
     outputdir = rcF['dir.output']
     outputdir = os.path.join(outputdir,'ygf')
-    opt_type = rcF['optimize.type']
-    if opt_type not in ['observed','gapfilled']:
-        logging.error('The specified optimization type (%s) in the call argument is not recognized' % opt_type )
-        logging.error('Please use either "observed" or "gapfilled" as value in the main rc-file')
-        sys.exit(2)
+
+    EUROSTATdir = os.path.join(inputdir,'EUROSTATobs')
 
 #-------------------------------------------------------------------------------
 # we retrieve the NUTS regions years to loop over:
-    NUTS_regions,crop_dict = select_crops_regions(crops)
+    NUTS_regions,crop_dict = select_crops_regions(crops,EUROSTATdir)
 
     for year in years:
         for crop in sorted(crop_dict.keys()):  # this will normally only give one crop, but let's leave it like this
@@ -76,7 +75,7 @@ def gapfill():
             nonculti  = [f.split('_')[1] for f in os.listdir(outputdir) if "noncultivated" in f]  # code _01 refers to a ygf from observed values
             tofill  = [f.split('_')[1] for f in os.listdir(outputdir) if "togapfill" in f]  # code _01 refers to a ygf from observed values
 
-            for nut in sorted(NUTS_regions)[0:10]:
+            for nut in sorted(NUTS_regions):
                 # Check if this region was not already done
                 if nut not in tofill: 
                     logging.debug('NUTS region %s does not need gapfilling, skipping' % nut)
@@ -134,7 +133,7 @@ def gapfill():
                         fillyear =  os.path.join(outputdir,'ygf_%s_togapfill.pickle' % nut)
                         optimi_info= cPickle.load(open(fillyear,'rb'))
                         shortlist_cells = optimi_info[3]
-                        ygf = 0.75
+                        ygf = 0.666
                         opt_code='gapfilled05'
 
                     logging.info("Using ygf of %5.2f and code of %s"%(ygf, opt_code))
