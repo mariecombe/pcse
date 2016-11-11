@@ -793,8 +793,12 @@ def open_pcse_csv_output(inpath,filelist):
         headerow=lines[18]
 
         # getting summary output
+        crop_mass = lines[12][0].split(':')
+        crop_mass = float(crop_mass[1])
         crop_yield = lines[13][0].split(':')
         crop_yield = float(crop_yield[1])
+        crop_hi = lines[14][0].split(':')
+        crop_hi = float(crop_hi[1])
 
 
         # deleting rows that are not data (first and last rows of the file)
@@ -804,11 +808,9 @@ def open_pcse_csv_output(inpath,filelist):
         converted_data=[]
         for line in lines:
             datestr = split(line[0], '-')
-            a = [date(int(datestr[0]),int(datestr[1]),int(datestr[2])), \
-                 float(line[1]), float(line[2]), float(line[3]), float(line[4]), \
-                 float(line[5]), float(line[6]), float(line[7]), float(line[8]), \
-                 float(line[9])]#, float(line[10]), float(line[11])]
-            converted_data.append(a)
+            a = [date(int(datestr[0]),int(datestr[1]),int(datestr[2]))]
+            b = map(float,line[1:])
+            converted_data.append(a+b)
         data = np.array(converted_data)
 
         # creating one dictionnary and storing the float data in it
@@ -819,7 +821,7 @@ def open_pcse_csv_output(inpath,filelist):
     
         #print "Dictionary created!"
 
-    return Dict, crop_yield
+    return Dict, [crop_mass,crop_yield,crop_hi]
 
 #===============================================================================
 # Function to open normal csv files
@@ -858,6 +860,7 @@ def open_csv(inpath,filelist,convert_to_float=False):
         # creating one dictionnary and storing the float data in it
         dictnamelist= {}
         for j,varname in enumerate(headerow):
+            print j,varname, data.shape
             dictnamelist[varname]=data[:,j]
         Dict[namefile] = dictnamelist
     
