@@ -198,6 +198,12 @@ def querie_arable_cells_in_NUTS_region(NUTS_reg_code,_threshold=None,_largest_n=
         old_NUTS_reg_code = '10517'
     elif NUTS_reg_code=='XK' or NUTS_reg_code=='RS': # Kosovo, independant from Serbia
         old_NUTS_reg_code = '10478'                  # since 2008, assigned to Serbia code
+    elif NUTS_reg_code=='UA': # Ukraine
+        old_NUTS_reg_code = '10473'
+    elif NUTS_reg_code=='BY': # Belarus
+        old_NUTS_reg_code = '10471'
+    elif NUTS_reg_code=='MD': # Moldova
+        old_NUTS_reg_code = '10526'
     # Germany
     elif NUTS_reg_code=='DE40':
         old_NUTS_reg_code = ['DE41','DE42']
