@@ -245,6 +245,10 @@ def optimize_fgap(NUTS_no):
                           method=selec_method, n=ncells,
                           select_from='cultivated')
 
+    # we compute the list of whole grid cells contained in the region to write to pickle files if needed
+    all_cells = select_cells(NUTS_no, year, CGMSgrid, CGMScropmask,CGMSsoil, 
+                      method='all', select_from='cultivated')
+
     if (shortlist_cells == None):
         mylogger.info( "No cultivated grid cells for %s in region %s"%(crop,NUTS_no) )
         mylogger.info( "This crop/NUTS combination will be skipped from now on")
@@ -261,7 +265,7 @@ def optimize_fgap(NUTS_no):
     except:
         mylogger.info( 'This region code is unknown and will be skipped')
         filename = os.path.join(outputdir,'ygf_%s_notreported.pickle'% NUTS_no )
-        outlist = [NUTS_no, 'missingyield', np.NaN, shortlist_cells ]
+        outlist = [NUTS_no, 'missingyield', np.NaN, all_cells ]
         pickle_dump(outlist, open(filename,'wb'))
         return None
 #-------------------------------------------------------------------------------
@@ -272,11 +276,11 @@ def optimize_fgap(NUTS_no):
         if len(NUTS_no)==2: #WP NUTS level 0, needs to be gapfilled if missing
             mylogger.info( 'This region will need to be gapfilled')
             filename = os.path.join(outputdir,'ygf_%s_togapfill.pickle'% NUTS_no )
-            outlist = [NUTS_no, 'togapfill', np.NaN, shortlist_cells ]
+            outlist = [NUTS_no, 'togapfill', np.NaN, all_cells ]
         else:
             mylogger.info( 'This region will be skipped')
             filename = os.path.join(outputdir,'ygf_%s_notreported.pickle'% NUTS_no )
-            outlist = [NUTS_no, 'missingyield', np.NaN, shortlist_cells ]
+            outlist = [NUTS_no, 'missingyield', np.NaN, all_cells ]
         pickle_dump(outlist, open(filename,'wb'))
         return None
 #-------------------------------------------------------------------------------
@@ -315,12 +319,9 @@ def optimize_fgap(NUTS_no):
                                                 obs_type=opti_metric,
                                                 plot_rmse=False)
 
-    # we compute the list of whole grid cells contained in the region
-    shortlist_cells = select_cells(NUTS_no, year, CGMSgrid, CGMScropmask,CGMSsoil, 
-                      method='all', select_from='cultivated')
 
     # pickle the information per NUTS region
-    outlist = [NUTS_no, opti_code, optimum, shortlist_cells]
+    outlist = [NUTS_no, opti_code, optimum, all_cells]
     filename = os.path.join(outputdir,'ygf_%s_%s.pickle'% (NUTS_no, 'observed'))
     pickle_dump(outlist, open(filename,'wb'))
 

@@ -183,6 +183,7 @@ def main():
                 if not os.path.exists(yldgapfdir):
                     mylogger.error( "You haven't optimized the yield gap factor!!" )
                     mylogger.error( "Run the script _04_optimize_fgap.py first!" )
+                    mylogger.error( "missing %s"%yldgapfdir)
                     sys.exit(2)
                     continue
              
