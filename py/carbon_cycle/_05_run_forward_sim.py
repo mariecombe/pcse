@@ -58,6 +58,7 @@ def main():
     crops = [ rcF['crop'] ]
     years = [int(rcF['year'])]
     outputdir = rcF['dir.output']
+    ygfdir = os.path.join(outputdir,'ygf')
     outputdir = os.path.join(outputdir,'wofost')
     inputdir = rcF['dir.wofost.input']
     par_process = (rcF['fwd.wofost.parallel'] in ['True','TRUE','true','T'])
@@ -179,7 +180,7 @@ def main():
                     mylogger.info( 'SKIP MODE: we skip any simulation already performed' )
 
                 # we retrieve the optimum yield gap factor output files
-                yldgapfdir = os.path.join(outputdir.replace('wofost','ygf') )
+                yldgapfdir = ygfdir
                 if not os.path.exists(yldgapfdir):
                     mylogger.error( "You haven't optimized the yield gap factor!!" )
                     mylogger.error( "Run the script _04_optimize_fgap.py first!" )
@@ -216,18 +217,24 @@ def main():
 
                     outputfile = os.path.join(wofostdir, "wofost_%s_results.tgz" %NUTS_no)
                     if os.path.exists(outputfile):
-                        mylogger.info('tar output file exists for region (%s), skipping '%outputfile)
-                        continue
+                        tarf=tarfile.open(outputfile,mode='r')
+                        gridfiles = tarf.getnames()
+                        tarf.extractall(path=wofostdir)
+                        tarf.close()
+                        mylogger.info('tar output file exists for region (%s), extracting '%outputfile)
+                    else:
+                        mylogger.info('creating new tar output file (%s) '%outputfile)
+
 
                     if (par_process):
                         import multiprocessing
                         # get number of cpus available to job
                         try:
                             ncpus = int(os.environ["SLURM_JOB_CPUS_PER_NODE"])/6
-                            print "Success reading parallel env %d" % ncpus
+                            mylogger.info("Success reading parallel env %d" % ncpus)
                         except KeyError:
                             ncpus = multiprocessing.cpu_count()/6
-                            print "Success obtaining processor count %d" % ncpus
+                            mylogger.info("Success obtaining processor count %d" % ncpus)
                         NUTS_nos = [NUTS_no]*len(grid_shortlist)
                         fgaps = [fgap]*len(grid_shortlist)
                         arguments = zip(grid_shortlist,NUTS_nos, fgaps)

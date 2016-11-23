@@ -366,6 +366,11 @@ def main():
 
             filelist = [ f for f in os.listdir(yieldgapresultsdir) if ('observed' in f or 'gapfilled' in f)]  #WP Selection for only observed, or only gap-filled NUTS
             filelist2 = [ f for f in filelist if f.split('_')[1] == NUTS_no]
+            if not filelist2:
+                mylogger.info("No optimized yield-gap factor file found for NUTS region %s in folder %s"%(NUTS_no, yieldgapresultsdir))
+                print filelist2
+                continue
+
             ygffile = os.path.join(yieldgapresultsdir,filelist2[0])
             optimi_info = cPickle.load(open(ygffile,'rb')) 
             fgap        = optimi_info[2]
@@ -373,7 +378,13 @@ def main():
             #
             #WP With the crop code, crop name, and NUTS name known we can find out the fraction of this crop cultivated in this country
 
-            cultfrac = cropweights['%s'%NUTS_no]  # WP Get NUTS0 level code to estimate weights for each crop, these are 16 numbers
+            try:
+                cultfrac = cropweights['%s'%NUTS_no]  # WP Get NUTS0 level code to estimate weights for each crop, these are 16 numbers
+            except KeyError:
+
+                mylogger.info("Non-existing NUTS code encountered (%s), cannot determine cultivated_fraction, using NaN instead"%NUTS_no)
+                cultfrac = np.zeros((16,))+np.NaN  # WP insert NaN if unknown
+                cropweights['%s'%NUTS_no] = cultfrac  # Add to crop weights for the next iteration
 
 #WP Out of these 16 numbers, select the one with the number that corresponds to our crop number.
 #WP Note that the crop order in the weights dictionary is stored under the key "crop_order", while our cropno was derived from the
